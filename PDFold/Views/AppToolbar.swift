@@ -5,12 +5,11 @@ struct AppToolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            Button {
-                openPDFs()
-            } label: {
+            Button { openPDFs() } label: {
                 Label("Add PDFs", systemImage: "plus.circle")
             }
-            .help("Add PDFs to workspace (⌘O)")
+            .help("Add PDF files to workspace")
+            .keyboardShortcut("o", modifiers: .command)
         }
     }
 

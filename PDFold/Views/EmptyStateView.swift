@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct EmptyStateView: View {
     var viewModel: WorkspaceViewModel
@@ -7,58 +8,64 @@ struct EmptyStateView: View {
     var body: some View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
+                .ignoresSafeArea()
 
-            VStack(spacing: 24) {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 64, weight: .ultraLight))
-                    .foregroundStyle(.secondary)
+            VStack(spacing: 28) {
+                // Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.10))
+                        .frame(width: 96, height: 96)
+                    Image(systemName: "doc.on.doc.fill")
+                        .font(.system(size: 44, weight: .light))
+                        .foregroundStyle(Color.accentColor)
+                        .symbolRenderingMode(.hierarchical)
+                }
 
                 VStack(spacing: 8) {
-                    Text("Drag PDFs here to start a workspace")
+                    Text("Drag PDFs here")
                         .font(.title2)
-                        .fontWeight(.medium)
-                    Text("Combine multiple PDFs into one readable, annotatable workspace")
+                        .fontWeight(.semibold)
+                    Text("Drop one or more PDF files to start a workspace.\nCombine, annotate, and sign them as one document.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                        .lineSpacing(3)
                 }
 
                 HStack(spacing: 12) {
                     Button {
                         openPDFs()
                     } label: {
-                        Label("Open PDFs…", systemImage: "folder")
-                            .frame(minWidth: 120)
+                        Label("Open PDFs…", systemImage: "folder.badge.plus")
+                            .frame(minWidth: 130)
                     }
                     .controlSize(.large)
                     .buttonStyle(.borderedProminent)
+
+                    Button {
+                        // new blank workspace - already have one
+                    } label: {
+                        Label("New Workspace", systemImage: "plus")
+                            .frame(minWidth: 130)
+                    }
+                    .controlSize(.large)
+                    .buttonStyle(.bordered)
                 }
             }
-            .padding(48)
+            .padding(56)
         }
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.accentColor, lineWidth: isDropTargeted ? 3 : 0)
-                .padding(8)
-                .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(
+                    Color.accentColor,
+                    lineWidth: isDropTargeted ? 2.5 : 0
+                )
+                .padding(12)
+                .animation(.easeInOut(duration: 0.12), value: isDropTargeted)
         )
-        .onDrop(of: [.pdf, .fileURL], isTargeted: $isDropTargeted) { providers in
-            var urls: [URL] = []
-            let group = DispatchGroup()
-            for provider in providers {
-                if provider.hasItemConformingToTypeIdentifier("public.file-url") {
-                    group.enter()
-                    provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, _ in
-                        defer { group.leave() }
-                        if let data = item as? Data,
-                           let url = URL(dataRepresentation: data, relativeTo: nil),
-                           url.pathExtension.lowercased() == "pdf" {
-                            urls.append(url)
-                        }
-                    }
-                }
-            }
-            group.notify(queue: .main) {
+        .onDrop(of: [UTType.pdf, .fileURL], isTargeted: $isDropTargeted) { providers in
+            resolvePDFURLs(from: providers) { urls in
                 viewModel.importPDFs(urls: urls)
             }
             return true

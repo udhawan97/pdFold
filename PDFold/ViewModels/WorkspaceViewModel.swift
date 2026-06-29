@@ -6,15 +6,17 @@ import Observation
 final class WorkspaceViewModel {
     var document: WorkspaceDocument
     var combinedPDF: PDFDocument = PDFDocument()
+    /// Parallel array to workspace.documents — holds the loaded PDFDocument for each member.
     var loadedPDFs: [(MemberDocument, PDFDocument)] = []
+
     var importError: ImportError? = nil
     var pendingPasswordURL: URL? = nil
     var isShowingPasswordPrompt = false
 
-    private let engine: PDFEngine = PDFKitEngine()
+    private let engine: PDFKitEngine = PDFKitEngine()
 
     struct ImportError: Identifiable {
-        var id = UUID()
+        let id = UUID()
         var fileName: String
         var message: String
     }
@@ -22,6 +24,8 @@ final class WorkspaceViewModel {
     init(document: WorkspaceDocument) {
         self.document = document
     }
+
+    // MARK: - Import
 
     func importPDFs(urls: [URL]) {
         for url in urls {
@@ -33,7 +37,10 @@ final class WorkspaceViewModel {
     func addPDF(from url: URL) {
         let fileName = url.lastPathComponent
         guard let pdf = engine.loadDocument(from: url) else {
-            importError = ImportError(fileName: fileName, message: "Could not open \"\(fileName)\". The file may be corrupt or in an unsupported format.")
+            importError = ImportError(
+                fileName: fileName,
+                message: "Could not open \"\(fileName)\". The file may be corrupt or in an unsupported format."
+            )
             return
         }
         if pdf.isLocked {
@@ -44,6 +51,7 @@ final class WorkspaceViewModel {
         attachPDF(pdf, from: url)
     }
 
+    /// Returns true if the password was correct and the document was added.
     func unlock(pdf: PDFDocument, password: String, url: URL) -> Bool {
         guard pdf.unlock(withPassword: password) else { return false }
         attachPDF(pdf, from: url)
@@ -57,51 +65,46 @@ final class WorkspaceViewModel {
             displayName: name,
             sourcePDFRef: url.lastPathComponent
         )
-        var newRefs: [PageRef] = []
-        for i in 0..<pdf.pageCount {
-            let ref = PageRef(memberDocId: member.id, sourcePageIndex: i)
-            newRefs.append(ref)
+        let refs = (0..<pdf.pageCount).map { i in
+            PageRef(memberDocId: member.id, sourcePageIndex: i)
         }
-        member.pageRefs = newRefs.map { $0.id }
+        member.pageRefs = refs.map(\.id)
         document.workspace.documents.append(member)
-        document.workspace.pageOrder.append(contentsOf: newRefs)
+        document.workspace.pageOrder.append(contentsOf: refs)
         loadedPDFs.append((member, pdf))
     }
 
     func rebuild() {
-        combinedPDF = engine.concatenate(documents: loadedPDFs)
+        combinedPDF = engine.concatenate(documents: loadedPDFs, includeBanners: true)
     }
+
+    // MARK: - Reorder / Remove
 
     func moveDocument(from source: IndexSet, to destination: Int) {
         document.workspace.documents.move(fromOffsets: source, toOffset: destination)
-        reorderLoadedPDFs()
+        syncLoadedPDFsOrder()
         rebuildPageOrder()
         rebuild()
     }
 
     func removeDocument(at offsets: IndexSet) {
-        let removedIds = offsets.map { document.workspace.documents[$0].id }
+        let removedIds = Set(offsets.map { document.workspace.documents[$0].id })
         document.workspace.documents.remove(atOffsets: offsets)
         loadedPDFs.removeAll { removedIds.contains($0.0.id) }
         rebuildPageOrder()
         rebuild()
     }
 
-    private func reorderLoadedPDFs() {
-        let idOrder = document.workspace.documents.map { $0.id }
+    private func syncLoadedPDFsOrder() {
+        let order = document.workspace.documents.map(\.id)
         loadedPDFs.sort { a, b in
-            let ai = idOrder.firstIndex(of: a.0.id) ?? Int.max
-            let bi = idOrder.firstIndex(of: b.0.id) ?? Int.max
-            return ai < bi
+            (order.firstIndex(of: a.0.id) ?? Int.max) < (order.firstIndex(of: b.0.id) ?? Int.max)
         }
     }
 
     private func rebuildPageOrder() {
-        var newOrder: [PageRef] = []
-        for member in document.workspace.documents {
-            let existing = document.workspace.pageOrder.filter { $0.memberDocId == member.id }
-            newOrder.append(contentsOf: existing)
+        document.workspace.pageOrder = document.workspace.documents.flatMap { member in
+            document.workspace.pageOrder.filter { $0.memberDocId == member.id }
         }
-        document.workspace.pageOrder = newOrder
     }
 }

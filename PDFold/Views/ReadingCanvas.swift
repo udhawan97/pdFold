@@ -5,66 +5,36 @@ struct ReadingCanvas: View {
     var viewModel: WorkspaceViewModel
 
     var body: some View {
-        PDFViewRepresentable(viewModel: viewModel)
+        PDFViewRepresentable(pdf: viewModel.combinedPDF)
             .ignoresSafeArea()
     }
 }
 
+// MARK: - NSViewRepresentable bridge
+
 struct PDFViewRepresentable: NSViewRepresentable {
-    var viewModel: WorkspaceViewModel
+    var pdf: PDFDocument
 
-    func makeNSView(context: Context) -> BoundaryPDFHostView {
-        let host = BoundaryPDFHostView()
-        host.configure(with: viewModel)
-        return host
+    func makeNSView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.displayMode = .singlePageContinuous
+        view.displayDirection = .vertical
+        view.autoScales = true
+        view.displaysPageBreaks = false   // boundary pages provide visual separation
+        view.backgroundColor = .windowBackgroundColor
+        view.document = pdf
+        return view
     }
 
-    func updateNSView(_ nsView: BoundaryPDFHostView, context: Context) {
-        nsView.configure(with: viewModel)
+    func updateNSView(_ nsView: PDFView, context: Context) {
+        // Only replace document when content actually changed (identity check).
+        if nsView.document !== pdf {
+            let previousPage = nsView.currentPage
+            nsView.document = pdf
+            // Try to restore scroll position to the same logical page
+            if let page = previousPage {
+                nsView.go(to: page)
+            }
+        }
     }
-}
-
-final class BoundaryPDFHostView: NSView {
-    private var pdfView: PDFView?
-    private var overlayView: BoundaryOverlayView?
-    private var lastDocumentCount = 0
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        setup()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setup()
-    }
-
-    private func setup() {
-        let pv = PDFView()
-        pv.displayMode = .singlePageContinuous
-        pv.displayDirection = .vertical
-        pv.autoScales = true
-        pv.displaysPageBreaks = true
-        pv.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(pv)
-        NSLayoutConstraint.activate([
-            pv.topAnchor.constraint(equalTo: topAnchor),
-            pv.bottomAnchor.constraint(equalTo: bottomAnchor),
-            pv.leadingAnchor.constraint(equalTo: leadingAnchor),
-            pv.trailingAnchor.constraint(equalTo: trailingAnchor)
-        ])
-        pdfView = pv
-    }
-
-    func configure(with viewModel: WorkspaceViewModel) {
-        guard let pdfView else { return }
-        let docCount = viewModel.document.workspace.documents.count
-        guard pdfView.document !== viewModel.combinedPDF || lastDocumentCount != docCount else { return }
-        lastDocumentCount = docCount
-        pdfView.document = viewModel.combinedPDF
-    }
-}
-
-final class BoundaryOverlayView: NSView {
-    override var isFlipped: Bool { true }
 }

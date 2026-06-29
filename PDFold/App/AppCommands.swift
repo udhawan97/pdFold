@@ -2,11 +2,9 @@ import SwiftUI
 
 struct AppCommands: Commands {
     var body: some Commands {
-        CommandGroup(replacing: .newItem) {
-            Button("New Workspace") {
-                NSDocumentController.shared.newDocument(nil)
-            }
-            .keyboardShortcut("n", modifiers: .command)
+        // File menu additions — DocumentGroup already provides New, Open, Save, etc.
+        CommandGroup(after: .newItem) {
+            Divider()
         }
     }
 }
