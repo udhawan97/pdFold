@@ -11,6 +11,7 @@
 		156D6EBE77E5EEE483A69866 /* PDFKitEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CAC778D374332BD668C7F87 /* PDFKitEngine.swift */; };
 		23FC0C344110D094998B9C83 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532E4CABAC0F8B4664C810DE /* InspectorView.swift */; };
 		3740966A95E081C76D12CC9B /* AppToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48261BB994A895CFA9A07CE0 /* AppToolbar.swift */; };
+		376ED70FB3F09DF6B3F65E70 /* BoundaryPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062B11437A890C3344D88298 /* BoundaryPage.swift */; };
 		3866888BE258CB21880A59E9 /* ReadingCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52DE2C15407429070EAC6A29 /* ReadingCanvas.swift */; };
 		4EE0FCC727CB942973E8FE5B /* AnnotationIndexEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB62EF31188C4156B985682 /* AnnotationIndexEntry.swift */; };
 		4F32970EF66F40DB05F1F6D1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 108F80780D043A5E84254B45 /* Assets.xcassets */; };
@@ -30,6 +31,7 @@
 
 /* Begin PBXFileReference section */
 		04448B1CCE672C13D52392B1 /* WorkspaceDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDocument.swift; sourceTree = "<group>"; };
+		062B11437A890C3344D88298 /* BoundaryPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundaryPage.swift; sourceTree = "<group>"; };
 		108F80780D043A5E84254B45 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		10F92B037079D607E9FC1F8D /* PDFoldApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFoldApp.swift; sourceTree = "<group>"; };
 		48261BB994A895CFA9A07CE0 /* AppToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppToolbar.swift; sourceTree = "<group>"; };
@@ -112,6 +114,7 @@
 		B9D0894FF9788FFAD369BDEC /* Engine */ = {
 			isa = PBXGroup;
 			children = (
+				062B11437A890C3344D88298 /* BoundaryPage.swift */,
 				547E4E8F72DEE08FB7A66472 /* PDFEngine.swift */,
 				9CAC778D374332BD668C7F87 /* PDFKitEngine.swift */,
 			);
@@ -226,6 +229,7 @@
 				4EE0FCC727CB942973E8FE5B /* AnnotationIndexEntry.swift in Sources */,
 				EF74274BF58489C5E7684EF9 /* AppCommands.swift in Sources */,
 				3740966A95E081C76D12CC9B /* AppToolbar.swift in Sources */,
+				376ED70FB3F09DF6B3F65E70 /* BoundaryPage.swift in Sources */,
 				BB8959F2285A83728B364BCC /* ContentView.swift in Sources */,
 				79BDC616455ED84B90BB2DB9 /* EmptyStateView.swift in Sources */,
 				23FC0C344110D094998B9C83 /* InspectorView.swift in Sources */,
