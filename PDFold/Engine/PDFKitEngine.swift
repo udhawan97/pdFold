@@ -2,6 +2,7 @@ import PDFKit
 import AppKit
 import Foundation
 import UniformTypeIdentifiers
+import WebKit
 
 final class PDFKitEngine: PDFEngine {
     func loadDocument(from url: URL) throws -> PDFDocument {
@@ -80,9 +81,9 @@ enum DocumentImportConverter {
             from: data,
             contentType: type,
             filename: url.lastPathComponent,
-            // Keep HTML/Markdown imports self-contained. A selected document should
-            // not be able to pull arbitrary sibling files or remote resources.
-            baseURL: nil
+            // Let HTML resolve relative CSS and image URLs the same way it would
+            // when opened directly in a browser.
+            baseURL: type.conforms(to: .html) ? url.deletingLastPathComponent() : nil
         )
     }
 
@@ -95,10 +96,12 @@ enum DocumentImportConverter {
             return try renderImage(data, title: filename)
         }
 
-        let attributedString: NSAttributedString
         if contentType.conforms(to: .html) {
-            attributedString = try loadAttributedString(from: data, documentType: .html, baseURL: baseURL)
-        } else if contentType.conforms(to: .docx) {
+            return try renderHTML(data, title: filename, baseURL: baseURL)
+        }
+
+        let attributedString: NSAttributedString
+        if contentType.conforms(to: .docx) {
             attributedString = try loadAttributedString(from: data, documentType: .officeOpenXML, baseURL: baseURL)
         } else if contentType.conforms(to: .wordDoc) {
             attributedString = try loadAttributedString(from: data, documentType: .docFormat, baseURL: baseURL)
@@ -115,6 +118,16 @@ enum DocumentImportConverter {
         }
 
         return try renderAttributedString(attributedString, title: filename)
+    }
+
+    private static func renderHTML(_ data: Data, title: String, baseURL: URL?) throws -> PDFDocument {
+        let html = try decodeText(data)
+        let pdfData = try HTMLPDFRenderer.render(html: html, baseURL: baseURL)
+        guard let document = PDFDocument(data: pdfData) else { throw ConversionError.renderingFailed }
+        document.documentAttributes = [
+            PDFDocumentAttribute.titleAttribute: URL(fileURLWithPath: title).deletingPathExtension().lastPathComponent
+        ]
+        return document
     }
 
     private static func loadAttributedString(
@@ -309,5 +322,118 @@ private final class TextPDFPageView: NSView {
         let origin = CGPoint(x: margin, y: margin)
         layoutManager.drawBackground(forGlyphRange: glyphRange, at: origin)
         layoutManager.drawGlyphs(forGlyphRange: glyphRange, at: origin)
+    }
+}
+
+private final class HTMLPDFRenderer: NSObject, WKNavigationDelegate {
+    private enum RenderState {
+        case pending
+        case succeeded(Data)
+        case failed(Error)
+    }
+
+    private let html: String
+    private let baseURL: URL?
+    private let timeout: TimeInterval
+    private let webView: WKWebView
+    private var state = RenderState.pending
+
+    static func render(html: String, baseURL: URL?, timeout: TimeInterval = 30) throws -> Data {
+        if Thread.isMainThread {
+            return try renderOnMainThread(html: html, baseURL: baseURL, timeout: timeout)
+        }
+
+        var result: Result<Data, Error>!
+        let semaphore = DispatchSemaphore(value: 0)
+        DispatchQueue.main.async {
+            result = Result {
+                try renderOnMainThread(html: html, baseURL: baseURL, timeout: timeout)
+            }
+            semaphore.signal()
+        }
+        semaphore.wait()
+        return try result.get()
+    }
+
+    private static func renderOnMainThread(html: String, baseURL: URL?, timeout: TimeInterval) throws -> Data {
+        let renderer = HTMLPDFRenderer(html: html, baseURL: baseURL, timeout: timeout)
+        return try renderer.render()
+    }
+
+    private init(html: String, baseURL: URL?, timeout: TimeInterval) {
+        self.html = html
+        self.baseURL = baseURL
+        self.timeout = timeout
+
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let preferences = WKWebpagePreferences()
+        preferences.allowsContentJavaScript = true
+        configuration.defaultWebpagePreferences = preferences
+
+        webView = WKWebView(frame: CGRect(origin: .zero, size: CGSize(width: 612, height: 792)), configuration: configuration)
+        webView.setValue(false, forKey: "drawsBackground")
+        super.init()
+        webView.navigationDelegate = self
+    }
+
+    private func render() throws -> Data {
+        webView.loadHTMLString(html, baseURL: baseURL)
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while case .pending = state {
+            if Date() >= deadline {
+                throw DocumentImportConverter.ConversionError.renderingFailed
+            }
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+        }
+
+        switch state {
+        case .pending:
+            throw DocumentImportConverter.ConversionError.renderingFailed
+        case .succeeded(let data):
+            return data
+        case .failed(let error):
+            throw error
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        let script = """
+        [Math.max(document.documentElement.scrollWidth, document.body.scrollWidth, 612),
+         Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, 792)]
+        """
+        webView.evaluateJavaScript(script) { [weak self] result, error in
+            if let error {
+                self?.state = .failed(error)
+                return
+            }
+
+            let sizeValues = result as? [Any] ?? []
+            let width = max((sizeValues.first as? NSNumber)?.doubleValue ?? 612, 612)
+            let height = max((sizeValues.dropFirst().first as? NSNumber)?.doubleValue ?? 792, 792)
+            webView.frame = CGRect(origin: .zero, size: CGSize(width: width, height: height))
+
+            let configuration = WKPDFConfiguration()
+            configuration.rect = webView.bounds
+            webView.createPDF(configuration: configuration) { result in
+                switch result {
+                case .success(let data) where !data.isEmpty:
+                    self?.state = .succeeded(data)
+                case .success:
+                    self?.state = .failed(DocumentImportConverter.ConversionError.renderingFailed)
+                case .failure(let error):
+                    self?.state = .failed(error)
+                }
+            }
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        state = .failed(error)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        state = .failed(error)
     }
 }

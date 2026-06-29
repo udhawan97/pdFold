@@ -87,7 +87,7 @@ PDFold brings that fragmented process into one focused workspace, making documen
 |  | Audience | What to Notice |
 | --- | --- | --- |
 | 🧑‍💼 | Recruiters | A polished native macOS app with a clear user problem, visible product thinking, and practical engineering choices. |
-| 🧑‍💻 | Developers | SwiftUI, PDFKit, document packages, custom import conversion, manifest-based bundle export, undo-aware page operations, and installer automation. |
+| 🧑‍💻 | Developers | SwiftUI, PDFKit, document packages, custom import conversion, multi-format export, undo-aware page operations, and installer automation. |
 | 📎 | Actual humans with PDFs | Drag files in, make sense of them, sign what needs signing, export one clean document, and move on with your day. |
 
 ## What It Does
@@ -99,7 +99,7 @@ PDFold brings that fragmented process into one focused workspace, making documen
 | 📖 | Read | Native PDF canvas, generated section banners, table of contents, sidebar navigation, and search |
 | ✍️ | Mark up | Highlight, note, ink, underline, strikeout, and signature tools |
 | 💾 | Save | Editable `.pdfoldproj` document packages with workspace metadata and source PDF data |
-| 📤 | Export | Plain merged PDF, printable workspace, or `.pdfold` bundle with embedded manifest data |
+| 📤 | Export | PDF, Word `.docx`, text, HTML, PNG pages, JPEG pages, or printable workspace |
 | 🔑 | Unlock | Password-protected PDF prompt using native PDFKit behavior |
 | 🛡️ | Protect | Local-first by design; your files stay on your Mac |
 
@@ -113,7 +113,6 @@ flowchart LR
     D --> E{"Need to keep editing?"}
     E -- "Yes" --> F["Save .pdfoldproj package"]
     E -- "No" --> G["Export plain PDF"]
-    D --> H["Export PDFold bundle with manifest"]
 ```
 
 ## Architecture
@@ -124,7 +123,7 @@ flowchart LR
     App["PDFold macOS app<br/>SwiftUI workspace"]
     Engine["Document engine<br/>Convert, merge, annotate, search"]
     Local["Local storage<br/>.pdfoldproj packages"]
-    Output["Exports<br/>Merged PDF or PDFold bundle"]
+    Output["Exports<br/>PDF, Word, text, HTML, PNG, JPEG"]
 
     Files --> App
     App --> Engine
@@ -165,8 +164,7 @@ PDFold is prepared for version `2.0`: a release-hardened local-first macOS workf
 | 🔐 | Protected PDFs | Password-protected documents unlock from the already-loaded PDF instance instead of reopening the file after sandbox access may have ended. |
 | ↩️ | Undo reliability | Page deletion and page reordering undo restore serialized PDF state, not only sidebar metadata. |
 | 🗂️ | Page order | Reordered pages now rebuild the workspace page map correctly, keeping navigation, export, signatures, and saved projects aligned. |
-| 📤 | Export reliability | Plain PDF and PDFold bundle exports now report write/manifest failures instead of failing silently. |
-| 🧾 | Bundle metadata | Embedded manifest writing sanitizes attachment metadata and uses a safer PDF trailer size calculation. |
+| 📤 | Export reliability | PDF and multi-format exports now report write failures instead of failing silently. |
 
 ## Simplest Local Setup
 
@@ -244,7 +242,7 @@ PDFold is a native SwiftUI document app. The setup script uses `xcodebuild` to p
 2. Drag in one or more files.
 3. Read, reorder, annotate, search, sign, rotate, or remove pages.
 4. Save a `.pdfoldproj` workspace if you want to keep editing later.
-5. Export a merged PDF when you need one clean file for someone who has not yet joined your beautifully organized future.
+5. Export a PDF, Word document, text file, HTML file, or page images when you need to share the workspace in a useful format.
 
 ## Technical Layout
 
@@ -306,8 +304,7 @@ Release v2 also adds practical guardrails around the most failure-prone paths:
 
 - Files larger than 512 MB are rejected before loading to avoid memory pressure from accidental giant imports.
 - HTML and Markdown imports are rendered as self-contained documents, without using the source folder as a base URL for sibling files.
-- Export failures are surfaced to the user, including invalid bundle manifests and failed writes.
-- PDFold bundles embed only the workspace manifest; document contents remain in the PDF itself.
+- Export failures are surfaced to the user, including failed writes and image-rendering errors.
 
 <details>
 <summary>Sandbox details</summary>
@@ -334,7 +331,7 @@ Before shipping a build, verify the app from both sides: the developer path and 
 | 🔎 | Search | Search results work across the combined workspace |
 | ✍️ | Annotation | Highlight, note, ink, underline, strikeout, and undo behavior work |
 | 🗂️ | Pages | Page rotation, deletion, and reordering behave correctly |
-| 📤 | Export | Plain PDF and PDFold bundle export complete successfully |
+| 📤 | Export | PDF, Word, text, HTML, PNG, and JPEG exports complete successfully |
 | 🚀 | Launch | Desktop launcher opens the installed app after running the installer |
 
 For v2 release preparation, the local verification pass should include:

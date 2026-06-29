@@ -1,6 +1,59 @@
 import SwiftUI
 import PDFKit
+import AppKit
 import Observation
+import UniformTypeIdentifiers
+
+enum WorkspaceExportFormat: String, CaseIterable, Identifiable {
+    case pdf
+    case word
+    case text
+    case html
+    case png
+    case jpeg
+
+    var id: String { rawValue }
+
+    var menuTitle: String {
+        switch self {
+        case .pdf: return "PDF (.pdf)"
+        case .word: return "Word (.docx)"
+        case .text: return "Text (.txt)"
+        case .html: return "HTML (.html)"
+        case .png: return "PNG Images (.png)"
+        case .jpeg: return "JPEG Images (.jpg)"
+        }
+    }
+
+    var fileExtension: String {
+        switch self {
+        case .pdf: return "pdf"
+        case .word: return "docx"
+        case .text: return "txt"
+        case .html: return "html"
+        case .png: return "png"
+        case .jpeg: return "jpg"
+        }
+    }
+
+    var contentType: UTType {
+        switch self {
+        case .pdf: return .pdf
+        case .word: return UTType(filenameExtension: "docx") ?? .data
+        case .text: return .plainText
+        case .html: return .html
+        case .png: return .png
+        case .jpeg: return .jpeg
+        }
+    }
+
+    var exportsDirectory: Bool {
+        switch self {
+        case .png, .jpeg: return true
+        case .pdf, .word, .text, .html: return false
+        }
+    }
+}
 
 enum AnnotationTool: String, CaseIterable, Identifiable {
     case none      = "cursor.arrow"
@@ -453,6 +506,21 @@ final class WorkspaceViewModel {
 
     // MARK: - Export
 
+    func exportWorkspace(as format: WorkspaceExportFormat) {
+        switch format {
+        case .pdf:
+            exportPlainPDF()
+        case .word:
+            exportWordDocument()
+        case .text:
+            exportPlainText()
+        case .html:
+            exportHTML()
+        case .png, .jpeg:
+            exportPageImages(as: format)
+        }
+    }
+
     func exportPlainPDF() {
         let exportDoc = engine.concatenate(documents: loadedPDFs, includeBanners: false)
         let panel = NSSavePanel()
@@ -466,55 +534,214 @@ final class WorkspaceViewModel {
         }
     }
 
-    // MARK: - .pdfold bundle export
-
-    func exportPDFoldBundle() {
-        // 1. Build the plain concatenated PDF
-        let plainDoc = engine.concatenate(documents: loadedPDFs, includeBanners: false)
-        guard let pdfData = plainDoc.dataRepresentation() else {
-            exportError = ExportError(message: "PDFold could not prepare the PDF data for export.")
-            return
-        }
-
-        // 2. Build the manifest — page counts must sum exactly to total
-        let manifestDocs = document.workspace.documents.map { member in
-            PDFoldManifest.ManifestDocument(
-                id: member.id.uuidString,
-                name: member.displayName,
-                pageCount: member.pageRefs.count
-            )
-        }
-        let manifest = PDFoldManifest(
-            title: document.workspace.title,
-            documents: manifestDocs
-        )
-        guard let manifestData = try? JSONEncoder().encode(manifest),
-              manifest.isValid(totalPages: plainDoc.pageCount) else {
-            exportError = ExportError(message: "PDFold could not build a valid bundle manifest.")
-            return
-        }
-
-        // 3. Embed manifest via incremental update
-        guard let bundleData = PDFAttachmentWriter.embed(
-            attachmentData: manifestData,
-            filename: "pdfold-manifest.json",
-            mimeType: "application/json",
-            in: pdfData
-        ) else {
-            exportError = ExportError(message: "PDFold could not embed the workspace manifest in this PDF.")
-            return
-        }
-
-        // 4. Save
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = "\(document.workspace.title).pdfold"
-        panel.title = "Export PDFold Bundle"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    private func exportWordDocument() {
+        let attributed = attributedTextForDocumentExport()
         do {
-            try bundleData.write(to: url, options: .atomic)
+            let data = try attributed.data(
+                from: NSRange(location: 0, length: attributed.length),
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML]
+            )
+            saveData(data, as: .word)
         } catch {
-            exportError = ExportError(message: "PDFold could not write the PDFold bundle: \(error.localizedDescription)")
+            exportError = ExportError(message: "PDFold could not create the Word export: \(error.localizedDescription)")
+        }
+    }
+
+    private func exportPlainText() {
+        guard let data = plainTextForDocumentExport().data(using: .utf8) else {
+            exportError = ExportError(message: "PDFold could not encode the text export.")
+            return
+        }
+        saveData(data, as: .text)
+    }
+
+    private func exportHTML() {
+        let html = htmlForDocumentExport()
+        guard let data = html.data(using: .utf8) else {
+            exportError = ExportError(message: "PDFold could not encode the HTML export.")
+            return
+        }
+        saveData(data, as: .html)
+    }
+
+    private func exportPageImages(as format: WorkspaceExportFormat) {
+        let exportDoc = engine.concatenate(documents: loadedPDFs, includeBanners: false)
+        guard exportDoc.pageCount > 0 else {
+            exportError = ExportError(message: "There are no pages to export.")
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "\(safeFilename(document.workspace.title)) \(format.fileExtension.uppercased()) Pages"
+        panel.title = "Export \(format.menuTitle)"
+        panel.prompt = "Export"
+        guard panel.runModal() == .OK, let folderURL = panel.url else { return }
+
+        do {
+            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+            for pageIndex in 0..<exportDoc.pageCount {
+                guard let page = exportDoc.page(at: pageIndex),
+                      let data = imageData(for: page, format: format) else {
+                    throw ExportFailure("Could not render page \(pageIndex + 1).")
+                }
+                let filename = "page-\(String(format: "%03d", pageIndex + 1)).\(format.fileExtension)"
+                try data.write(to: folderURL.appendingPathComponent(filename), options: .atomic)
+            }
+        } catch {
+            exportError = ExportError(message: "PDFold could not export page images: \(error.localizedDescription)")
+        }
+    }
+
+    private func saveData(_ data: Data, as format: WorkspaceExportFormat) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [format.contentType]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "\(safeFilename(document.workspace.title)).\(format.fileExtension)"
+        panel.title = "Export \(format.menuTitle)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            exportError = ExportError(message: "PDFold could not write the \(format.menuTitle) export: \(error.localizedDescription)")
+        }
+    }
+
+    private func attributedTextForDocumentExport() -> NSAttributedString {
+        let output = NSMutableAttributedString()
+        let headingAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: 18),
+            .foregroundColor: NSColor.labelColor
+        ]
+        let bodyAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12),
+            .foregroundColor: NSColor.labelColor
+        ]
+
+        for (index, item) in loadedPDFs.enumerated() {
+            if index > 0 {
+                output.append(NSAttributedString(string: "\n\n"))
+            }
+            output.append(NSAttributedString(string: item.0.displayName + "\n", attributes: headingAttributes))
+            output.append(NSAttributedString(string: String(repeating: "-", count: max(3, item.0.displayName.count)) + "\n\n", attributes: bodyAttributes))
+            output.append(NSAttributedString(string: text(from: item.1), attributes: bodyAttributes))
+        }
+        return output.length == 0 ? NSAttributedString(string: " ") : output
+    }
+
+    private func plainTextForDocumentExport() -> String {
+        loadedPDFs.map { member, pdf in
+            "\(member.displayName)\n\(String(repeating: "=", count: max(3, member.displayName.count)))\n\n\(text(from: pdf))"
+        }
+        .joined(separator: "\n\n")
+    }
+
+    private func htmlForDocumentExport() -> String {
+        let body = loadedPDFs.map { member, pdf in
+            """
+            <section>
+              <h1>\(htmlEscaped(member.displayName))</h1>
+              <pre>\(htmlEscaped(text(from: pdf)))</pre>
+            </section>
+            """
+        }
+        .joined(separator: "\n")
+
+        return """
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <title>\(htmlEscaped(document.workspace.title))</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 48px; color: #111; }
+            section { margin-bottom: 40px; }
+            h1 { font-size: 22px; margin-bottom: 12px; }
+            pre { white-space: pre-wrap; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+          </style>
+        </head>
+        <body>
+        \(body)
+        </body>
+        </html>
+        """
+    }
+
+    private func text(from pdf: PDFDocument) -> String {
+        var parts: [String] = []
+        for pageIndex in 0..<pdf.pageCount {
+            if let pageText = pdf.page(at: pageIndex)?.string?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !pageText.isEmpty {
+                parts.append(pageText)
+            }
+        }
+        return parts.joined(separator: "\n\n")
+    }
+
+    private func imageData(for page: PDFPage, format: WorkspaceExportFormat) -> Data? {
+        let bounds = page.bounds(for: .mediaBox)
+        let scale: CGFloat = 2
+        let pixelWidth = max(1, Int(bounds.width * scale))
+        let pixelHeight = max(1, Int(bounds.height * scale))
+        let alpha = format == .png
+
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelWidth,
+            pixelsHigh: pixelHeight,
+            bitsPerSample: 8,
+            samplesPerPixel: alpha ? 4 : 3,
+            hasAlpha: alpha,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return nil }
+
+        NSGraphicsContext.saveGraphicsState()
+        guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+            NSGraphicsContext.restoreGraphicsState()
+            return nil
+        }
+        NSGraphicsContext.current = context
+        context.cgContext.setFillColor(NSColor.white.cgColor)
+        context.cgContext.fill(CGRect(x: 0, y: 0, width: CGFloat(pixelWidth), height: CGFloat(pixelHeight)))
+        context.cgContext.scaleBy(x: scale, y: scale)
+        context.cgContext.translateBy(x: -bounds.minX, y: -bounds.minY)
+        page.draw(with: .mediaBox, to: context.cgContext)
+        NSGraphicsContext.restoreGraphicsState()
+
+        switch format {
+        case .png:
+            return bitmap.representation(using: .png, properties: [:])
+        case .jpeg:
+            return bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.9])
+        case .pdf, .word, .text, .html:
+            return nil
+        }
+    }
+
+    private func htmlEscaped(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
+    private func safeFilename(_ value: String) -> String {
+        let invalid = CharacterSet(charactersIn: "/\\:?%*|\"<>").union(.controlCharacters)
+        let filtered = value.unicodeScalars.map { invalid.contains($0) ? "-" : String($0) }.joined()
+        let trimmed = filtered.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "PDFold Export" : trimmed
+    }
+
+    private struct ExportFailure: LocalizedError {
+        var errorDescription: String?
+
+        init(_ message: String) {
+            errorDescription = message
         }
     }
 

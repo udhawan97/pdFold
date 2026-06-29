@@ -120,8 +120,11 @@ struct ContentView: View {
         // Trailing primary: Share + Inspector
         ToolbarItemGroup(placement: .primaryAction) {
             Menu {
-                Button("Export as PDF…")          { viewModel.exportPlainPDF() }
-                Button("Export as PDFold Bundle…") { viewModel.exportPDFoldBundle() }
+                ForEach(WorkspaceExportFormat.allCases) { format in
+                    Button("Export as \(format.menuTitle)…") {
+                        viewModel.exportWorkspace(as: format)
+                    }
+                }
                 Divider()
                 Button("Print…") {
                     NotificationCenter.default.post(name: .pdfoldPrint, object: nil)
