@@ -36,6 +36,24 @@ struct PDFViewRepresentable: NSViewRepresentable {
             name: .PDFViewSelectionChanged,
             object: view
         )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.jumpToSelection(_:)),
+            name: .pdfoldJumpToSelection,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.jumpToPageIndex(_:)),
+            name: .pdfoldJumpToPageIndex,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.printDocument(_:)),
+            name: .pdfoldPrint,
+            object: nil
+        )
 
         context.coordinator.pdfView = view
         return view
@@ -79,6 +97,23 @@ struct PDFViewRepresentable: NSViewRepresentable {
             guard let page = pdfView.page(for: viewPoint, nearest: false) else { return }
             let pagePoint = pdfView.convert(viewPoint, to: page)
             viewModel.addNote(at: pagePoint, on: page)
+        }
+
+        @objc func jumpToSelection(_ notification: Notification) {
+            guard let selection = notification.object as? PDFSelection else { return }
+            pdfView?.go(to: selection)
+            pdfView?.setCurrentSelection(selection, animate: true)
+        }
+
+        @objc func jumpToPageIndex(_ notification: Notification) {
+            guard let idx = notification.object as? Int,
+                  let page = pdfView?.document?.page(at: idx) else { return }
+            pdfView?.go(to: page)
+        }
+
+        @objc func printDocument(_ notification: Notification) {
+            guard let pdfView else { return }
+            viewModel.printWorkspace(pdfView: pdfView)
         }
     }
 }

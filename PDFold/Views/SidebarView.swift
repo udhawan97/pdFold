@@ -56,7 +56,7 @@ struct MemberDocRow: View {
             isExpanded: Binding(get: { isExpanded }, set: { isExpanded = $0 })
         ) {
             if let pdf = sourcePDF {
-                ThumbnailStrip(pdf: pdf)
+                ThumbnailStrip(member: member, pdf: pdf, viewModel: viewModel)
             }
         } label: {
             HStack(spacing: 8) {
@@ -80,13 +80,21 @@ struct MemberDocRow: View {
 // MARK: - Thumbnail strip
 
 struct ThumbnailStrip: View {
+    var member: MemberDocument
     var pdf: PDFDocument
+    var viewModel: WorkspaceViewModel
 
     var body: some View {
         VStack(spacing: 6) {
-            ForEach(0..<pdf.pageCount, id: \.self) { i in
-                if let page = pdf.page(at: i) {
-                    ThumbnailCell(page: page, pageNumber: i + 1)
+            ForEach(Array(zip(member.pageRefs.indices, member.pageRefs)), id: \.1) { i, refId in
+                if let page = pdf.page(at: i),
+                   let ref = viewModel.document.workspace.pageOrder.first(where: { $0.id == refId }) {
+                    ThumbnailCell(
+                        page: page,
+                        pageRef: ref,
+                        pageNumber: i + 1,
+                        viewModel: viewModel
+                    )
                 }
             }
         }
@@ -99,7 +107,9 @@ struct ThumbnailStrip: View {
 
 struct ThumbnailCell: View {
     var page: PDFPage
+    var pageRef: PageRef
     var pageNumber: Int
+    var viewModel: WorkspaceViewModel
     @State private var thumbnail: NSImage? = nil
 
     private static let thumbSize = CGSize(width: 52, height: 68)
@@ -118,6 +128,20 @@ struct ThumbnailCell: View {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color.secondary.opacity(0.15))
                         .frame(width: Self.thumbSize.width, height: Self.thumbSize.height)
+                }
+            }
+            .contextMenu {
+                Button("Rotate 90° CW") {
+                    viewModel.rotatePage(pageRef, by: 90)
+                    thumbnail = nil  // invalidate cache
+                }
+                Button("Rotate 90° CCW") {
+                    viewModel.rotatePage(pageRef, by: -90)
+                    thumbnail = nil
+                }
+                Divider()
+                Button("Delete Page", role: .destructive) {
+                    viewModel.deletePage(pageRef)
                 }
             }
             Text("p. \(pageNumber)")

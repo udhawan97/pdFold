@@ -7,15 +7,19 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
     case highlight = "highlighter"
     case note      = "note.text"
     case ink       = "pencil.tip"
+    case underline = "underline"
+    case strikeout = "strikethrough"
     case signature = "signature"
 
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .none: return "Select"
+        case .none:      return "Select"
         case .highlight: return "Highlight"
-        case .note: return "Note"
-        case .ink: return "Ink"
+        case .note:      return "Note"
+        case .ink:       return "Ink"
+        case .underline: return "Underline"
+        case .strikeout: return "Strikeout"
         case .signature: return "Signature"
         }
     }
@@ -297,5 +301,174 @@ final class WorkspaceViewModel {
         panel.title = "Export as PDF"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         exportDoc.write(to: url)
+    }
+
+    // MARK: - .pdfold bundle export
+
+    func exportPDFoldBundle() {
+        // 1. Build the plain concatenated PDF
+        let plainDoc = engine.concatenate(documents: loadedPDFs, includeBanners: false)
+        guard let pdfData = plainDoc.dataRepresentation() else { return }
+
+        // 2. Build the manifest — page counts must sum exactly to total
+        let manifestDocs = document.workspace.documents.map { member in
+            PDFoldManifest.ManifestDocument(
+                id: member.id.uuidString,
+                name: member.displayName,
+                pageCount: member.pageRefs.count
+            )
+        }
+        let manifest = PDFoldManifest(
+            title: document.workspace.title,
+            documents: manifestDocs
+        )
+        guard let manifestData = try? JSONEncoder().encode(manifest),
+              manifest.isValid(totalPages: plainDoc.pageCount) else { return }
+
+        // 3. Embed manifest via incremental update
+        guard let bundleData = PDFAttachmentWriter.embed(
+            attachmentData: manifestData,
+            filename: "pdfold-manifest.json",
+            mimeType: "application/json",
+            in: pdfData
+        ) else { return }
+
+        // 4. Save
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = "\(document.workspace.title).pdfold"
+        panel.title = "Export PDFold Bundle"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? bundleData.write(to: url)
+    }
+
+    // MARK: - Page operations (all keyed by PageRef.id, all undoable)
+
+    func rotatePage(_ ref: PageRef, by degrees: Int) {
+        guard let (mi, pdf) = memberPDF(for: ref),
+              let localIdx = localIndex(ref: ref, memberIndex: mi),
+              let page = pdf.page(at: localIdx) else { return }
+        let before = page.rotation
+        page.rotation = (page.rotation + degrees + 360) % 360
+        rebuild()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            page.rotation = before
+            vm.rebuild()
+        }
+        undoManager?.setActionName("Rotate Page")
+    }
+
+    func deletePage(_ ref: PageRef) {
+        guard let (mi, pdf) = memberPDF(for: ref),
+              let localIdx = localIndex(ref: ref, memberIndex: mi),
+              let page = pdf.page(at: localIdx) else { return }
+
+        let snapshot = captureOrderSnapshot()
+        pdf.removePage(at: localIdx)
+        document.workspace.pageOrder.removeAll { $0.id == ref.id }
+        document.workspace.documents[mi].pageRefs.removeAll { $0 == ref.id }
+
+        // Drop empty member
+        if document.workspace.documents[mi].pageRefs.isEmpty {
+            loadedPDFs.remove(at: mi)
+            document.workspace.documents.remove(at: mi)
+        }
+        rebuild()
+
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.document.workspace.documents = snapshot.documents
+            vm.document.workspace.pageOrder = snapshot.pageOrder
+            vm.loadedPDFs = snapshot.loadedPDFs
+            pdf.insert(page, at: localIdx)
+            vm.rebuild()
+        }
+        undoManager?.setActionName("Delete Page")
+    }
+
+    func movePage(_ ref: PageRef, toIndex destination: Int) {
+        guard let (mi, pdf) = memberPDF(for: ref),
+              let localIdx = localIndex(ref: ref, memberIndex: mi),
+              let page = pdf.page(at: localIdx) else { return }
+
+        let snapshot = captureOrderSnapshot()
+        // Move in PDFDocument
+        pdf.removePage(at: localIdx)
+        let adjustedDest = destination > localIdx ? destination - 1 : destination
+        pdf.insert(page, at: min(adjustedDest, pdf.pageCount))
+
+        // Update pageRefs array for that member
+        var refs = document.workspace.documents[mi].pageRefs
+        refs.remove(at: localIdx)
+        refs.insert(ref.id, at: min(adjustedDest, refs.count))
+        document.workspace.documents[mi].pageRefs = refs
+
+        // Rebuild flat pageOrder
+        rebuildPageOrder()
+        rebuild()
+
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.document.workspace.documents = snapshot.documents
+            vm.document.workspace.pageOrder = snapshot.pageOrder
+            vm.loadedPDFs = snapshot.loadedPDFs
+            vm.rebuild()
+        }
+        undoManager?.setActionName("Move Page")
+    }
+
+    // MARK: - Annotation helpers (underline, strikeout)
+
+    func applyMarkup(_ type: PDFAnnotationSubtype, to selection: PDFSelection, color: NSColor = .systemBlue) {
+        selection.selectionsByLine().forEach { line in
+            guard let page = line.pages.first else { return }
+            let bounds = line.bounds(for: page)
+            let ann = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
+            ann.color = color.withAlphaComponent(0.8)
+            page.addAnnotation(ann)
+            undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
+        }
+        undoManager?.setActionName(type == .underline ? "Underline" : "Strikeout")
+    }
+
+    // MARK: - TOC synthesis
+
+    struct TOCEntry: Identifiable {
+        var id: UUID
+        var title: String
+        var startPageIndex: Int  // index in combinedPDF (including banner pages)
+    }
+
+    var tableOfContents: [TOCEntry] {
+        var entries: [TOCEntry] = []
+        var combinedIdx = 0
+        for member in document.workspace.documents {
+            entries.append(TOCEntry(id: member.id, title: member.displayName, startPageIndex: combinedIdx))
+            combinedIdx += 1 + member.pageRefs.count  // 1 banner + N pages
+        }
+        return entries
+    }
+
+    // MARK: - Print
+
+    func printWorkspace(pdfView: PDFView) {
+        let info = NSPrintInfo.shared
+        info.horizontalPagination = .fit
+        info.verticalPagination = .fit
+        info.isHorizontallyCentered = true
+        info.isVerticallyCentered = false
+        let op = NSPrintOperation(view: pdfView, printInfo: info)
+        op.showsPrintPanel = true
+        op.run()
+    }
+
+    // MARK: - Page lookup helpers
+
+    private func memberPDF(for ref: PageRef) -> (Int, PDFDocument)? {
+        guard let mi = document.workspace.documents.firstIndex(where: { $0.id == ref.memberDocId }),
+              mi < loadedPDFs.count else { return nil }
+        return (mi, loadedPDFs[mi].1)
+    }
+
+    private func localIndex(ref: PageRef, memberIndex mi: Int) -> Int? {
+        document.workspace.documents[mi].pageRefs.firstIndex(of: ref.id)
     }
 }

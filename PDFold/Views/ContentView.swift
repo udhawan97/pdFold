@@ -6,6 +6,7 @@ struct ContentView: View {
     var document: WorkspaceDocument
     @State private var viewModel: WorkspaceViewModel
     @State private var showInspector = false
+    @State private var showTOC = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @Environment(\.undoManager) private var undoManager
 
@@ -48,6 +49,16 @@ struct ContentView: View {
         // Signature palette popover
         .popover(isPresented: $viewModel.isShowingSignaturePalette, arrowEdge: .top) {
             SignaturePalette(viewModel: viewModel)
+        }
+        // TOC popover
+        .popover(isPresented: $showTOC, arrowEdge: .top) {
+            TOCView(viewModel: viewModel) { pageIndex in
+                NotificationCenter.default.post(
+                    name: .pdfoldJumpToPageIndex,
+                    object: pageIndex
+                )
+                showTOC = false
+            }
         }
         // Import error
         .alert("Import Error", isPresented: Binding(
@@ -97,8 +108,13 @@ struct ContentView: View {
             .help("Annotation tool")
         }
 
-        // Trailing: signature, search, inspector, export
+        // Trailing: TOC, signature, search, inspector, export menus
         ToolbarItemGroup(placement: .primaryAction) {
+            Button { showTOC.toggle() } label: {
+                Label("Contents", systemImage: "list.bullet.indent")
+            }
+            .help("Table of contents")
+
             Button {
                 viewModel.isShowingSignaturePalette.toggle()
                 viewModel.currentTool = .signature
@@ -118,10 +134,17 @@ struct ContentView: View {
             }
             .help("Toggle inspector")
 
-            Button { viewModel.exportPlainPDF() } label: {
-                Label("Export PDF", systemImage: "square.and.arrow.up")
+            Menu {
+                Button("Export as PDF…") { viewModel.exportPlainPDF() }
+                Button("Export as PDFold Bundle…") { viewModel.exportPDFoldBundle() }
+                Divider()
+                Button("Print…") {
+                    NotificationCenter.default.post(name: .pdfoldPrint, object: nil)
+                }
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
             }
-            .help("Export as single PDF (⌘⇧E)")
+            .help("Export / Print (⌘⇧E)")
             .keyboardShortcut("e", modifiers: [.command, .shift])
         }
     }
