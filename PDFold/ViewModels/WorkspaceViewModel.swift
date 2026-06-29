@@ -23,6 +23,15 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .signature: return "Signature"
         }
     }
+
+    var isColorable: Bool {
+        switch self {
+        case .highlight, .note, .ink, .underline, .strikeout: return true
+        case .none, .signature: return false
+        }
+    }
+
+    var usesInkColor: Bool { self == .ink }
 }
 
 @Observable
@@ -44,9 +53,21 @@ final class WorkspaceViewModel {
     var isShowingSignaturePalette = false
     var searchQuery = ""
     var searchResults: [PDFSelection] = []
+    var searchResultIndex: Int = -1
     var pendingSignatureData: Data? = nil
     var selectedPageRefID: UUID? = nil
     var draggedPageRefID: UUID? = nil
+
+    // MARK: - Annotation colors (curated palette)
+    var annotationColor: NSColor = .dsAnnotationYellow   // highlight, note, underline, strikeout
+    var inkColor: NSColor = .dsInk                        // ink strokes
+
+    // MARK: - Annotation selection (for Delete key deletion)
+    var selectedAnnotation: PDFAnnotation? = nil
+
+    // MARK: - Canvas state (updated by PDFView via Coordinator)
+    var currentPageNumber: Int = 0
+    var pageCount: Int = 0
 
     /// Reactive list of member documents — backed by loadedPDFs so the sidebar
     /// re-renders whenever documents are added, removed, or reordered.
@@ -151,6 +172,7 @@ final class WorkspaceViewModel {
 
     func rebuild() {
         combinedPDF = engine.concatenate(documents: loadedPDFs, includeBanners: true)
+        pageCount = combinedPDF.pageCount
     }
 
     // MARK: - Reorder / Remove (with undo)
@@ -280,42 +302,54 @@ final class WorkspaceViewModel {
 
     // MARK: - Annotations
 
-    func applyHighlight(to selection: PDFSelection, color: NSColor = .yellow) {
+    func applyHighlight(to selection: PDFSelection) {
         selection.selectionsByLine().forEach { line in
             guard let page = line.pages.first else { return }
             let bounds = line.bounds(for: page)
             let ann = PDFAnnotation(bounds: bounds, forType: .highlight, withProperties: nil)
-            ann.color = color.withAlphaComponent(0.4)
+            ann.color = annotationColor.withAlphaComponent(0.4)
             page.addAnnotation(ann)
             undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
         }
         undoManager?.setActionName("Highlight")
     }
 
-    func addNote(at pagePoint: CGPoint, on page: PDFPage) {
+    @discardableResult
+    func addNote(at pagePoint: CGPoint, on page: PDFPage) -> PDFAnnotation {
         let size: CGFloat = 24
         let bounds = CGRect(x: pagePoint.x - size / 2, y: pagePoint.y - size / 2,
                             width: size, height: size)
         let ann = PDFAnnotation(bounds: bounds, forType: .text, withProperties: nil)
         ann.contents = ""
-        ann.color = .yellow
+        ann.color = annotationColor
         page.addAnnotation(ann)
         undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
         undoManager?.setActionName("Add Note")
+        return ann
     }
 
-    func addInkStroke(path: NSBezierPath, on page: PDFPage, color: NSColor = NSColor.systemBlue) {
+    func addInkStroke(path: NSBezierPath, on page: PDFPage) {
         let bounds = path.bounds.insetBy(dx: -2, dy: -2)
         let ann = PDFAnnotation(bounds: bounds, forType: .ink, withProperties: nil)
-        ann.color = color
+        ann.color = inkColor
         ann.border = PDFBorder()
         ann.border?.lineWidth = 2
-        // Store path points via the PDF annotation dictionary
         let flatPoints = bezierPathToFlatPoints(path)
         ann.setValue(flatPoints, forAnnotationKey: PDFAnnotationKey(rawValue: "/InkList"))
         page.addAnnotation(ann)
         undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
         undoManager?.setActionName("Ink Stroke")
+    }
+
+    func deleteSelectedAnnotation() {
+        guard let ann = selectedAnnotation, let page = ann.page else { return }
+        page.removeAnnotation(ann)
+        selectedAnnotation = nil
+        undoManager?.registerUndo(withTarget: self) { vm in
+            page.addAnnotation(ann)
+            vm.selectedAnnotation = ann
+        }
+        undoManager?.setActionName("Delete Annotation")
     }
 
     private func bezierPathToFlatPoints(_ path: NSBezierPath) -> [[CGFloat]] {
@@ -383,11 +417,39 @@ final class WorkspaceViewModel {
 
     func search(query: String) {
         searchResults = []
+        searchResultIndex = -1
         guard !query.isEmpty else { return }
         combinedPDF.cancelFindString()
         let results = combinedPDF.findString(query, withOptions: .caseInsensitive)
         searchResults = results
+        if !results.isEmpty {
+            searchResultIndex = 0
+            jumpToSearchResult(0)
+        }
     }
+
+    func searchNext() {
+        guard !searchResults.isEmpty else { return }
+        searchResultIndex = (searchResultIndex + 1) % searchResults.count
+        jumpToSearchResult(searchResultIndex)
+    }
+
+    func searchPrevious() {
+        guard !searchResults.isEmpty else { return }
+        searchResultIndex = (searchResultIndex - 1 + searchResults.count) % searchResults.count
+        jumpToSearchResult(searchResultIndex)
+    }
+
+    private func jumpToSearchResult(_ index: Int) {
+        guard index >= 0, index < searchResults.count else { return }
+        NotificationCenter.default.post(name: .pdfoldJumpToSelection, object: searchResults[index])
+    }
+
+    // MARK: - Zoom
+
+    func zoomIn()  { NotificationCenter.default.post(name: .pdfoldZoomIn,  object: nil) }
+    func zoomOut() { NotificationCenter.default.post(name: .pdfoldZoomOut, object: nil) }
+    func zoomFit() { NotificationCenter.default.post(name: .pdfoldZoomFit, object: nil) }
 
     // MARK: - Export
 
@@ -527,12 +589,12 @@ final class WorkspaceViewModel {
 
     // MARK: - Annotation helpers (underline, strikeout)
 
-    func applyMarkup(_ type: PDFAnnotationSubtype, to selection: PDFSelection, color: NSColor = .systemBlue) {
+    func applyMarkup(_ type: PDFAnnotationSubtype, to selection: PDFSelection) {
         selection.selectionsByLine().forEach { line in
             guard let page = line.pages.first else { return }
             let bounds = line.bounds(for: page)
             let ann = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
-            ann.color = color.withAlphaComponent(0.8)
+            ann.color = annotationColor.withAlphaComponent(0.8)
             page.addAnnotation(ann)
             undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
         }

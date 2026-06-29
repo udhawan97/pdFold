@@ -12,23 +12,24 @@ struct SidebarView: View {
                 MemberDocRow(member: member, viewModel: viewModel, expandedDocs: $expandedDocs)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                    .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
             }
             .onMove { viewModel.moveDocument(from: $0, to: $1) }
             .onDelete { viewModel.removeDocument(at: $0) }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.dsSurface)
     }
 }
 
-// MARK: - Member document row with expandable thumbnail strip
+// MARK: - Member document row
 
 struct MemberDocRow: View {
     var member: MemberDocument
     var viewModel: WorkspaceViewModel
     @Binding var expandedDocs: Set<UUID>
+    @State private var isHovered = false
 
     private var isExpanded: Bool {
         get { expandedDocs.contains(member.id) }
@@ -47,32 +48,32 @@ struct MemberDocRow: View {
                 ThumbnailStrip(member: member, pdf: pdf, viewModel: viewModel)
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: .dsSM) {
                 Image(systemName: "doc.richtext.fill")
-                    .font(.title3)
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 20)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(member.displayName)
-                            .font(.callout.weight(.semibold))
-                            .lineLimit(1)
-                    }
-                    Text("\(member.pageRefs.count) page\(member.pageRefs.count == 1 ? "" : "s") • \(member.sourcePDFRef)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.dsAccent)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(member.displayName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.dsTextPrimary)
                         .lineLimit(1)
+                    Text("\(member.pageRefs.count) page\(member.pageRefs.count == 1 ? "" : "s")")
+                        .font(.dsCaption())
+                        .foregroundStyle(Color.dsTextTertiary)
                 }
             }
-            .padding(.vertical, 3)
+            .padding(.vertical, 2)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06))
+        .padding(.horizontal, .dsSM)
+        .padding(.vertical, 5)
+        .background {
+            if isHovered {
+                RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
+                    .fill(Color.dsAccentSoft)
+            }
         }
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -84,25 +85,20 @@ struct ThumbnailStrip: View {
     var viewModel: WorkspaceViewModel
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             ForEach(Array(zip(member.pageRefs.indices, member.pageRefs)), id: \.1) { i, refId in
                 if let page = pdf.page(at: i),
                    let ref = viewModel.document.workspace.pageOrder.first(where: { $0.id == refId }) {
-                    ThumbnailCell(
-                        page: page,
-                        pageRef: ref,
-                        pageNumber: i + 1,
-                        viewModel: viewModel
-                    )
+                    ThumbnailCell(page: page, pageRef: ref, pageNumber: i + 1, viewModel: viewModel)
                 }
             }
         }
-        .padding(.leading, 6)
-        .padding(.vertical, 6)
+        .padding(.leading, 4)
+        .padding(.vertical, 4)
     }
 }
 
-// MARK: - Individual thumbnail cell with async rendering
+// MARK: - Individual thumbnail cell
 
 struct ThumbnailCell: View {
     var page: PDFPage
@@ -110,69 +106,67 @@ struct ThumbnailCell: View {
     var pageNumber: Int
     var viewModel: WorkspaceViewModel
     @State private var thumbnail: NSImage? = nil
+    @State private var isHovered = false
 
-    private static let thumbSize = CGSize(width: 52, height: 68)
+    private static let thumbSize = CGSize(width: 48, height: 64)
     private var isSelected: Bool { viewModel.selectedPageRefID == pageRef.id }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: .dsSM) {
+            // Thumbnail image
             Group {
                 if let img = thumbnail {
                     Image(nsImage: img)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: Self.thumbSize.width, height: Self.thumbSize.height)
-                        .cornerRadius(3)
-                        .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
                 } else {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.15))
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color.dsSeparator)
                         .frame(width: Self.thumbSize.width, height: Self.thumbSize.height)
                 }
             }
-            .contextMenu {
-                Button("Rotate 90° CW") {
-                    viewModel.rotatePage(pageRef, by: 90)
-                    thumbnail = nil  // invalidate cache
-                }
-                Button("Rotate 90° CCW") {
-                    viewModel.rotatePage(pageRef, by: -90)
-                    thumbnail = nil
-                }
-                Divider()
-                Button("Delete Page", role: .destructive) {
-                    viewModel.deletePage(pageRef)
-                }
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? Color.dsAccent : Color.dsSeparator,
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
             }
+            .shadow(color: .black.opacity(0.10), radius: 3, x: 0, y: 1)
+            .background(Color.dsCard, in: RoundedRectangle(cornerRadius: 3))
+            .contextMenu {
+                Button("Rotate 90° CW")  { viewModel.rotatePage(pageRef, by: 90);  thumbnail = nil }
+                Button("Rotate 90° CCW") { viewModel.rotatePage(pageRef, by: -90); thumbnail = nil }
+                Divider()
+                Button("Delete Page", role: .destructive) { viewModel.deletePage(pageRef) }
+            }
+
+            // Label
             Text("p. \(pageNumber)")
-                .font(.caption2)
+                .font(.dsCaption())
                 .fontWeight(isSelected ? .semibold : .regular)
-                .foregroundStyle(isSelected ? .primary : .secondary)
+                .foregroundStyle(isSelected ? Color.dsAccent : Color.dsTextSecondary)
+
             Spacer()
+
             Image(systemName: "line.3.horizontal")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .opacity(isSelected ? 1 : 0.55)
+                .foregroundStyle(Color.dsTextTertiary)
+                .opacity(isHovered || isSelected ? 1 : 0)
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
         .background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.accentColor.opacity(0.18))
-            } else {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.primary.opacity(0.035))
-            }
+            RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
+                .fill(isSelected ? Color.dsAccentSoft : (isHovered ? Color.dsSeparator : Color.clear))
         }
-        .overlay {
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.05), lineWidth: 1)
-        }
+        .animation(.easeInOut(duration: 0.12), value: isSelected)
+        .animation(.easeInOut(duration: 0.10), value: isHovered)
         .contentShape(Rectangle())
-        .onTapGesture {
-            viewModel.selectPage(pageRef)
-        }
+        .onHover { isHovered = $0 }
+        .onTapGesture { viewModel.selectPage(pageRef) }
         .onDrag {
             viewModel.beginDraggingPage(pageRef)
             return NSItemProvider(object: pageRef.id.uuidString as NSString)

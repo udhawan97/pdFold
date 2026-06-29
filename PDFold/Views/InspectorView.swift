@@ -12,68 +12,84 @@ struct InspectorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Inspector")
+                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.dsTextPrimary)
+                Spacer()
+            }
+            .padding(.horizontal, .dsLG)
+            .padding(.top, .dsMD)
+            .padding(.bottom, .dsSM)
+
             Picker("Tab", selection: $selectedTab) {
                 ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
-            .padding(12)
+            .padding(.horizontal, .dsMD)
+            .padding(.bottom, .dsMD)
 
-            Divider()
+            Rectangle()
+                .fill(Color.dsSeparator)
+                .frame(height: 0.5)
 
             ScrollView {
                 switch selectedTab {
-                case .info:    WorkspaceInfoView(viewModel: viewModel)
-                case .comments: CommentsView(viewModel: viewModel)
+                case .info:     InspectorInfoView(viewModel: viewModel)
+                case .comments: InspectorCommentsView(viewModel: viewModel)
                 }
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.dsSurface)
     }
 }
 
 // MARK: - Info tab
 
-private struct WorkspaceInfoView: View {
+private struct InspectorInfoView: View {
     var viewModel: WorkspaceViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            InfoRow(label: "Documents", value: "\(viewModel.document.workspace.documents.count)")
-            InfoRow(label: "Total pages", value: "\(viewModel.document.workspace.pageOrder.count)")
-            InfoRow(label: "Signatures", value: "\(viewModel.document.workspace.signatures.count)")
-            InfoRow(label: "Created", value: viewModel.document.workspace.createdAt.formatted(
+        VStack(alignment: .leading, spacing: .dsLG) {
+            InspectorRow(label: "Documents",   value: "\(viewModel.document.workspace.documents.count)")
+            InspectorRow(label: "Total pages", value: "\(viewModel.document.workspace.pageOrder.count)")
+            InspectorRow(label: "Signatures",  value: "\(viewModel.document.workspace.signatures.count)")
+            InspectorRow(label: "Created",     value: viewModel.document.workspace.createdAt.formatted(
                 date: .abbreviated, time: .omitted))
         }
-        .padding()
+        .padding(.dsLG)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct InfoRow: View {
+private struct InspectorRow: View {
     var label: String
     var value: String
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.caption2).foregroundStyle(.secondary).textCase(.uppercase)
-            Text(value).font(.callout)
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color.dsTextTertiary)
+                .tracking(0.5)
+            Text(value)
+                .font(.dsBody())
+                .foregroundStyle(Color.dsTextPrimary)
         }
     }
 }
 
 // MARK: - Comments tab
 
-private struct CommentsView: View {
+private struct InspectorCommentsView: View {
     var viewModel: WorkspaceViewModel
 
-    /// Flattened list of all annotations across all member PDFs
     private var allAnnotations: [(page: PDFPage, annotation: PDFAnnotation, memberName: String)] {
         var result: [(PDFPage, PDFAnnotation, String)] = []
         for (member, pdf) in viewModel.loadedPDFs {
             for i in 0..<pdf.pageCount {
                 guard let page = pdf.page(at: i) else { continue }
-                for ann in page.annotations {
-                    result.append((page, ann, member.displayName))
-                }
+                for ann in page.annotations { result.append((page, ann, member.displayName)) }
             }
         }
         return result
@@ -81,26 +97,34 @@ private struct CommentsView: View {
 
     var body: some View {
         if allAnnotations.isEmpty {
-            Text("No annotations yet.\nUse the toolbar to highlight,\nadd notes, or draw.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding()
-                .frame(maxWidth: .infinity)
+            VStack(spacing: .dsSM) {
+                Image(systemName: "highlighter")
+                    .font(.system(size: 24, weight: .light))
+                    .foregroundStyle(Color.dsTextTertiary)
+                Text("No annotations yet.")
+                    .font(.dsBody())
+                    .foregroundStyle(Color.dsTextSecondary)
+                Text("Use the toolbar to highlight,\nadd notes, or draw.")
+                    .font(.dsCaption())
+                    .foregroundStyle(Color.dsTextTertiary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.dsXXL)
+            .frame(maxWidth: .infinity)
         } else {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(allAnnotations.indices, id: \.self) { i in
-                    AnnotationRow(ann: allAnnotations[i].annotation,
-                                  memberName: allAnnotations[i].memberName)
-                    Divider()
+                    InspectorAnnotationRow(ann: allAnnotations[i].annotation,
+                                          memberName: allAnnotations[i].memberName)
+                    Rectangle().fill(Color.dsSeparator).frame(height: 0.5)
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, .dsXS)
         }
     }
 }
 
-private struct AnnotationRow: View {
+private struct InspectorAnnotationRow: View {
     var ann: PDFAnnotation
     var memberName: String
 
@@ -121,33 +145,35 @@ private struct AnnotationRow: View {
         case "Highlight": return "highlighter"
         case "Text":      return "note.text"
         case "Ink":       return "pencil.tip"
+        case "Underline": return "underline"
+        case "StrikeOut": return "strikethrough"
         default:          return "pencil.and.outline"
         }
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: .dsSM) {
             Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.dsTextTertiary)
                 .frame(width: 16)
                 .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(typeLabel)
-                    .font(.caption)
-                    .fontWeight(.medium)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.dsTextPrimary)
                 if let contents = ann.contents, !contents.isEmpty {
                     Text(contents)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.dsCaption())
+                        .foregroundStyle(Color.dsTextSecondary)
                         .lineLimit(2)
                 }
                 Text(memberName)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.dsTextTertiary)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, .dsMD)
+        .padding(.vertical, .dsSM)
     }
 }

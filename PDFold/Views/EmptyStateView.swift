@@ -7,81 +7,81 @@ struct EmptyStateView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Color(nsColor: .controlBackgroundColor)
-                .ignoresSafeArea()
+            Color.dsCanvas.ignoresSafeArea()
 
-            VStack(spacing: 30) {
-                VStack(spacing: 16) {
-                    AppIconMark(size: 88)
+            VStack(spacing: .dsXL) {
+                // Wordmark block
+                VStack(spacing: .dsLG) {
+                    AppIconMark(size: 80)
 
-                    VStack(spacing: 7) {
+                    VStack(spacing: 6) {
                         Text("PDFold")
-                            .font(.system(size: 34, weight: .semibold, design: .rounded))
-                        Text("Combine, arrange, annotate, and export documents in one focused workspace.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .font(.dsDisplay(size: 36))
+                            .foregroundStyle(Color.dsTextPrimary)
+                        Text("Combine, arrange, annotate, and export\ndocuments in one focused workspace.")
+                            .font(.dsBody())
+                            .foregroundStyle(Color.dsTextSecondary)
                             .multilineTextAlignment(.center)
-                            .lineSpacing(2)
-                            .frame(maxWidth: 420)
+                            .lineSpacing(3)
                     }
                 }
 
-                VStack(spacing: 16) {
+                // Drop zone card
+                VStack(spacing: .dsLG) {
                     Image(systemName: isDropTargeted ? "tray.and.arrow.down.fill" : "doc.badge.plus")
-                        .font(.system(size: 30, weight: .regular))
-                        .foregroundStyle(Color.accentColor)
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundStyle(Color.dsAccent)
                         .symbolRenderingMode(.hierarchical)
+                        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
 
                     VStack(spacing: 5) {
                         Text(isDropTargeted ? "Release to import" : "Drop files to begin")
-                            .font(.title3.weight(.semibold))
-                        Text("PDF, Word, HTML, text, CSV, JSON, XML, and images are supported.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
+                            .font(.dsHeadline())
+                            .foregroundStyle(Color.dsTextPrimary)
+                        Text("PDF, Word, HTML, text, and images")
+                            .font(.dsCaption())
+                            .foregroundStyle(Color.dsTextTertiary)
                     }
 
                     Button {
                         openFiles()
                     } label: {
                         Label("Choose Files", systemImage: "folder.badge.plus")
-                            .frame(minWidth: 142)
+                            .frame(minWidth: 140)
                     }
                     .controlSize(.large)
                     .buttonStyle(.borderedProminent)
+                    .tint(Color.dsAccent)
                 }
-                .padding(.horizontal, 42)
-                .padding(.vertical, 34)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .padding(.horizontal, .dsXXL)
+                .padding(.vertical, .dsXXL)
+                .background(Color.dsCard, in: RoundedRectangle(cornerRadius: .dsRadiusLg, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: .dsRadiusLg, style: .continuous)
                         .strokeBorder(
-                            isDropTargeted ? Color.accentColor : Color.primary.opacity(0.08),
-                            lineWidth: isDropTargeted ? 2 : 1
+                            isDropTargeted ? Color.dsAccent : Color.dsSeparator,
+                            lineWidth: isDropTargeted ? 1.5 : 1
                         )
+                        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
                 }
-                .shadow(color: .black.opacity(0.06), radius: 24, x: 0, y: 12)
+                .dsElevation()
             }
-            .padding(56)
+            .padding(.dsXXL)
+            .frame(maxWidth: 480)
 
             GuideButton(autoShow: true)
                 .buttonStyle(.borderless)
                 .font(.title3)
-                .padding(22)
+                .padding(.dsXL)
         }
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(
-                    Color.accentColor,
-                    lineWidth: isDropTargeted ? 1.5 : 0
-                )
-                .padding(12)
-                .animation(.easeInOut(duration: 0.12), value: isDropTargeted)
-        )
+        .overlay {
+            RoundedRectangle(cornerRadius: .dsRadiusMd, style: .continuous)
+                .strokeBorder(Color.dsAccent.opacity(isDropTargeted ? 0.5 : 0), lineWidth: 1.5)
+                .padding(.dsMD)
+                .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+        }
         .onDrop(of: WorkspaceDocument.importableContentTypes + [.fileURL], isTargeted: $isDropTargeted) { providers in
-            resolveImportURLs(from: providers) { urls in
-                viewModel.importFiles(urls: urls)
-            }
+            resolveImportURLs(from: providers) { viewModel.importFiles(urls: $0) }
             return true
         }
     }
@@ -92,8 +92,6 @@ struct EmptyStateView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowedContentTypes = WorkspaceDocument.importableContentTypes
-        if panel.runModal() == .OK {
-            viewModel.importFiles(urls: panel.urls)
-        }
+        if panel.runModal() == .OK { viewModel.importFiles(urls: panel.urls) }
     }
 }

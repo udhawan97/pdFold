@@ -10,11 +10,10 @@ struct AppIconMark: View {
             .interpolation(.high)
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
-            .shadow(color: .black.opacity(0.12), radius: size * 0.12, x: 0, y: size * 0.06)
+            .shadow(color: .black.opacity(0.10), radius: size * 0.10, x: 0, y: size * 0.05)
     }
 }
 
-/// Tappable version of the app icon that shows a witty "about" popover.
 struct AppIconButton: View {
     var size: CGFloat = 24
     @State private var isPresented = false
@@ -35,27 +34,28 @@ struct AppAboutPopover: View {
     @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: .dsLG) {
+            HStack(spacing: .dsMD) {
                 AppIconMark(size: 40)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("PDFold")
-                        .font(.headline)
+                        .font(.system(size: 15, weight: .semibold, design: .serif))
+                        .foregroundStyle(Color.dsTextPrimary)
                     Text("v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0")")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(.dsCaption())
+                        .foregroundStyle(Color.dsTextTertiary)
                 }
             }
 
             Text("Here to fix the tiny PDF annoyances macOS somehow left as character-building exercises.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.dsBody())
+                .foregroundStyle(Color.dsTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 240)
 
             Text("Combine, annotate, reorder, and export documents — without the ceremony.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+                .font(.dsCaption())
+                .foregroundStyle(Color.dsTextTertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 240)
 
@@ -65,8 +65,9 @@ struct AppAboutPopover: View {
                     .keyboardShortcut(.cancelAction)
             }
         }
-        .padding(16)
+        .padding(.dsLG)
         .frame(width: 272)
+        .background(Color.dsSurface)
     }
 }
 
@@ -100,34 +101,45 @@ private struct GuidePopover: View {
     @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                AppIconMark(size: 42)
-                VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: .dsXL) {
+            HStack(spacing: .dsMD) {
+                AppIconMark(size: 40)
+                VStack(alignment: .leading, spacing: 3) {
                     Text("PDFold")
-                        .font(.headline)
+                        .font(.system(size: 15, weight: .semibold, design: .serif))
+                        .foregroundStyle(Color.dsTextPrimary)
                     Text("A calmer way to assemble PDFs.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.dsCaption())
+                        .foregroundStyle(Color.dsTextSecondary)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                GuideStep(icon: "plus.circle", title: "Add files", detail: "Drop documents into the window or use the add button.")
-                GuideStep(icon: "square.stack.3d.down.right", title: "Arrange pages", detail: "Expand a source file, select pages, then drag thumbnails up or down.")
-                GuideStep(icon: "square.and.arrow.up", title: "Finish", detail: "Export a clean PDF or save the editable workspace.")
+            VStack(alignment: .leading, spacing: .dsMD) {
+                GuideStep(icon: "plus.circle",
+                          title: "Add files",
+                          detail: "Drop documents into the window or use the add button.")
+                GuideStep(icon: "square.stack.3d.down.right",
+                          title: "Arrange pages",
+                          detail: "Expand a source file, select pages, then drag thumbnails up or down.")
+                GuideStep(icon: "highlighter",
+                          title: "Annotate",
+                          detail: "Highlight, add notes, draw, or place your signature.")
+                GuideStep(icon: "square.and.arrow.up",
+                          title: "Export",
+                          detail: "Export a clean PDF or save the editable workspace.")
             }
 
             HStack {
                 Spacer()
-                Button("Got it") {
-                    isPresented = false
-                }
-                .keyboardShortcut(.defaultAction)
+                Button("Got it") { isPresented = false }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color.dsAccent)
+                    .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(18)
+        .padding(.dsLG)
         .frame(width: 310)
+        .background(Color.dsSurface)
     }
 }
 
@@ -137,17 +149,18 @@ private struct GuideStep: View {
     var detail: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: .dsSM) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 22, height: 22)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.dsAccent)
+                .frame(width: 20, height: 20)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.callout.weight(.medium))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.dsTextPrimary)
                 Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.dsCaption())
+                    .foregroundStyle(Color.dsTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

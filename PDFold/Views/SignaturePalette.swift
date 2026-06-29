@@ -7,20 +7,33 @@ struct SignaturePalette: View {
     @State private var isDrawing = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             Text("Signatures")
-                .font(.headline)
-                .padding(.horizontal)
+                .font(.system(size: 15, weight: .semibold, design: .serif))
+                .foregroundStyle(Color.dsTextPrimary)
+                .padding(.horizontal, .dsLG)
+                .padding(.top, .dsMD)
+                .padding(.bottom, .dsSM)
+
+            Rectangle().fill(Color.dsSeparator).frame(height: 0.5)
 
             if savedSignatures.isEmpty {
-                Text("No saved signatures.\nCreate one below.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding()
+                VStack(spacing: .dsSM) {
+                    Image(systemName: "signature")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundStyle(Color.dsTextTertiary)
+                    Text("No saved signatures")
+                        .font(.dsBody())
+                        .foregroundStyle(Color.dsTextSecondary)
+                    Text("Draw one below to get started.")
+                        .font(.dsCaption())
+                        .foregroundStyle(Color.dsTextTertiary)
+                }
+                .padding(.dsXL)
+                .frame(maxWidth: .infinity)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: .dsMD) {
                         ForEach(savedSignatures.indices, id: \.self) { i in
                             SignatureThumbnail(data: savedSignatures[i])
                                 .onTapGesture {
@@ -29,11 +42,12 @@ struct SignaturePalette: View {
                                 }
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, .dsLG)
+                    .padding(.vertical, .dsMD)
                 }
             }
 
-            Divider()
+            Rectangle().fill(Color.dsSeparator).frame(height: 0.5)
 
             Button {
                 isDrawing = true
@@ -42,10 +56,11 @@ struct SignaturePalette: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .padding(.horizontal)
-            .padding(.bottom, 8)
+            .tint(Color.dsAccent)
+            .padding(.dsLG)
         }
         .frame(width: 300)
+        .background(Color.dsSurface)
         .sheet(isPresented: $isDrawing) {
             SignatureDrawingView { newData in
                 SignatureStore.shared.save(newData)
@@ -70,10 +85,13 @@ struct SignatureThumbnail: View {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 80, height: 36)
-                .background(Color.white)
-                .cornerRadius(6)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
+                .frame(width: 88, height: 40)
+                .background(Color.dsCard)
+                .clipShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
+                        .strokeBorder(Color.dsSeparator, lineWidth: 1)
+                }
         }
     }
 }
@@ -85,22 +103,26 @@ struct SignatureDrawingView: View {
     var onCancel: () -> Void
 
     @State private var paths: [NSBezierPath] = []
-    @State private var currentPath: NSBezierPath?
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: .dsLG) {
             Text("Draw your signature")
-                .font(.headline)
+                .font(.system(size: 15, weight: .semibold, design: .serif))
+                .foregroundStyle(Color.dsTextPrimary)
 
             SignatureCanvas(paths: $paths)
                 .frame(width: 360, height: 140)
-                .background(Color.white)
-                .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.4)))
+                .background(Color.dsCard)
+                .clipShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
+                        .strokeBorder(Color.dsSeparator, lineWidth: 1)
+                }
 
             HStack {
                 Button("Clear") { paths = [] }
                     .buttonStyle(.bordered)
+                    .tint(Color.dsTextTertiary)
                 Spacer()
                 Button("Cancel") { onCancel() }
                     .keyboardShortcut(.cancelAction)
@@ -110,21 +132,20 @@ struct SignatureDrawingView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(Color.dsAccent)
                 .disabled(paths.isEmpty)
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(24)
+        .padding(.dsXXL)
         .frame(width: 420)
+        .background(Color.dsSurface)
     }
 
     private func renderSignature(paths: [NSBezierPath], size: CGSize) -> Data? {
-        let image = NSImage(size: size, flipped: false) { rect in
+        let image = NSImage(size: size, flipped: false) { _ in
             NSColor.black.setStroke()
-            paths.forEach {
-                $0.lineWidth = 2
-                $0.stroke()
-            }
+            paths.forEach { $0.lineWidth = 2; $0.stroke() }
             return true
         }
         guard let tiff = image.tiffRepresentation,

@@ -20,26 +20,26 @@ final class BoundaryPage: PDFPage {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
 
-        // Background
-        NSColor(srgbRed: 0.95, green: 0.95, blue: 0.97, alpha: 1).setFill()
+        // Background — warm canvas tone
+        NSColor(srgbRed: 0.945, green: 0.937, blue: 0.914, alpha: 1).setFill()
         rect.fill()
 
         // Top hairline
-        NSColor(srgbRed: 0.80, green: 0.80, blue: 0.84, alpha: 1).setFill()
-        NSRect(x: 0, y: rect.height - 1, width: rect.width, height: 1).fill()
+        NSColor(white: 0, alpha: 0.08).setFill()
+        NSRect(x: 0, y: rect.height - 0.5, width: rect.width, height: 0.5).fill()
 
-        // Left accent bar (system blue approximation)
-        NSColor(srgbRed: 0.24, green: 0.48, blue: 0.95, alpha: 1).setFill()
+        // Left accent bar — clay
+        NSColor(srgbRed: 0.788, green: 0.392, blue: 0.259, alpha: 1).setFill()
         NSRect(x: 0, y: 0, width: 4, height: rect.height).fill()
 
         // Title
         let titleAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 15, weight: .semibold),
-            .foregroundColor: NSColor(srgbRed: 0.13, green: 0.13, blue: 0.15, alpha: 1)
+            .foregroundColor: NSColor(srgbRed: 0.102, green: 0.098, blue: 0.082, alpha: 1)
         ]
         let subtitleAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor(srgbRed: 0.50, green: 0.50, blue: 0.55, alpha: 1)
+            .foregroundColor: NSColor(srgbRed: 0.549, green: 0.533, blue: 0.486, alpha: 1)
         ]
         let subtitle = "\(docPageCount) page\(docPageCount == 1 ? "" : "s")" as NSString
         let title = docName as NSString

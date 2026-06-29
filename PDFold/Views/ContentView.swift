@@ -22,12 +22,12 @@ struct ContentView: View {
             } else {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
                     SidebarView(viewModel: viewModel)
-                        .navigationSplitViewColumnWidth(min: 210, ideal: 270, max: 340)
+                        .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 320)
                 } detail: {
                     HStack(spacing: 0) {
                         ReadingCanvas(viewModel: viewModel)
                         if showInspector {
-                            Divider()
+                            Rectangle().fill(Color.dsSeparator).frame(width: 0.5)
                             InspectorView(viewModel: viewModel)
                                 .frame(width: 240)
                         }
@@ -39,29 +39,22 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.18), value: viewModel.memberDocuments.isEmpty)
-        .tint(Color.accentColor)
+        .tint(Color.dsAccent)
         .onDrop(of: WorkspaceDocument.importableContentTypes + [.fileURL], isTargeted: nil, perform: handleDrop)
         .onAppear { viewModel.undoManager = undoManager }
         .onChange(of: undoManager) { _, um in viewModel.undoManager = um }
-        // Search popover
         .popover(isPresented: $viewModel.isShowingSearch, arrowEdge: .top) {
             SearchView(viewModel: viewModel)
         }
-        // Signature palette popover
         .popover(isPresented: $viewModel.isShowingSignaturePalette, arrowEdge: .top) {
             SignaturePalette(viewModel: viewModel)
         }
-        // TOC popover
         .popover(isPresented: $showTOC, arrowEdge: .top) {
             TOCView(viewModel: viewModel) { pageIndex in
-                NotificationCenter.default.post(
-                    name: .pdfoldJumpToPageIndex,
-                    object: pageIndex
-                )
+                NotificationCenter.default.post(name: .pdfoldJumpToPageIndex, object: pageIndex)
                 showTOC = false
             }
         }
-        // Import error
         .alert("Import Error", isPresented: Binding(
             get: { viewModel.importError != nil },
             set: { if !$0 { viewModel.importError = nil } }
@@ -78,7 +71,6 @@ struct ContentView: View {
         } message: { err in
             Text(err.message)
         }
-        // Password prompt
         .sheet(isPresented: $viewModel.isShowingPasswordPrompt) {
             if let url = viewModel.pendingPasswordURL,
                let pdf = viewModel.pendingPasswordPDF {
@@ -97,28 +89,59 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var mainToolbar: some ToolbarContent {
         // Leading: add source files
-        ToolbarItemGroup(placement: .navigation) {
+        ToolbarItem(placement: .navigation) {
             Button { openFiles() } label: {
                 Label("Add Files", systemImage: "plus.circle")
             }
-            .help("Add PDF, Word, HTML, text, or image files (⌘O)")
+            .help("Add files (⌘O)")
             .keyboardShortcut("o", modifiers: .command)
         }
 
-        // Center: annotation tools
-        ToolbarItemGroup(placement: .principal) {
-            Picker("Tool", selection: $viewModel.currentTool) {
-                ForEach([AnnotationTool.none, .highlight, .note, .ink]) { tool in
-                    Label(tool.label, systemImage: tool.rawValue).tag(tool)
+        // Center: annotation tools + color swatch
+        ToolbarItem(placement: .principal) {
+            HStack(spacing: .dsSM) {
+                Picker("Tool", selection: $viewModel.currentTool) {
+                    ForEach([AnnotationTool.none, .highlight, .note, .ink, .underline, .strikeout]) { tool in
+                        Label(tool.label, systemImage: tool.rawValue).tag(tool)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 340)
+                .help("Annotation tool")
+
+                if viewModel.currentTool.isColorable {
+                    AnnotationColorButton(viewModel: viewModel)
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
                 }
             }
-            .pickerStyle(.segmented)
-            .frame(width: 240)
-            .help("Annotation tool")
+            .animation(.easeInOut(duration: 0.15), value: viewModel.currentTool.isColorable)
         }
 
-        // Trailing: TOC, signature, search, inspector, export menus
+        // Trailing primary: Share + Inspector
         ToolbarItemGroup(placement: .primaryAction) {
+            Menu {
+                Button("Export as PDF…")          { viewModel.exportPlainPDF() }
+                Button("Export as PDFold Bundle…") { viewModel.exportPDFoldBundle() }
+                Divider()
+                Button("Print…") {
+                    NotificationCenter.default.post(name: .pdfoldPrint, object: nil)
+                }
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+            .help("Export / Print (⌘⇧E)")
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+
+            Button { showInspector.toggle() } label: {
+                Label("Inspector", systemImage: "sidebar.right")
+            }
+            .help("Toggle inspector")
+        }
+
+        // Trailing secondary: nav tools
+        ToolbarItemGroup(placement: .primaryAction) {
+            Divider()
+
             Button { showTOC.toggle() } label: {
                 Label("Contents", systemImage: "list.bullet.indent")
             }
@@ -135,28 +158,10 @@ struct ContentView: View {
             Button { viewModel.isShowingSearch.toggle() } label: {
                 Label("Search", systemImage: "magnifyingglass")
             }
-            .help("Search workspace (⌘F)")
+            .help("Search (⌘F)")
             .keyboardShortcut("f", modifiers: .command)
 
             GuideButton(autoShow: true)
-
-            Button { showInspector.toggle() } label: {
-                Label("Inspector", systemImage: "sidebar.right")
-            }
-            .help("Toggle inspector")
-
-            Menu {
-                Button("Export as PDF…") { viewModel.exportPlainPDF() }
-                Button("Export as PDFold Bundle…") { viewModel.exportPDFoldBundle() }
-                Divider()
-                Button("Print…") {
-                    NotificationCenter.default.post(name: .pdfoldPrint, object: nil)
-                }
-            } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-            .help("Export / Print (⌘⇧E)")
-            .keyboardShortcut("e", modifiers: [.command, .shift])
         }
     }
 
@@ -174,6 +179,73 @@ struct ContentView: View {
         panel.canChooseDirectories = false
         panel.allowedContentTypes = WorkspaceDocument.importableContentTypes
         if panel.runModal() == .OK { viewModel.importFiles(urls: panel.urls) }
+    }
+}
+
+// MARK: - Annotation color picker button
+
+private struct AnnotationColorButton: View {
+    @Bindable var viewModel: WorkspaceViewModel
+    @State private var showPalette = false
+
+    private var displayColor: Color {
+        viewModel.currentTool.usesInkColor
+            ? Color(nsColor: viewModel.inkColor)
+            : Color(nsColor: viewModel.annotationColor)
+    }
+
+    var body: some View {
+        Button { showPalette.toggle() } label: {
+            Circle()
+                .fill(displayColor)
+                .frame(width: 20, height: 20)
+                .overlay(Circle().strokeBorder(Color.dsSeparator, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("Annotation color")
+        .popover(isPresented: $showPalette, arrowEdge: .bottom) {
+            AnnotationPalettePopover(viewModel: viewModel)
+        }
+    }
+}
+
+private struct AnnotationPalettePopover: View {
+    @Bindable var viewModel: WorkspaceViewModel
+
+    var body: some View {
+        HStack(spacing: .dsMD) {
+            ForEach(Color.annotationSwatches.indices, id: \.self) { i in
+                let (swiftUI, ns) = Color.annotationSwatches[i]
+                let isSelected = isCurrentColor(ns)
+                Button {
+                    if viewModel.currentTool.usesInkColor {
+                        viewModel.inkColor = ns
+                    } else {
+                        viewModel.annotationColor = ns
+                    }
+                } label: {
+                    Circle()
+                        .fill(swiftUI)
+                        .frame(width: 26, height: 26)
+                        .overlay {
+                            Circle()
+                                .strokeBorder(
+                                    isSelected ? Color.dsTextPrimary : Color.dsSeparator,
+                                    lineWidth: isSelected ? 2 : 1
+                                )
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.dsMD)
+        .background(Color.dsSurface)
+    }
+
+    private func isCurrentColor(_ ns: NSColor) -> Bool {
+        let current = viewModel.currentTool.usesInkColor
+            ? viewModel.inkColor : viewModel.annotationColor
+        return current.isEqual(to: ns)
     }
 }
 

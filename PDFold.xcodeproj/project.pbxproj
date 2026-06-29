@@ -25,6 +25,7 @@
 		97C573B73A6CC4FCA36ACFC6 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45D6F51A2DFB7D860374B43 /* SearchView.swift */; };
 		B083EBE61135CF3C90CE7D3D /* GuidePopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10CDA157C78EF952ADF98CF9 /* GuidePopover.swift */; };
 		B30400477B2629A199CAE75B /* PasswordPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B768FD261E14C648AC8312EF /* PasswordPromptView.swift */; };
+		B4C20218249BE0498410F981 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2741DE881320AE151435306D /* DesignSystem.swift */; };
 		B5E88EF7CB2E9E5C9F627940 /* Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9FEA37A2C8446DD2FAA57B /* Workspace.swift */; };
 		B937492F5A9B6525FD516F03 /* PageRef.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9304378D6348FB81960551B5 /* PageRef.swift */; };
 		BB8959F2285A83728B364BCC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93C213D7BF6D3264E18EB458 /* ContentView.swift */; };
@@ -42,6 +43,7 @@
 		108F80780D043A5E84254B45 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		10CDA157C78EF952ADF98CF9 /* GuidePopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuidePopover.swift; sourceTree = "<group>"; };
 		10F92B037079D607E9FC1F8D /* PDFoldApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFoldApp.swift; sourceTree = "<group>"; };
+		2741DE881320AE151435306D /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		283B69ED3FF6E997889BB375 /* TOCView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOCView.swift; sourceTree = "<group>"; };
 		48261BB994A895CFA9A07CE0 /* AppToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppToolbar.swift; sourceTree = "<group>"; };
 		49CB80F633727439435BF9EE /* PDFold.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PDFold.entitlements; sourceTree = "<group>"; };
@@ -84,6 +86,14 @@
 				10F92B037079D607E9FC1F8D /* PDFoldApp.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		5D4F8AFDFBCD176FA0DFE14A /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				2741DE881320AE151435306D /* DesignSystem.swift */,
+			);
+			path = DesignSystem;
 			sourceTree = "<group>";
 		};
 		A9C9270660C0B4EE924C6FDF /* Resources */ = {
@@ -158,6 +168,7 @@
 			isa = PBXGroup;
 			children = (
 				49876067D0F5E9E9BA814C96 /* App */,
+				5D4F8AFDFBCD176FA0DFE14A /* DesignSystem */,
 				251337720A803B70BED2B379 /* Document */,
 				B9D0894FF9788FFAD369BDEC /* Engine */,
 				D8318BD5C43BC309E3D0A687 /* Models */,
@@ -252,6 +263,7 @@
 				3740966A95E081C76D12CC9B /* AppToolbar.swift in Sources */,
 				376ED70FB3F09DF6B3F65E70 /* BoundaryPage.swift in Sources */,
 				BB8959F2285A83728B364BCC /* ContentView.swift in Sources */,
+				B4C20218249BE0498410F981 /* DesignSystem.swift in Sources */,
 				79BDC616455ED84B90BB2DB9 /* EmptyStateView.swift in Sources */,
 				B083EBE61135CF3C90CE7D3D /* GuidePopover.swift in Sources */,
 				23FC0C344110D094998B9C83 /* InspectorView.swift in Sources */,
