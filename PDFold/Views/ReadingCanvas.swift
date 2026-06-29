@@ -2,39 +2,135 @@ import SwiftUI
 import PDFKit
 
 struct ReadingCanvas: View {
-    var viewModel: WorkspaceViewModel
+    @Bindable var viewModel: WorkspaceViewModel
 
     var body: some View {
-        PDFViewRepresentable(pdf: viewModel.combinedPDF)
+        PDFViewRepresentable(viewModel: viewModel)
             .ignoresSafeArea()
     }
 }
 
-// MARK: - NSViewRepresentable bridge
+// MARK: - NSViewRepresentable
 
 struct PDFViewRepresentable: NSViewRepresentable {
-    var pdf: PDFDocument
+    @Bindable var viewModel: WorkspaceViewModel
+
+    func makeCoordinator() -> Coordinator { Coordinator(viewModel: viewModel) }
 
     func makeNSView(context: Context) -> PDFView {
         let view = PDFView()
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
         view.autoScales = true
-        view.displaysPageBreaks = false   // boundary pages provide visual separation
+        view.displaysPageBreaks = false
         view.backgroundColor = .windowBackgroundColor
-        view.document = pdf
+
+        let click = NSClickGestureRecognizer(target: context.coordinator,
+                                             action: #selector(Coordinator.handleClick(_:)))
+        click.numberOfClicksRequired = 1
+        view.addGestureRecognizer(click)
+
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.selectionChanged(_:)),
+            name: .PDFViewSelectionChanged,
+            object: view
+        )
+
+        context.coordinator.pdfView = view
         return view
     }
 
     func updateNSView(_ nsView: PDFView, context: Context) {
-        // Only replace document when content actually changed (identity check).
-        if nsView.document !== pdf {
-            let previousPage = nsView.currentPage
-            nsView.document = pdf
-            // Try to restore scroll position to the same logical page
-            if let page = previousPage {
-                nsView.go(to: page)
-            }
+        if nsView.document !== viewModel.combinedPDF {
+            nsView.document = viewModel.combinedPDF
         }
+        context.coordinator.viewModel = viewModel
+
+        // Update ink overlay visibility
+        context.coordinator.inkOverlay.isHidden = (viewModel.currentTool != .ink)
+    }
+
+    // MARK: - Coordinator
+
+    final class Coordinator: NSObject {
+        var viewModel: WorkspaceViewModel
+        weak var pdfView: PDFView?
+        let inkOverlay = InkOverlayView()
+
+        init(viewModel: WorkspaceViewModel) {
+            self.viewModel = viewModel
+        }
+
+        @objc func selectionChanged(_ notification: Notification) {
+            // Auto-apply highlight when tool is active and there's a selection
+            guard viewModel.currentTool == .highlight,
+                  let pdfView,
+                  let selection = pdfView.currentSelection,
+                  !(selection.string?.isEmpty ?? true) else { return }
+            viewModel.applyHighlight(to: selection)
+            pdfView.clearSelection()
+        }
+
+        @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
+            guard viewModel.currentTool == .note,
+                  let pdfView else { return }
+            let viewPoint = gesture.location(in: pdfView)
+            guard let page = pdfView.page(for: viewPoint, nearest: false) else { return }
+            let pagePoint = pdfView.convert(viewPoint, to: page)
+            viewModel.addNote(at: pagePoint, on: page)
+        }
+    }
+}
+
+// MARK: - Ink drawing overlay
+
+final class InkOverlayView: NSView {
+    var onStrokeCommitted: ((NSBezierPath) -> Void)?
+
+    private var currentPath: NSBezierPath?
+    private var committedPaths: [NSBezierPath] = []
+    private let strokeColor: NSColor = .systemBlue
+    private let lineWidth: CGFloat = 2.0
+
+    override var isFlipped: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let path = NSBezierPath()
+        path.lineWidth = lineWidth
+        path.move(to: point)
+        currentPath = path
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let path = currentPath else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        path.line(to: point)
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let path = currentPath, path.elementCount > 1 else {
+            currentPath = nil
+            return
+        }
+        let committed = path
+        committedPaths.append(committed)
+        currentPath = nil
+        onStrokeCommitted?(committed)
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.clear.setFill()
+        dirtyRect.fill()
+        strokeColor.withAlphaComponent(0.8).setStroke()
+        committedPaths.forEach { $0.stroke() }
+        currentPath?.stroke()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        isHidden ? nil : super.hitTest(point)
     }
 }

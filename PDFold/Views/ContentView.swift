@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var viewModel: WorkspaceViewModel
     @State private var showInspector = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @Environment(\.undoManager) private var undoManager
 
     init(document: WorkspaceDocument) {
         self.document = document
@@ -28,26 +29,27 @@ struct ContentView: View {
                             Divider()
                             InspectorView(viewModel: viewModel)
                                 .frame(width: 240)
-                                .transition(.move(edge: .trailing))
                         }
                     }
-                    .animation(.easeInOut(duration: 0.2), value: showInspector)
-                    .toolbar {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button {
-                                showInspector.toggle()
-                            } label: {
-                                Label("Inspector", systemImage: "sidebar.right")
-                            }
-                            .help("Toggle Inspector (⌘⇧I)")
-                        }
-                    }
+                    .animation(.easeInOut(duration: 0.18), value: showInspector)
                 }
                 .navigationTitle(viewModel.document.workspace.title)
+                .toolbar { mainToolbar }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: viewModel.document.workspace.documents.isEmpty)
+        .animation(.easeInOut(duration: 0.18), value: viewModel.document.workspace.documents.isEmpty)
         .onDrop(of: [UTType.pdf, .fileURL], isTargeted: nil, perform: handleDrop)
+        .onAppear { viewModel.undoManager = undoManager }
+        .onChange(of: undoManager) { _, um in viewModel.undoManager = um }
+        // Search popover
+        .popover(isPresented: $viewModel.isShowingSearch, arrowEdge: .top) {
+            SearchView(viewModel: viewModel)
+        }
+        // Signature palette popover
+        .popover(isPresented: $viewModel.isShowingSignaturePalette, arrowEdge: .top) {
+            SignaturePalette(viewModel: viewModel)
+        }
+        // Import error
         .alert("Import Error", isPresented: Binding(
             get: { viewModel.importError != nil },
             set: { if !$0 { viewModel.importError = nil } }
@@ -56,6 +58,7 @@ struct ContentView: View {
         } message: { err in
             Text(err.message)
         }
+        // Password prompt
         .sheet(isPresented: $viewModel.isShowingPasswordPrompt) {
             if let url = viewModel.pendingPasswordURL,
                let pdf = PDFDocument(url: url) {
@@ -69,15 +72,78 @@ struct ContentView: View {
         }
     }
 
-    private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        resolvePDFURLs(from: providers) { urls in
-            viewModel.importPDFs(urls: urls)
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var mainToolbar: some ToolbarContent {
+        // Leading: add PDFs
+        ToolbarItem(placement: .navigation) {
+            Button { openPDFs() } label: {
+                Label("Add PDFs", systemImage: "plus.circle")
+            }
+            .help("Add PDF files (⌘O)")
+            .keyboardShortcut("o", modifiers: .command)
         }
+
+        // Center: annotation tools
+        ToolbarItemGroup(placement: .principal) {
+            Picker("Tool", selection: $viewModel.currentTool) {
+                ForEach([AnnotationTool.none, .highlight, .note, .ink]) { tool in
+                    Label(tool.label, systemImage: tool.rawValue).tag(tool)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 240)
+            .help("Annotation tool")
+        }
+
+        // Trailing: signature, search, inspector, export
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                viewModel.isShowingSignaturePalette.toggle()
+                viewModel.currentTool = .signature
+            } label: {
+                Label("Signature", systemImage: "signature")
+            }
+            .help("Place signature")
+
+            Button { viewModel.isShowingSearch.toggle() } label: {
+                Label("Search", systemImage: "magnifyingglass")
+            }
+            .help("Search workspace (⌘F)")
+            .keyboardShortcut("f", modifiers: .command)
+
+            Button { showInspector.toggle() } label: {
+                Label("Inspector", systemImage: "sidebar.right")
+            }
+            .help("Toggle inspector")
+
+            Button { viewModel.exportPlainPDF() } label: {
+                Label("Export PDF", systemImage: "square.and.arrow.up")
+            }
+            .help("Export as single PDF (⌘⇧E)")
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        resolvePDFURLs(from: providers) { viewModel.importPDFs(urls: $0) }
         return true
+    }
+
+    private func openPDFs() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.pdf]
+        if panel.runModal() == .OK { viewModel.importPDFs(urls: panel.urls) }
     }
 }
 
-/// Resolves `public.file-url` items from drag providers, filters to PDFs only.
+// MARK: - Shared drop helper
+
 func resolvePDFURLs(from providers: [NSItemProvider], completion: @escaping ([URL]) -> Void) {
     var urls: [URL] = []
     let group = DispatchGroup()
