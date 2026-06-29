@@ -2,12 +2,14 @@ import SwiftUI
 import PDFKit
 
 struct InspectorView: View {
-    var viewModel: WorkspaceViewModel
+    @Bindable var viewModel: WorkspaceViewModel
     @State private var selectedTab: Tab = .info
 
     enum Tab: String, CaseIterable {
         case info = "Info"
+        case tags = "Tags"
         case comments = "Comments"
+        case markup = "Markup"
     }
 
     var body: some View {
@@ -36,8 +38,10 @@ struct InspectorView: View {
 
             ScrollView {
                 switch selectedTab {
-                case .info:     InspectorInfoView(viewModel: viewModel)
-                case .comments: InspectorCommentsView(viewModel: viewModel)
+                case .info: InspectorInfoView(viewModel: viewModel)
+                case .tags: InspectorTagsView(viewModel: viewModel)
+                case .comments: InspectorWorkspaceCommentsView(viewModel: viewModel)
+                case .markup: InspectorMarkupView(viewModel: viewModel)
                 }
             }
         }
@@ -55,6 +59,8 @@ private struct InspectorInfoView: View {
             InspectorRow(label: "Documents",   value: "\(viewModel.document.workspace.documents.count)")
             InspectorRow(label: "Total pages", value: "\(viewModel.document.workspace.pageOrder.count)")
             InspectorRow(label: "Signatures",  value: "\(viewModel.document.workspace.signatures.count)")
+            InspectorRow(label: "Tags",        value: "\(viewModel.document.workspace.tags.count)")
+            InspectorRow(label: "Comments",    value: "\(viewModel.document.workspace.comments.count)")
             InspectorRow(label: "Created",     value: viewModel.document.workspace.createdAt.formatted(
                 date: .abbreviated, time: .omitted))
         }
@@ -79,9 +85,158 @@ private struct InspectorRow: View {
     }
 }
 
-// MARK: - Comments tab
+// MARK: - Tags tab
 
-private struct InspectorCommentsView: View {
+private struct InspectorTagsView: View {
+    @Bindable var viewModel: WorkspaceViewModel
+    @State private var draftTag = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: .dsMD) {
+            HStack(spacing: .dsSM) {
+                TextField("Add tag", text: $draftTag)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(addTag)
+                Button(action: addTag) {
+                    Image(systemName: "plus")
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.dsAccent)
+                .disabled(draftTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("Add tag")
+            }
+
+            if viewModel.document.workspace.tags.isEmpty {
+                InspectorEmptyState(icon: "tag", title: "No tags yet.")
+            } else {
+                LazyVStack(alignment: .leading, spacing: .dsSM) {
+                    ForEach(viewModel.document.workspace.tags, id: \.self) { tag in
+                        TagChip(tag: tag) {
+                            viewModel.removeTag(tag)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.dsLG)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func addTag() {
+        viewModel.addTag(draftTag)
+        draftTag = ""
+    }
+}
+
+private struct TagChip: View {
+    var tag: String
+    var onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(tag)
+                .font(.dsCaption())
+                .foregroundStyle(Color.dsTextPrimary)
+                .lineLimit(1)
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .frame(width: 12, height: 12)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.dsTextTertiary)
+            .help("Remove tag")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.dsAccentSoft, in: Capsule())
+    }
+}
+
+// MARK: - Workspace comments tab
+
+private struct InspectorWorkspaceCommentsView: View {
+    @Bindable var viewModel: WorkspaceViewModel
+    @State private var draftComment = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: .dsMD) {
+            TextEditor(text: $draftComment)
+                .font(.dsBody())
+                .frame(minHeight: 84)
+                .scrollContentBackground(.hidden)
+                .background(Color.dsCard)
+                .clipShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
+                        .strokeBorder(Color.dsSeparator, lineWidth: 1)
+                }
+
+            Button {
+                viewModel.addComment(draftComment)
+                draftComment = ""
+            } label: {
+                Label("Add Comment", systemImage: "text.bubble")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color.dsAccent)
+            .disabled(draftComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            if viewModel.document.workspace.comments.isEmpty {
+                InspectorEmptyState(icon: "text.bubble", title: "No comments yet.")
+            } else {
+                LazyVStack(alignment: .leading, spacing: .dsSM) {
+                    ForEach(viewModel.document.workspace.comments) { comment in
+                        WorkspaceCommentRow(comment: comment) {
+                            viewModel.removeComment(comment)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.dsLG)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct WorkspaceCommentRow: View {
+    var comment: WorkspaceComment
+    var onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: .dsSM) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(comment.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.dsTextTertiary)
+                Spacer()
+                Button(action: onRemove) {
+                    Image(systemName: "trash")
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.dsTextTertiary)
+                .help("Delete comment")
+            }
+            Text(comment.body)
+                .font(.dsBody())
+                .foregroundStyle(Color.dsTextPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.dsMD)
+        .background(Color.dsCard, in: RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
+                .strokeBorder(Color.dsSeparator, lineWidth: 1)
+        }
+    }
+}
+
+// MARK: - Markup tab
+
+private struct InspectorMarkupView: View {
     var viewModel: WorkspaceViewModel
 
     private var allAnnotations: [(page: PDFPage, annotation: PDFAnnotation, memberName: String)] {
@@ -121,6 +276,24 @@ private struct InspectorCommentsView: View {
             }
             .padding(.vertical, .dsXS)
         }
+    }
+}
+
+private struct InspectorEmptyState: View {
+    var icon: String
+    var title: String
+
+    var body: some View {
+        VStack(spacing: .dsSM) {
+            Image(systemName: icon)
+                .font(.system(size: 24, weight: .light))
+                .foregroundStyle(Color.dsTextTertiary)
+            Text(title)
+                .font(.dsBody())
+                .foregroundStyle(Color.dsTextSecondary)
+        }
+        .padding(.dsXL)
+        .frame(maxWidth: .infinity)
     }
 }
 

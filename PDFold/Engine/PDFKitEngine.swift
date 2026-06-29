@@ -343,7 +343,7 @@ private final class HTMLPDFRenderer: NSObject, WKNavigationDelegate {
             return try renderOnMainThread(html: html, baseURL: baseURL, timeout: timeout)
         }
 
-        var result: Result<Data, Error>!
+        var result: Result<Data, Error>?
         let semaphore = DispatchSemaphore(value: 0)
         DispatchQueue.main.async {
             result = Result {
@@ -352,6 +352,9 @@ private final class HTMLPDFRenderer: NSObject, WKNavigationDelegate {
             semaphore.signal()
         }
         semaphore.wait()
+        guard let result else {
+            throw DocumentImportConverter.ConversionError.renderingFailed
+        }
         return try result.get()
     }
 

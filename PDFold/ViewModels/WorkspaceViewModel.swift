@@ -97,7 +97,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .none:      return "Select annotations on the page. Press Delete to remove the selected annotation."
         case .highlight: return "Select PDF text to add a colored highlight."
         case .note:      return "Click the page to add a sticky note, or click an existing note to edit it."
-        case .editText:  return "Click the page to place editable text, or click an existing text box to change it."
+        case .editText:  return "Click existing PDF text to edit a matched replacement, or click blank space to add text."
         case .ink:       return "Draw freehand marks on the page."
         case .underline: return "Select PDF text to underline it."
         case .strikeout: return "Select PDF text to strike it out."
@@ -178,6 +178,7 @@ final class WorkspaceViewModel {
         for member in document.workspace.documents {
             if let data = document.memberPDFData[member.id],
                let pdf = PDFDocument(data: data) {
+                sanitizeInkAnnotations(in: pdf)
                 loadedPDFs.append((member, pdf))
             }
         }
@@ -187,7 +188,11 @@ final class WorkspaceViewModel {
             guard let self else { return [:] }
             var result: [UUID: Data] = [:]
             for (member, pdf) in self.loadedPDFs {
-                result[member.id] = pdf.dataRepresentation()
+                if let data = pdf.dataRepresentation() {
+                    result[member.id] = data
+                } else if let existingData = self.document.memberPDFData[member.id] {
+                    result[member.id] = existingData
+                }
             }
             return result
         }
@@ -241,13 +246,23 @@ final class WorkspaceViewModel {
     }
 
     private func attachPDF(_ pdf: PDFDocument, from url: URL) {
+        sanitizeInkAnnotations(in: pdf)
+
+        guard let data = pdf.dataRepresentation() else {
+            importError = ImportError(
+                fileName: url.lastPathComponent,
+                message: "PDFold could not prepare this file for saving. Try exporting it to PDF first, then import the exported file."
+            )
+            return
+        }
+
         let name = url.deletingPathExtension().lastPathComponent
         var member = MemberDocument(displayName: name, sourcePDFRef: url.lastPathComponent)
         let refs = (0..<pdf.pageCount).map { i in PageRef(memberDocId: member.id, sourcePageIndex: i) }
         member.pageRefs = refs.map(\.id)
         document.workspace.documents.append(member)
         document.workspace.pageOrder.append(contentsOf: refs)
-        document.memberPDFData[member.id] = pdf.dataRepresentation()
+        document.memberPDFData[member.id] = data
         loadedPDFs.append((member, pdf))
     }
 
@@ -259,18 +274,29 @@ final class WorkspaceViewModel {
     // MARK: - Reorder / Remove (with undo)
 
     func moveDocument(from source: IndexSet, to destination: Int) {
+        let validSource = source.filter { loadedPDFs.indices.contains($0) }
+        guard validSource.count == source.count,
+              destination >= 0,
+              destination <= loadedPDFs.count else { return }
+
         let snapshot = captureOrderSnapshot()
-        document.workspace.documents.move(fromOffsets: source, toOffset: destination)
-        syncLoadedPDFsOrder()
+        loadedPDFs.move(fromOffsets: IndexSet(validSource), toOffset: destination)
+        let loadedIds = Set(loadedPDFs.map(\.0.id))
+        let unloadedDocuments = document.workspace.documents.filter { !loadedIds.contains($0.id) }
+        document.workspace.documents = loadedPDFs.map(\.0) + unloadedDocuments
         rebuildPageOrder()
         rebuild()
         registerUndo(snapshot: snapshot, actionName: "Move Document")
     }
 
     func removeDocument(at offsets: IndexSet) {
+        let validOffsets = offsets.filter { loadedPDFs.indices.contains($0) }
+        guard validOffsets.count == offsets.count else { return }
+
         let snapshot = captureOrderSnapshot()
-        let removedIds = Set(offsets.map { document.workspace.documents[$0].id })
-        document.workspace.documents.remove(atOffsets: offsets)
+        let removedIds = Set(validOffsets.map { loadedPDFs[$0].0.id })
+        document.workspace.documents.removeAll { removedIds.contains($0.id) }
+        removedIds.forEach { document.memberPDFData.removeValue(forKey: $0) }
         loadedPDFs.removeAll { removedIds.contains($0.0.id) }
         rebuildPageOrder()
         rebuild()
@@ -337,6 +363,66 @@ final class WorkspaceViewModel {
         }
     }
 
+    // MARK: - Workspace metadata
+
+    func addTag(_ rawValue: String) {
+        let tag = normalizedTag(rawValue)
+        guard !tag.isEmpty,
+              !document.workspace.tags.contains(where: { $0.localizedCaseInsensitiveCompare(tag) == .orderedSame }) else {
+            return
+        }
+        document.workspace.tags.append(tag)
+        markWorkspaceModified()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.removeTag(tag)
+        }
+        undoManager?.setActionName("Add Tag")
+    }
+
+    func removeTag(_ tag: String) {
+        guard let index = document.workspace.tags.firstIndex(of: tag) else { return }
+        let removed = document.workspace.tags.remove(at: index)
+        markWorkspaceModified()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.document.workspace.tags.insert(removed, at: min(index, vm.document.workspace.tags.count))
+            vm.markWorkspaceModified()
+        }
+        undoManager?.setActionName("Remove Tag")
+    }
+
+    func addComment(_ rawBody: String) {
+        let body = rawBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        let comment = WorkspaceComment(body: body)
+        document.workspace.comments.insert(comment, at: 0)
+        markWorkspaceModified()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.removeComment(comment)
+        }
+        undoManager?.setActionName("Add Comment")
+    }
+
+    func removeComment(_ comment: WorkspaceComment) {
+        guard let index = document.workspace.comments.firstIndex(where: { $0.id == comment.id }) else { return }
+        let removed = document.workspace.comments.remove(at: index)
+        markWorkspaceModified()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.document.workspace.comments.insert(removed, at: min(index, vm.document.workspace.comments.count))
+            vm.markWorkspaceModified()
+        }
+        undoManager?.setActionName("Remove Comment")
+    }
+
+    private func normalizedTag(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "#", with: "")
+    }
+
+    private func markWorkspaceModified() {
+        document.workspace.modifiedAt = Date()
+    }
+
     func selectPage(_ ref: PageRef) {
         selectedPageRefID = ref.id
         if let pageIndex = combinedPageIndex(for: ref) {
@@ -375,7 +461,10 @@ final class WorkspaceViewModel {
         }
 
         let destination = targetIndex > sourceIndex ? targetIndex + 1 : targetIndex
-        movePage(sourceRef, toIndex: destination)
+        guard movePage(sourceRef, toIndex: destination) else {
+            self.draggedPageRefID = nil
+            return false
+        }
         selectedPageRefID = sourceRef.id
         self.draggedPageRefID = nil
         return true
@@ -420,9 +509,9 @@ final class WorkspaceViewModel {
         ann.contents = ""
         ann.font = .systemFont(ofSize: 14)
         ann.fontColor = .dsTextPrimaryNS
-        ann.color = annotationColor.withAlphaComponent(0.18)
+        ann.color = .clear
         let border = PDFBorder()
-        border.lineWidth = 1
+        border.lineWidth = 0
         ann.border = border
         page.addAnnotation(ann)
         undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
@@ -430,14 +519,60 @@ final class WorkspaceViewModel {
         return ann
     }
 
+    @discardableResult
+    func addEditableTextOverlay(from selection: PDFSelection, on page: PDFPage) -> PDFAnnotation? {
+        let rawText = selection.string ?? ""
+        let text = rawText
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+
+        var font = NSFont.systemFont(ofSize: 13)
+        var fontColor = NSColor.dsTextPrimaryNS
+        if let attributed = selection.attributedString, attributed.length > 0 {
+            if let extractedFont = attributed.attribute(.font, at: 0, effectiveRange: nil) as? NSFont {
+                font = extractedFont
+            }
+            if let extractedColor = attributed.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor {
+                fontColor = extractedColor
+            }
+        }
+
+        let selectionBounds = selection.bounds(for: page)
+        guard selectionBounds.width > 1, selectionBounds.height > 1 else { return nil }
+
+        let height = max(selectionBounds.height + 4, font.pointSize * 1.35)
+        let width = max(selectionBounds.width + 8, 36)
+        let bounds = CGRect(
+            x: selectionBounds.minX - 2,
+            y: selectionBounds.midY - height / 2,
+            width: width,
+            height: height
+        )
+
+        let ann = PDFAnnotation(bounds: bounds, forType: .freeText, withProperties: nil)
+        ann.contents = text
+        ann.font = font
+        ann.fontColor = fontColor
+        ann.color = NSColor.white.withAlphaComponent(0.96)
+        let border = PDFBorder()
+        border.lineWidth = 0
+        ann.border = border
+        page.addAnnotation(ann)
+        undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
+        undoManager?.setActionName("Edit PDF Text")
+        return ann
+    }
+
     func addInkStroke(path: NSBezierPath, on page: PDFPage) {
+        guard path.elementCount > 1, !path.bounds.isEmpty else { return }
         let bounds = path.bounds.insetBy(dx: -2, dy: -2)
         let ann = PDFAnnotation(bounds: bounds, forType: .ink, withProperties: nil)
         ann.color = inkColor
         ann.border = PDFBorder()
         ann.border?.lineWidth = 2
-        let flatPoints = bezierPathToFlatPoints(path)
-        ann.setValue(flatPoints, forAnnotationKey: PDFAnnotationKey(rawValue: "/InkList"))
+        ann.add(path)
         page.addAnnotation(ann)
         undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
         undoManager?.setActionName("Ink Stroke")
@@ -454,25 +589,70 @@ final class WorkspaceViewModel {
         undoManager?.setActionName("Delete Annotation")
     }
 
-    private func bezierPathToFlatPoints(_ path: NSBezierPath) -> [[CGFloat]] {
-        var result: [CGFloat] = []
-        var pts = [NSPoint](repeating: .zero, count: 3)
-        for i in 0..<path.elementCount {
-            let type = path.element(at: i, associatedPoints: &pts)
-            switch type {
-            case .moveTo, .lineTo:
-                result.append(contentsOf: [pts[0].x, pts[0].y])
-            case .curveTo, .cubicCurveTo:
-                result.append(contentsOf: [pts[2].x, pts[2].y])
-            case .quadraticCurveTo:
-                result.append(contentsOf: [pts[1].x, pts[1].y])
-            case .closePath:
-                break
-            @unknown default:
-                break
+    private func sanitizeInkAnnotations(in pdf: PDFDocument) {
+        for pageIndex in 0..<pdf.pageCount {
+            guard let page = pdf.page(at: pageIndex) else { continue }
+            for annotation in page.annotations where annotation.type == "Ink" {
+                guard let replacement = replacementInkAnnotation(for: annotation) else { continue }
+                page.removeAnnotation(annotation)
+                page.addAnnotation(replacement)
             }
         }
-        return [result]  // single-stroke array
+    }
+
+    private func replacementInkAnnotation(for annotation: PDFAnnotation) -> PDFAnnotation? {
+        let inkListKey = PDFAnnotationKey(rawValue: "/InkList")
+        guard let inkList = annotation.value(forAnnotationKey: inkListKey) else { return nil }
+
+        if let paths = inkList as? [NSBezierPath], !paths.isEmpty {
+            return nil
+        }
+
+        let rawStrokes: [Any]
+        if let strokes = inkList as? [Any] {
+            rawStrokes = strokes
+        } else if let strokes = inkList as? NSArray {
+            rawStrokes = strokes.map { $0 }
+        } else {
+            rawStrokes = []
+        }
+
+        let paths = rawStrokes.compactMap { bezierPath(fromInkListStroke: $0) }
+        guard !paths.isEmpty else { return nil }
+
+        let replacement = PDFAnnotation(bounds: annotation.bounds, forType: .ink, withProperties: nil)
+        replacement.color = annotation.color
+        replacement.border = annotation.border
+        replacement.contents = annotation.contents
+        paths.forEach { replacement.add($0) }
+        return replacement
+    }
+
+    private func bezierPath(fromInkListStroke stroke: Any) -> NSBezierPath? {
+        let numbers: [NSNumber]
+        if let values = stroke as? [NSNumber] {
+            numbers = values
+        } else if let values = stroke as? [CGFloat] {
+            numbers = values.map { NSNumber(value: Double($0)) }
+        } else if let values = stroke as? [Double] {
+            numbers = values.map { NSNumber(value: $0) }
+        } else if let values = stroke as? NSArray {
+            numbers = values.compactMap { $0 as? NSNumber }
+        } else {
+            return nil
+        }
+
+        guard numbers.count >= 4, numbers.count.isMultiple(of: 2) else { return nil }
+
+        let path = NSBezierPath()
+        path.lineWidth = 2
+        path.move(to: CGPoint(x: numbers[0].doubleValue, y: numbers[1].doubleValue))
+        var index = 2
+        while index + 1 < numbers.count {
+            path.line(to: CGPoint(x: numbers[index].doubleValue, y: numbers[index + 1].doubleValue))
+            index += 2
+        }
+        return path
     }
 
     // MARK: - Signature
@@ -730,9 +910,15 @@ final class WorkspaceViewModel {
 
     private func imageData(for page: PDFPage, format: WorkspaceExportFormat) -> Data? {
         let bounds = page.bounds(for: .mediaBox)
+        guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else {
+            return nil
+        }
+
         let scale: CGFloat = 2
-        let pixelWidth = max(1, Int(bounds.width * scale))
-        let pixelHeight = max(1, Int(bounds.height * scale))
+        let maxPixelDimension = 12_000
+        let actualScale = min(scale, CGFloat(maxPixelDimension) / max(bounds.width, bounds.height))
+        let pixelWidth = max(1, Int(bounds.width * actualScale))
+        let pixelHeight = max(1, Int(bounds.height * actualScale))
         let alpha = format == .png
 
         guard let bitmap = NSBitmapImageRep(
@@ -756,7 +942,7 @@ final class WorkspaceViewModel {
         NSGraphicsContext.current = context
         context.cgContext.setFillColor(NSColor.white.cgColor)
         context.cgContext.fill(CGRect(x: 0, y: 0, width: CGFloat(pixelWidth), height: CGFloat(pixelHeight)))
-        context.cgContext.scaleBy(x: scale, y: scale)
+        context.cgContext.scaleBy(x: actualScale, y: actualScale)
         context.cgContext.translateBy(x: -bounds.minX, y: -bounds.minY)
         page.draw(with: .mediaBox, to: context.cgContext)
         NSGraphicsContext.restoreGraphicsState()
@@ -797,9 +983,9 @@ final class WorkspaceViewModel {
     // MARK: - Page operations (all keyed by PageRef.id, all undoable)
 
     func rotatePage(_ ref: PageRef, by degrees: Int) {
-        guard let (mi, pdf) = memberPDF(for: ref),
-              let localIdx = localIndex(ref: ref, memberIndex: mi),
-              let page = pdf.page(at: localIdx) else { return }
+        guard let lookup = memberPDF(for: ref),
+              let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
+              let page = lookup.pdf.page(at: localIdx) else { return }
         let before = page.rotation
         page.rotation = (page.rotation + degrees + 360) % 360
         rebuild()
@@ -811,21 +997,22 @@ final class WorkspaceViewModel {
     }
 
     func deletePage(_ ref: PageRef) {
-        guard let (mi, pdf) = memberPDF(for: ref),
-              let localIdx = localIndex(ref: ref, memberIndex: mi),
-              pdf.page(at: localIdx) != nil else { return }
+        guard let lookup = memberPDF(for: ref),
+              let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
+              lookup.pdf.page(at: localIdx) != nil else { return }
 
         let snapshot = captureOrderSnapshot()
+        let pdf = lookup.pdf
         pdf.removePage(at: localIdx)
         document.workspace.pageOrder.removeAll { $0.id == ref.id }
-        document.workspace.documents[mi].pageRefs.removeAll { $0 == ref.id }
+        document.workspace.documents[lookup.documentIndex].pageRefs.removeAll { $0 == ref.id }
 
         // Drop empty member
-        if document.workspace.documents[mi].pageRefs.isEmpty {
-            loadedPDFs.remove(at: mi)
-            document.workspace.documents.remove(at: mi)
+        if document.workspace.documents[lookup.documentIndex].pageRefs.isEmpty {
+            loadedPDFs.remove(at: lookup.loadedIndex)
+            document.workspace.documents.remove(at: lookup.documentIndex)
         } else {
-            loadedPDFs[mi].0 = document.workspace.documents[mi]
+            loadedPDFs[lookup.loadedIndex].0 = document.workspace.documents[lookup.documentIndex]
         }
         rebuild()
 
@@ -835,23 +1022,27 @@ final class WorkspaceViewModel {
         undoManager?.setActionName("Delete Page")
     }
 
-    func movePage(_ ref: PageRef, toIndex destination: Int) {
-        guard let (mi, pdf) = memberPDF(for: ref),
-              let localIdx = localIndex(ref: ref, memberIndex: mi),
-              let page = pdf.page(at: localIdx) else { return }
+    @discardableResult
+    func movePage(_ ref: PageRef, toIndex destination: Int) -> Bool {
+        guard let lookup = memberPDF(for: ref),
+              let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
+              let page = lookup.pdf.page(at: localIdx) else { return false }
 
         let snapshot = captureOrderSnapshot()
+        let pdf = lookup.pdf
         // Move in PDFDocument
         pdf.removePage(at: localIdx)
-        let adjustedDest = destination > localIdx ? destination - 1 : destination
-        pdf.insert(page, at: min(adjustedDest, pdf.pageCount))
+        let boundedDestination = min(max(destination, 0), pdf.pageCount + 1)
+        let adjustedDest = boundedDestination > localIdx ? boundedDestination - 1 : boundedDestination
+        let insertIndex = min(max(adjustedDest, 0), pdf.pageCount)
+        pdf.insert(page, at: insertIndex)
 
         // Update pageRefs array for that member
-        var refs = document.workspace.documents[mi].pageRefs
+        var refs = document.workspace.documents[lookup.documentIndex].pageRefs
         refs.remove(at: localIdx)
-        refs.insert(ref.id, at: min(adjustedDest, refs.count))
-        document.workspace.documents[mi].pageRefs = refs
-        loadedPDFs[mi].0 = document.workspace.documents[mi]
+        refs.insert(ref.id, at: min(max(adjustedDest, 0), refs.count))
+        document.workspace.documents[lookup.documentIndex].pageRefs = refs
+        loadedPDFs[lookup.loadedIndex].0 = document.workspace.documents[lookup.documentIndex]
 
         // Rebuild flat pageOrder
         rebuildPageOrder()
@@ -861,6 +1052,7 @@ final class WorkspaceViewModel {
             vm.restore(snapshot)
         }
         undoManager?.setActionName("Move Page")
+        return true
     }
 
     // MARK: - Annotation helpers (underline, strikeout)
@@ -910,13 +1102,16 @@ final class WorkspaceViewModel {
 
     // MARK: - Page lookup helpers
 
-    private func memberPDF(for ref: PageRef) -> (Int, PDFDocument)? {
-        guard let mi = document.workspace.documents.firstIndex(where: { $0.id == ref.memberDocId }),
-              mi < loadedPDFs.count else { return nil }
-        return (mi, loadedPDFs[mi].1)
+    private func memberPDF(for ref: PageRef) -> (documentIndex: Int, loadedIndex: Int, pdf: PDFDocument)? {
+        guard let documentIndex = document.workspace.documents.firstIndex(where: { $0.id == ref.memberDocId }),
+              let loadedIndex = loadedPDFs.firstIndex(where: { $0.0.id == ref.memberDocId }) else {
+            return nil
+        }
+        return (documentIndex, loadedIndex, loadedPDFs[loadedIndex].1)
     }
 
     private func localIndex(ref: PageRef, memberIndex mi: Int) -> Int? {
-        document.workspace.documents[mi].pageRefs.firstIndex(of: ref.id)
+        guard document.workspace.documents.indices.contains(mi) else { return nil }
+        return document.workspace.documents[mi].pageRefs.firstIndex(of: ref.id)
     }
 }

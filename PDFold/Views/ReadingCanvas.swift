@@ -237,6 +237,11 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 if let ann = page.annotation(at: pagePoint), ann.type == "FreeText" {
                     let rect = pdfView.convert(ann.bounds, from: page)
                     showNoteEditor(for: ann, near: rect, in: pdfView)
+                } else if let selection = editableTextSelection(at: pagePoint, on: page),
+                          let ann = viewModel.addEditableTextOverlay(from: selection, on: page) {
+                    pdfView.setCurrentSelection(selection, animate: false)
+                    let rect = pdfView.convert(ann.bounds, from: page)
+                    showNoteEditor(for: ann, near: rect, in: pdfView)
                 } else {
                     let ann = viewModel.addTextBox(at: pagePoint, on: page)
                     let rect = pdfView.convert(ann.bounds, from: page)
@@ -254,6 +259,33 @@ struct PDFViewRepresentable: NSViewRepresentable {
             default:
                 viewModel.selectedAnnotation = nil
             }
+        }
+
+        private func editableTextSelection(at point: CGPoint, on page: PDFPage) -> PDFSelection? {
+            if let line = page.selectionForLine(at: point),
+               isUsableTextSelection(line, near: point, on: page, tolerance: 8) {
+                return line
+            }
+
+            if let word = page.selectionForWord(at: point),
+               isUsableTextSelection(word, near: point, on: page, tolerance: 5) {
+                return word
+            }
+
+            let searchRect = CGRect(x: point.x - 6, y: point.y - 6, width: 12, height: 12)
+            if let nearby = page.selection(for: searchRect),
+               isUsableTextSelection(nearby, near: point, on: page, tolerance: 10) {
+                return nearby
+            }
+
+            return nil
+        }
+
+        private func isUsableTextSelection(_ selection: PDFSelection, near point: CGPoint, on page: PDFPage, tolerance: CGFloat) -> Bool {
+            guard let text = selection.string?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { return false }
+            let bounds = selection.bounds(for: page).insetBy(dx: -tolerance, dy: -tolerance)
+            return bounds.contains(point)
         }
 
         private func showNoteEditor(for annotation: PDFAnnotation, near rect: CGRect, in view: NSView) {
@@ -358,6 +390,7 @@ final class PDFoldPDFView: PDFView {
 final class NoteEditorViewController: NSViewController {
     private let annotation: PDFAnnotation
     private weak var textView: NSTextView?
+    private var isFreeTextAnnotation: Bool { annotation.type == "FreeText" }
 
     init(annotation: PDFAnnotation) {
         self.annotation = annotation
@@ -366,46 +399,47 @@ final class NoteEditorViewController: NSViewController {
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let container = NSView(frame: CGRect(x: 0, y: 0, width: 240, height: 160))
+        let editorWidth = isFreeTextAnnotation ? max(260, min(420, annotation.bounds.width * 1.8)) : 240
+        let editorHeight: CGFloat = isFreeTextAnnotation ? 128 : 160
+        let footerHeight: CGFloat = 36
+        let textHeight = editorHeight - footerHeight
+        let container = NSView(frame: CGRect(x: 0, y: 0, width: editorWidth, height: editorHeight))
         container.wantsLayer = true
         container.layer?.backgroundColor = NSColor.dsSurfaceNS.cgColor
 
-        // Scrollable text area
-        let scroll = NSScrollView(frame: CGRect(x: 0, y: 36, width: 240, height: 124))
+        let scroll = NSScrollView(frame: CGRect(x: 0, y: footerHeight, width: editorWidth, height: textHeight))
         scroll.borderType = .noBorder
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
 
-        let tv = NSTextView(frame: CGRect(x: 0, y: 0, width: 240, height: 124))
+        let tv = NSTextView(frame: CGRect(x: 0, y: 0, width: editorWidth, height: textHeight))
         tv.isRichText = false
-        tv.font = NSFont.systemFont(ofSize: 13)
-        tv.textContainerInset = NSSize(width: 10, height: 10)
+        tv.font = annotation.font ?? NSFont.systemFont(ofSize: isFreeTextAnnotation ? 14 : 13)
+        tv.textContainerInset = NSSize(width: isFreeTextAnnotation ? 6 : 10, height: isFreeTextAnnotation ? 6 : 10)
         tv.string = annotation.contents ?? ""
         tv.backgroundColor = NSColor.dsSurfaceNS
-        tv.textColor = NSColor.dsTextPrimaryNS
+        tv.textColor = annotation.fontColor ?? NSColor.dsTextPrimaryNS
         tv.isEditable = true
         tv.isSelectable = true
-        tv.minSize = NSSize(width: 0, height: 124)
+        tv.minSize = NSSize(width: 0, height: textHeight)
         tv.maxSize = NSSize(width: CGFloat.infinity, height: CGFloat.infinity)
         tv.isVerticallyResizable = true
-        tv.textContainer?.containerSize = NSSize(width: 220, height: CGFloat.infinity)
+        tv.textContainer?.containerSize = NSSize(width: editorWidth - 20, height: CGFloat.infinity)
         tv.textContainer?.widthTracksTextView = true
         scroll.documentView = tv
         container.addSubview(scroll)
 
-        // Footer bar with Done button
-        let footer = NSView(frame: CGRect(x: 0, y: 0, width: 240, height: 36))
+        let footer = NSView(frame: CGRect(x: 0, y: 0, width: editorWidth, height: footerHeight))
         footer.wantsLayer = true
         footer.layer?.backgroundColor = NSColor.dsSeparatorNS.withAlphaComponent(0.35).cgColor
 
         let done = NSButton(title: "Done", target: self, action: #selector(commit))
         done.bezelStyle = .rounded
-        done.frame = CGRect(x: 240 - 72 - 8, y: 6, width: 72, height: 22)
+        done.frame = CGRect(x: editorWidth - 72 - 8, y: 6, width: 72, height: 22)
         footer.addSubview(done)
         container.addSubview(footer)
 
-        // Separator between text and footer
-        let sep = NSView(frame: CGRect(x: 0, y: 36, width: 240, height: 0.5))
+        let sep = NSView(frame: CGRect(x: 0, y: footerHeight, width: editorWidth, height: 0.5))
         sep.wantsLayer = true
         sep.layer?.backgroundColor = NSColor.dsSeparatorNS.cgColor
         container.addSubview(sep)
@@ -421,13 +455,38 @@ final class NoteEditorViewController: NSViewController {
 
     override func viewWillDisappear() {
         super.viewWillDisappear()
-        // Auto-save on any dismiss (clicking outside or Done)
-        annotation.contents = textView?.string ?? annotation.contents
+        commitChanges()
     }
 
     @objc private func commit() {
-        annotation.contents = textView?.string ?? annotation.contents
+        commitChanges()
         dismiss(nil)
+    }
+
+    private func commitChanges() {
+        guard let textView else { return }
+        annotation.contents = textView.string
+        if isFreeTextAnnotation {
+            annotation.font = textView.font ?? annotation.font
+            annotation.fontColor = textView.textColor ?? annotation.fontColor
+            resizeFreeTextAnnotationToFit(textView.string)
+        }
+    }
+
+    private func resizeFreeTextAnnotationToFit(_ text: String) {
+        guard isFreeTextAnnotation else { return }
+        let font = annotation.font ?? NSFont.systemFont(ofSize: 14)
+        let measured = (text.isEmpty ? " " : text) as NSString
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let size = measured.boundingRect(
+            with: CGSize(width: 600, height: CGFloat.infinity),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attributes
+        ).size
+        var bounds = annotation.bounds
+        bounds.size.width = max(bounds.width, ceil(size.width) + 10)
+        bounds.size.height = max(font.pointSize * 1.35, ceil(size.height) + 6)
+        annotation.bounds = bounds
     }
 }
 
