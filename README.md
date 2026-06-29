@@ -1,12 +1,16 @@
+<br>
+
 <p align="center">
-  <img src="docs/assets/pdfold-icon.png" alt="PDFold app icon" width="156">
+  <img src="docs/assets/pdfold-icon.png" alt="PDFold app icon" width="200">
 </p>
 
 <h1 align="center">PDFold</h1>
 
 <p align="center">
-  <strong>A native macOS document workspace for turning a pile of files into one civilized PDF workflow.</strong>
+  <em>A native macOS document workspace for turning a pile of files into one civilized PDF workflow.</em>
 </p>
+
+<br>
 
 <p align="center">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">
