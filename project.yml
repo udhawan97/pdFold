@@ -44,6 +44,31 @@ targets:
             CFBundleTypeRole: Editor
             LSHandlerRank: Alternate
             LSItemContentTypes: [com.adobe.pdf, public.pdf]
+          - CFBundleTypeExtensions: [html, htm]
+            CFBundleTypeName: HTML Document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.html]
+          - CFBundleTypeExtensions: [docx, doc]
+            CFBundleTypeName: Word Document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [org.openxmlformats.wordprocessingml.document, com.microsoft.word.doc]
+          - CFBundleTypeExtensions: [odt]
+            CFBundleTypeName: OpenDocument Text
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [org.oasis-open.opendocument.text]
+          - CFBundleTypeExtensions: [txt, rtf, md, markdown, csv, json, xml]
+            CFBundleTypeName: Text Document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.text, public.plain-text, public.rtf, net.daringfireball.markdown, public.comma-separated-values-text, public.json, public.xml]
+          - CFBundleTypeExtensions: [png, jpg, jpeg, gif, tif, tiff, heic, bmp, webp]
+            CFBundleTypeName: Image
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.image, public.png, public.jpeg, com.compuserve.gif, public.tiff, public.heic, com.microsoft.bmp, org.webmproject.webp]
         UTExportedTypeDeclarations:
           - UTTypeConformsTo: [com.apple.package]
             UTTypeDescription: PDFold Workspace

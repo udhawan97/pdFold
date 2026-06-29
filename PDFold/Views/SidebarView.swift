@@ -16,21 +16,22 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .toolbar {
             ToolbarItem {
-                Button { openPDFs() } label: {
+                Button { openFiles() } label: {
                     Image(systemName: "plus")
                 }
-                .help("Add PDFs to workspace")
+                .help("Add source files to workspace")
             }
         }
     }
 
-    private func openPDFs() {
+    private func openFiles() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseFiles = true
-        panel.allowedContentTypes = [.pdf]
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = WorkspaceDocument.importableContentTypes
         if panel.runModal() == .OK {
-            viewModel.importPDFs(urls: panel.urls)
+            viewModel.importFiles(urls: panel.urls)
         }
     }
 }

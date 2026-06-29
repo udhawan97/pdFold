@@ -82,12 +82,16 @@ final class WorkspaceViewModel {
 
     // MARK: - Import
 
-    func importPDFs(urls: [URL]) {
-        for url in urls { addPDF(from: url) }
+    func importFiles(urls: [URL]) {
+        for url in urls { addFile(from: url) }
         rebuild()
     }
 
-    func addPDF(from url: URL) {
+    func importPDFs(urls: [URL]) {
+        importFiles(urls: urls)
+    }
+
+    func addFile(from url: URL) {
         let fileName = url.lastPathComponent
         guard let pdf = engine.loadDocument(from: url) else {
             importError = ImportError(fileName: fileName,
@@ -230,8 +234,10 @@ final class WorkspaceViewModel {
             switch type {
             case .moveTo, .lineTo:
                 result.append(contentsOf: [pts[0].x, pts[0].y])
-            case .curveTo:
+            case .curveTo, .cubicCurveTo:
                 result.append(contentsOf: [pts[2].x, pts[2].y])
+            case .quadraticCurveTo:
+                result.append(contentsOf: [pts[1].x, pts[1].y])
             case .closePath:
                 break
             @unknown default:

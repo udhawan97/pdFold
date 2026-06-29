@@ -39,7 +39,7 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.18), value: viewModel.document.workspace.documents.isEmpty)
-        .onDrop(of: [UTType.pdf, .fileURL], isTargeted: nil, perform: handleDrop)
+        .onDrop(of: WorkspaceDocument.importableContentTypes + [.fileURL], isTargeted: nil, perform: handleDrop)
         .onAppear { viewModel.undoManager = undoManager }
         .onChange(of: undoManager) { _, um in viewModel.undoManager = um }
         // Search popover
@@ -87,12 +87,12 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var mainToolbar: some ToolbarContent {
-        // Leading: add PDFs
+        // Leading: add source files
         ToolbarItem(placement: .navigation) {
-            Button { openPDFs() } label: {
-                Label("Add PDFs", systemImage: "plus.circle")
+            Button { openFiles() } label: {
+                Label("Add Files", systemImage: "plus.circle")
             }
-            .help("Add PDF files (⌘O)")
+            .help("Add PDF, Word, HTML, text, or image files (⌘O)")
             .keyboardShortcut("o", modifiers: .command)
         }
 
@@ -152,23 +152,25 @@ struct ContentView: View {
     // MARK: - Helpers
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        resolvePDFURLs(from: providers) { viewModel.importPDFs(urls: $0) }
+        resolveImportURLs(from: providers) { viewModel.importFiles(urls: $0) }
         return true
     }
 
-    private func openPDFs() {
+    private func openFiles() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseFiles = true
-        panel.allowedContentTypes = [.pdf]
-        if panel.runModal() == .OK { viewModel.importPDFs(urls: panel.urls) }
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = WorkspaceDocument.importableContentTypes
+        if panel.runModal() == .OK { viewModel.importFiles(urls: panel.urls) }
     }
 }
 
 // MARK: - Shared drop helper
 
-func resolvePDFURLs(from providers: [NSItemProvider], completion: @escaping ([URL]) -> Void) {
+func resolveImportURLs(from providers: [NSItemProvider], completion: @escaping ([URL]) -> Void) {
     var urls: [URL] = []
+    let lock = DispatchQueue(label: "PDFold.importURLs")
     let group = DispatchGroup()
     for provider in providers {
         guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { continue }
@@ -177,9 +179,14 @@ func resolvePDFURLs(from providers: [NSItemProvider], completion: @escaping ([UR
             defer { group.leave() }
             guard let data = item as? Data,
                   let url = URL(dataRepresentation: data, relativeTo: nil),
-                  url.pathExtension.lowercased() == "pdf" else { return }
-            urls.append(url)
+                  isSupportedImportURL(url) else { return }
+            lock.sync { urls.append(url) }
         }
     }
     group.notify(queue: .main) { completion(urls) }
+}
+
+func isSupportedImportURL(_ url: URL) -> Bool {
+    guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+    return WorkspaceDocument.importableContentTypes.contains { type.conforms(to: $0) }
 }

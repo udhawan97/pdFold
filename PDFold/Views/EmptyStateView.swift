@@ -23,10 +23,10 @@ struct EmptyStateView: View {
                 }
 
                 VStack(spacing: 8) {
-                    Text("Drag PDFs here")
+                    Text("Drag files here")
                         .font(.title2)
                         .fontWeight(.semibold)
-                    Text("Drop one or more PDF files to start a workspace.\nCombine, annotate, and sign them as one document.")
+                    Text("Drop PDF, Word, HTML, text, or image files to start a workspace.\nCombine, annotate, and sign them as one document.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -35,9 +35,9 @@ struct EmptyStateView: View {
 
                 HStack(spacing: 12) {
                     Button {
-                        openPDFs()
+                        openFiles()
                     } label: {
-                        Label("Open PDFs…", systemImage: "folder.badge.plus")
+                        Label("Open Files…", systemImage: "folder.badge.plus")
                             .frame(minWidth: 130)
                     }
                     .controlSize(.large)
@@ -64,22 +64,22 @@ struct EmptyStateView: View {
                 .padding(12)
                 .animation(.easeInOut(duration: 0.12), value: isDropTargeted)
         )
-        .onDrop(of: [UTType.pdf, .fileURL], isTargeted: $isDropTargeted) { providers in
-            resolvePDFURLs(from: providers) { urls in
-                viewModel.importPDFs(urls: urls)
+        .onDrop(of: WorkspaceDocument.importableContentTypes + [.fileURL], isTargeted: $isDropTargeted) { providers in
+            resolveImportURLs(from: providers) { urls in
+                viewModel.importFiles(urls: urls)
             }
             return true
         }
     }
 
-    private func openPDFs() {
+    private func openFiles() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.pdf]
+        panel.allowedContentTypes = WorkspaceDocument.importableContentTypes
         if panel.runModal() == .OK {
-            viewModel.importPDFs(urls: panel.urls)
+            viewModel.importFiles(urls: panel.urls)
         }
     }
 }

@@ -213,7 +213,7 @@ struct PDFParser {
 
     private static func parseXref(_ s: String) -> [Int: Int] {
         var map: [Int: Int] = [:]
-        var lines = s.components(separatedBy: .newlines)
+        let lines = s.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && $0 != "xref" }
         var i = 0

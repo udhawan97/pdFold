@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and Validate
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Show tool versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Validate property lists
+        run: |
+          plutil -lint PDFold/Resources/Info.plist
+          plutil -lint PDFold/Resources/PDFold.entitlements
+
+      - name: Check installer script syntax
+        run: |
+          zsh -n scripts/install-mac.sh
+          zsh -n scripts/install-mac.command
+
+      - name: Swift Package build
+        run: swift build
+
+      - name: Xcode build
+        run: |
+          xcodebuild \
+            -project PDFold.xcodeproj \
+            -scheme PDFold \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+            build

@@ -4,6 +4,11 @@ import UniformTypeIdentifiers
 
 extension UTType {
     static let pdfoldproj = UTType(exportedAs: "com.ud.PDFold.pdfoldproj")
+    static let docx = UTType(filenameExtension: "docx") ?? UTType(importedAs: "org.openxmlformats.wordprocessingml.document")
+    static let wordDoc = UTType(filenameExtension: "doc") ?? UTType(importedAs: "com.microsoft.word.doc")
+    static let odt = UTType(filenameExtension: "odt") ?? UTType(importedAs: "org.oasis-open.opendocument.text")
+    static let markdown = UTType(filenameExtension: "md") ?? UTType(importedAs: "net.daringfireball.markdown")
+    static let csv = UTType(filenameExtension: "csv") ?? UTType(importedAs: "public.comma-separated-values-text")
 }
 
 struct WorkspacePackage {
@@ -15,7 +20,22 @@ struct WorkspacePackage {
 final class WorkspaceDocument: ReferenceFileDocument {
     typealias Snapshot = WorkspacePackage
 
-    static var readableContentTypes: [UTType] { [.pdfoldproj, .pdf] }
+    static let importableContentTypes: [UTType] = [
+        .pdf,
+        .html,
+        .docx,
+        .wordDoc,
+        .odt,
+        .rtf,
+        .plainText,
+        .markdown,
+        .csv,
+        .json,
+        .xml,
+        .image
+    ]
+
+    static var readableContentTypes: [UTType] { [.pdfoldproj] + importableContentTypes }
     static var writableContentTypes: [UTType] { [.pdfoldproj] }
 
     var workspace: Workspace
@@ -33,10 +53,14 @@ final class WorkspaceDocument: ReferenceFileDocument {
     // MARK: - Open existing
 
     required init(configuration: ReadConfiguration) throws {
-        if configuration.contentType.conforms(to: .pdf),
+        if Self.importableContentTypes.contains(where: { configuration.contentType.conforms(to: $0) }),
            let data = configuration.file.regularFileContents {
             workspace = Workspace()
-            importPDFData(data, filename: configuration.file.preferredFilename ?? "Imported PDF.pdf")
+            try importFileData(
+                data,
+                filename: configuration.file.preferredFilename ?? "Imported Document",
+                contentType: configuration.contentType
+            )
             return
         }
 
@@ -62,17 +86,27 @@ final class WorkspaceDocument: ReferenceFileDocument {
         }
     }
 
-    private func importPDFData(_ data: Data, filename: String) {
+    private func importFileData(_ data: Data, filename: String, contentType: UTType) throws {
+        let pdf = try DocumentImportConverter.pdfDocument(
+            from: data,
+            contentType: contentType,
+            filename: filename,
+            baseURL: nil
+        )
+        importPDFDocument(pdf, filename: filename, fallbackData: data)
+    }
+
+    private func importPDFDocument(_ pdf: PDFDocument, filename: String, fallbackData: Data) {
         let displayName = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
         var member = MemberDocument(displayName: displayName, sourcePDFRef: filename)
-        let pageCount = PDFDocument(data: data)?.pageCount ?? 0
+        let pageCount = pdf.pageCount
         let refs = (0..<pageCount).map { PageRef(memberDocId: member.id, sourcePageIndex: $0) }
 
         member.pageRefs = refs.map(\.id)
         workspace.title = displayName.isEmpty ? "Untitled Workspace" : displayName
         workspace.documents = [member]
         workspace.pageOrder = refs
-        memberPDFData[member.id] = data
+        memberPDFData[member.id] = pdf.dataRepresentation() ?? fallbackData
     }
 
     // MARK: - Snapshot (called on main thread before write)
