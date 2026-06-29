@@ -4,8 +4,9 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 clear
-printf "PDFold Mac Installer\n"
-printf "====================\n"
+printf "PDFold Installer / Updater\n"
+printf "==========================\n"
+printf "\nTip: you can also double-click \"Install or Update PDFold.command\" in the project root.\n\n"
 
 "$SCRIPT_DIR/install-mac.sh"
 STATUS=$?
