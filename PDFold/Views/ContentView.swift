@@ -17,7 +17,7 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if viewModel.document.workspace.documents.isEmpty {
+            if viewModel.memberDocuments.isEmpty {
                 EmptyStateView(viewModel: viewModel)
             } else {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -38,7 +38,7 @@ struct ContentView: View {
                 .toolbar { mainToolbar }
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: viewModel.document.workspace.documents.isEmpty)
+        .animation(.easeInOut(duration: 0.18), value: viewModel.memberDocuments.isEmpty)
         .tint(Color.accentColor)
         .onDrop(of: WorkspaceDocument.importableContentTypes + [.fileURL], isTargeted: nil, perform: handleDrop)
         .onAppear { viewModel.undoManager = undoManager }

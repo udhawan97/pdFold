@@ -46,6 +46,10 @@ final class WorkspaceViewModel {
     var selectedPageRefID: UUID? = nil
     var draggedPageRefID: UUID? = nil
 
+    /// Reactive list of member documents — backed by loadedPDFs so the sidebar
+    /// re-renders whenever documents are added, removed, or reordered.
+    var memberDocuments: [MemberDocument] { loadedPDFs.map(\.0) }
+
     weak var undoManager: UndoManager?
 
     private let engine = PDFKitEngine()

@@ -8,7 +8,7 @@ struct SidebarView: View {
 
     var body: some View {
         List {
-            ForEach(viewModel.document.workspace.documents) { member in
+            ForEach(viewModel.memberDocuments) { member in
                 MemberDocRow(member: member, viewModel: viewModel, expandedDocs: $expandedDocs)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
