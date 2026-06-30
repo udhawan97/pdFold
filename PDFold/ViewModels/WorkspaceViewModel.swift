@@ -549,7 +549,7 @@ final class WorkspaceViewModel {
                             height: size.height)
         let ann = PDFAnnotation(bounds: bounds, forType: .freeText, withProperties: nil)
         ann.contents = ""
-        ann.font = .systemFont(ofSize: 14)
+        ann.font = .systemFont(ofSize: 16)
         ann.fontColor = .dsTextPrimaryNS
         ann.color = .clear
         let border = PDFBorder()

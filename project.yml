@@ -93,3 +93,17 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
         ENABLE_PREVIEWS: YES
+
+  PDFoldTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests/PDFoldTests
+    dependencies:
+      - target: PDFold
+    settings:
+      base:
+        PRODUCT_NAME: PDFoldTests
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
