@@ -44,7 +44,7 @@ enum WorkspaceExportFormat: String, CaseIterable, Identifiable {
         case .pdf: return .pdf
         case .word: return UTType(filenameExtension: "docx") ?? .data
         case .text: return .plainText
-        case .markdown: return UTType(filenameExtension: "md") ?? .plainText
+        case .markdown: return .markdown
         case .html: return .html
         case .png: return .png
         case .jpeg: return .jpeg
@@ -887,21 +887,47 @@ final class WorkspaceViewModel {
 
     private func markdownForDocumentExport() -> String {
         let title = markdownHeadingEscaped(document.workspace.title)
-        let body = loadedPDFs.map { member, pdf in
-            let extractedText = text(from: pdf)
+        var sections: [String] = ["# \(title)"]
+
+        var metadata: [String] = []
+        metadata.append("- Documents: \(loadedPDFs.count)")
+        metadata.append("- Pages: \(document.workspace.pageOrder.count)")
+        if !document.workspace.tags.isEmpty {
+            metadata.append("- Tags: \(document.workspace.tags.map(markdownInlineEscaped).joined(separator: ", "))")
+        }
+        if !document.workspace.comments.isEmpty {
+            metadata.append("- Comments: \(document.workspace.comments.count)")
+        }
+        sections.append("""
+        ## Workspace Summary
+
+        \(metadata.joined(separator: "\n"))
+        """)
+
+        if !document.workspace.comments.isEmpty {
+            let comments = document.workspace.comments.map { comment in
+                "- \(markdownInlineEscaped(comment.body))"
+            }
+            .joined(separator: "\n")
+            sections.append("""
+            ## Workspace Comments
+
+            \(comments)
+            """)
+        }
+
+        let documents = loadedPDFs.map { member, pdf in
+            let extractedText = markdownBodyEscaped(text(from: pdf))
+            let body = extractedText.isEmpty ? "_No extractable text._" : extractedText
             return """
             ## \(markdownHeadingEscaped(member.displayName))
 
-            \(extractedText.isEmpty ? "_No extractable text._" : extractedText)
+            \(body)
             """
         }
-        .joined(separator: "\n\n")
+        sections.append(documents.isEmpty ? "## Documents\n\n_No documents in workspace._" : documents.joined(separator: "\n\n"))
 
-        return """
-        # \(title)
-
-        \(body)
-        """
+        return sections.joined(separator: "\n\n") + "\n"
     }
 
     private func htmlForDocumentExport() -> String {
@@ -996,7 +1022,29 @@ final class WorkspaceViewModel {
     }
 
     private func markdownHeadingEscaped(_ value: String) -> String {
-        value.replacingOccurrences(of: "#", with: "\\#")
+        markdownInlineEscaped(value).replacingOccurrences(of: "#", with: "\\#")
+    }
+
+    private func markdownInlineEscaped(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "[", with: "\\[")
+            .replacingOccurrences(of: "]", with: "\\]")
+            .replacingOccurrences(of: "`", with: "\\`")
+            .replacingOccurrences(of: "*", with: "\\*")
+            .replacingOccurrences(of: "_", with: "\\_")
+    }
+
+    private func markdownBodyEscaped(_ value: String) -> String {
+        value
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                guard line.hasPrefix("#") else { return String(line) }
+                return "\\" + line
+            }
+            .joined(separator: "\n")
     }
 
     private func htmlEscaped(_ value: String) -> String {

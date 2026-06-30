@@ -33,7 +33,7 @@
 <p align="center">
   <img alt="Release hardened" src="https://img.shields.io/badge/quality-release%20hardened-10B981?style=for-the-badge">
   &nbsp;&nbsp;
-  <img alt="Multi-format export" src="https://img.shields.io/badge/export-PDF%20%7C%20DOCX%20%7C%20TXT%20%7C%20HTML-0EA5E9?style=for-the-badge">
+  <img alt="Multi-format export" src="https://img.shields.io/badge/export-PDF%20%7C%20DOCX%20%7C%20MD%20%7C%20TXT%20%7C%20HTML-0EA5E9?style=for-the-badge">
   &nbsp;&nbsp;
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
 </p>
@@ -115,7 +115,7 @@ PDFold brings that fragmented process into one focused workspace, making documen
 | ✍️ | Mark up | Highlight, note, editable text overlay, ink, underline, strikeout, and signature tools |
 | 🏷️ | Track | Workspace tags, workspace comments, and an inspector markup list for reviewing annotations |
 | 💾 | Save | Editable `.pdfoldproj` document packages with workspace metadata, tags, comments, signatures, and source PDF data |
-| 📤 | Export | PDF, Word `.docx`, text, HTML, PNG pages, JPEG pages, or printable workspace |
+| 📤 | Export | PDF, Word `.docx`, Markdown `.md`, text, HTML, PNG pages, JPEG pages, or printable workspace |
 | 🔑 | Unlock | Password-protected PDF prompt using native PDFKit behavior |
 | 🛡️ | Protect | Local-first by design; your files stay on your Mac |
 
@@ -133,12 +133,12 @@ PDFold brings that fragmented process into one focused workspace, making documen
 
 ```mermaid
 flowchart LR
-    Files["Source files<br/>PDF, Word, HTML, text, images"]
+    Files["Source files<br/>PDF, Word, HTML, Markdown, text, images"]
     UI["SwiftUI app<br/>sidebar, reader, inspector"]
     State["Workspace state<br/>documents, pages, tags, comments"]
     Engine["PDFKit engine<br/>convert, compose, annotate"]
     Package["Local package<br/>.pdfoldproj"]
-    Export["Export artifacts<br/>PDF, DOCX, TXT, HTML, PNG, JPG"]
+    Export["Export artifacts<br/>PDF, DOCX, MD, TXT, HTML, PNG, JPG"]
 
     Files --> UI
     UI --> State
@@ -271,7 +271,7 @@ PDFold is a native SwiftUI document app. The setup script uses `xcodebuild` to p
 3. Read, reorder, annotate, tag, comment, search, sign, rotate, or remove pages.
 4. Review workspace metadata, tags, comments, and markup in the inspector.
 5. Save a `.pdfoldproj` workspace if you want to keep editing later.
-6. Export a PDF, Word document, text file, HTML file, or page images when you need to share the workspace in a useful format.
+6. Export a PDF, Word document, Markdown file, text file, HTML file, or page images when you need to share the workspace in a useful format.
 
 ## Technical Layout
 
@@ -365,7 +365,7 @@ Before shipping a build, verify the app from both sides: the developer path and 
 | 🏷️ | Inspector | Tags, comments, info, and markup tabs reflect workspace state |
 | ✍️ | Annotation | Highlight, note, editable text, ink, underline, strikeout, and undo behavior work |
 | 🗂️ | Pages | Page rotation, deletion, and reordering behave correctly |
-| 📤 | Export | PDF, Word, text, HTML, PNG, and JPEG exports complete successfully |
+| 📤 | Export | PDF, Word, Markdown, text, HTML, PNG, and JPEG exports complete successfully |
 | 🚀 | Launch | Desktop launcher opens the installed app after running the installer |
 
 For v2 release preparation, the local verification pass should include:
