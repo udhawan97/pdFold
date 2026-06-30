@@ -53,24 +53,24 @@
     <text x="32" y="146" class="body">Office documents, HTML files,</text>
     <text x="32" y="168" class="body">text, data, and images.</text>
 
-    <g transform="translate(32 214)">
-      <rect x="0" y="0" width="62" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
-      <text x="31" y="20" text-anchor="middle" class="chip" fill="#BAE6FD">PDF</text>
-      <rect x="74" y="0" width="70" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
-      <text x="109" y="20" text-anchor="middle" class="chip" fill="#BAE6FD">DOCX</text>
-      <rect x="156" y="0" width="70" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
-      <text x="191" y="20" text-anchor="middle" class="chip" fill="#BAE6FD">HTML</text>
-      <rect x="238" y="0" width="48" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
-      <text x="262" y="20" text-anchor="middle" class="chip" fill="#BAE6FD">MD</text>
+    <g transform="translate(32 218)">
+      <rect x="0" y="0" width="46" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
+      <text x="23" y="20" text-anchor="middle" class="chip" fill="#BAE6FD">PDF</text>
+      <rect x="56" y="0" width="56" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
+      <text x="84" y="20" text-anchor="middle" class="chip" fill="#BAE6FD">DOCX</text>
+      <rect x="122" y="0" width="55" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
+      <text x="149.5" y="20" text-anchor="middle" class="chip" fill="#BAE6FD">HTML</text>
+      <rect x="187" y="0" width="40" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
+      <text x="207" y="20" text-anchor="middle" class="chip" fill="#BAE6FD">MD</text>
 
-      <rect x="0" y="44" width="58" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
-      <text x="29" y="64" text-anchor="middle" class="chip" fill="#BAE6FD">TXT</text>
-      <rect x="70" y="44" width="58" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
-      <text x="99" y="64" text-anchor="middle" class="chip" fill="#BAE6FD">CSV</text>
-      <rect x="140" y="44" width="62" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
-      <text x="171" y="64" text-anchor="middle" class="chip" fill="#BAE6FD">JSON</text>
-      <rect x="214" y="44" width="72" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
-      <text x="250" y="64" text-anchor="middle" class="chip" fill="#BAE6FD">Images</text>
+      <rect x="0" y="44" width="46" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
+      <text x="23" y="64" text-anchor="middle" class="chip" fill="#BAE6FD">TXT</text>
+      <rect x="56" y="44" width="46" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
+      <text x="79" y="64" text-anchor="middle" class="chip" fill="#BAE6FD">CSV</text>
+      <rect x="112" y="44" width="55" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
+      <text x="139.5" y="64" text-anchor="middle" class="chip" fill="#BAE6FD">JSON</text>
+      <rect x="177" y="44" width="66" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
+      <text x="210" y="64" text-anchor="middle" class="chip" fill="#BAE6FD">Images</text>
     </g>
   </g>
 
@@ -83,28 +83,28 @@
     <text x="32" y="146" class="body">pages, search, annotate, tag,</text>
     <text x="32" y="168" class="body">comment, and place signatures.</text>
 
-    <g transform="translate(46 204)">
-      <rect x="0" y="0" width="56" height="98" rx="12" fill="#0F172A" stroke="#274155"/>
-      <rect x="13" y="17" width="30" height="18" rx="5" fill="#334155"/>
-      <rect x="13" y="45" width="30" height="18" rx="5" fill="#334155"/>
-      <rect x="13" y="74" width="30" height="8" rx="4" fill="#64748B"/>
+    <g transform="translate(39 196)">
+      <rect x="0" y="12" width="52" height="84" rx="12" fill="#0F172A" stroke="#274155"/>
+      <rect x="11" y="26" width="30" height="16" rx="5" fill="#334155"/>
+      <rect x="11" y="50" width="30" height="16" rx="5" fill="#334155"/>
+      <rect x="11" y="76" width="22" height="7" rx="3.5" fill="#64748B"/>
 
-      <rect x="84" y="-20" width="94" height="138" rx="14" fill="#F8FAFC" stroke="#CBD5E1"/>
-      <rect x="108" y="8" width="46" height="9" rx="4.5" fill="#94A3B8"/>
-      <rect x="108" y="37" width="46" height="7" rx="3.5" fill="#CBD5E1"/>
-      <rect x="108" y="62" width="46" height="8" rx="4" fill="#FACC15" opacity="0.78"/>
-      <path d="M109 96 C124 86 139 109 155 96" stroke="#0F766E" stroke-width="4" stroke-linecap="round"/>
+      <rect x="76" y="0" width="88" height="104" rx="13" fill="#F8FAFC" stroke="#CBD5E1"/>
+      <rect x="98" y="20" width="44" height="9" rx="4.5" fill="#94A3B8"/>
+      <rect x="98" y="42" width="44" height="7" rx="3.5" fill="#CBD5E1"/>
+      <rect x="98" y="62" width="44" height="8" rx="4" fill="#FACC15" opacity="0.78"/>
+      <path d="M99 86 C112 78 125 96 142 86" stroke="#0F766E" stroke-width="4" stroke-linecap="round"/>
 
-      <rect x="206" y="0" width="56" height="98" rx="12" fill="#0F172A" stroke="#274155"/>
-      <circle cx="224" cy="26" r="5" fill="#2DD4BF"/>
-      <rect x="236" y="22" width="15" height="7" rx="3.5" fill="#475569"/>
-      <circle cx="224" cy="52" r="5" fill="#A78BFA"/>
-      <rect x="236" y="48" width="15" height="7" rx="3.5" fill="#475569"/>
-      <circle cx="224" cy="78" r="5" fill="#F59E0B"/>
-      <rect x="236" y="74" width="15" height="7" rx="3.5" fill="#475569"/>
+      <rect x="188" y="12" width="52" height="84" rx="12" fill="#0F172A" stroke="#274155"/>
+      <circle cx="204" cy="32" r="5" fill="#2DD4BF"/>
+      <rect x="216" y="28" width="15" height="7" rx="3.5" fill="#475569"/>
+      <circle cx="204" cy="56" r="5" fill="#A78BFA"/>
+      <rect x="216" y="52" width="15" height="7" rx="3.5" fill="#475569"/>
+      <circle cx="204" cy="80" r="5" fill="#F59E0B"/>
+      <rect x="216" y="76" width="15" height="7" rx="3.5" fill="#475569"/>
     </g>
 
-    <g transform="translate(36 318)">
+    <g transform="translate(46 320)">
       <rect x="0" y="0" width="54" height="28" rx="14" fill="#064E3B" stroke="#2DD4BF"/>
       <text x="27" y="19" text-anchor="middle" class="chip" fill="#CCFBF1">Tags</text>
       <rect x="66" y="0" width="92" height="28" rx="14" fill="#064E3B" stroke="#2DD4BF"/>
@@ -123,22 +123,22 @@
     <text x="32" y="146" class="body">Word, text, HTML, and image</text>
     <text x="32" y="168" class="body">outputs from the workspace.</text>
 
-    <g transform="translate(32 214)">
-      <rect x="0" y="0" width="58" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
-      <text x="29" y="20" text-anchor="middle" class="chip" fill="#EDE9FE">PDF</text>
-      <rect x="70" y="0" width="66" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
-      <text x="103" y="20" text-anchor="middle" class="chip" fill="#EDE9FE">DOCX</text>
-      <rect x="148" y="0" width="48" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
-      <text x="172" y="20" text-anchor="middle" class="chip" fill="#EDE9FE">MD</text>
-      <rect x="208" y="0" width="54" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
-      <text x="235" y="20" text-anchor="middle" class="chip" fill="#EDE9FE">TXT</text>
+    <g transform="translate(32 218)">
+      <rect x="0" y="0" width="46" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
+      <text x="23" y="20" text-anchor="middle" class="chip" fill="#EDE9FE">PDF</text>
+      <rect x="56" y="0" width="56" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
+      <text x="84" y="20" text-anchor="middle" class="chip" fill="#EDE9FE">DOCX</text>
+      <rect x="122" y="0" width="40" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
+      <text x="142" y="20" text-anchor="middle" class="chip" fill="#EDE9FE">MD</text>
+      <rect x="172" y="0" width="46" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
+      <text x="195" y="20" text-anchor="middle" class="chip" fill="#EDE9FE">TXT</text>
 
-      <rect x="0" y="44" width="64" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
-      <text x="32" y="64" text-anchor="middle" class="chip" fill="#EDE9FE">HTML</text>
-      <rect x="76" y="44" width="82" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
-      <text x="117" y="64" text-anchor="middle" class="chip" fill="#EDE9FE">PNG/JPG</text>
-      <rect x="170" y="44" width="78" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
-      <text x="209" y="64" text-anchor="middle" class="chip" fill="#EDE9FE">Print</text>
+      <rect x="0" y="44" width="55" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
+      <text x="27.5" y="64" text-anchor="middle" class="chip" fill="#EDE9FE">HTML</text>
+      <rect x="65" y="44" width="74" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
+      <text x="102" y="64" text-anchor="middle" class="chip" fill="#EDE9FE">PNG/JPG</text>
+      <rect x="149" y="44" width="52" height="30" rx="15" fill="#2E1065" stroke="#A78BFA"/>
+      <text x="175" y="64" text-anchor="middle" class="chip" fill="#EDE9FE">Print</text>
     </g>
   </g>
 
