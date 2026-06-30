@@ -7,11 +7,11 @@
 <h1 align="center">PDFold</h1>
 
 <p align="center">
-  <em>A native macOS document workspace for turning a pile of files into one civilized PDF workflow.</em>
+  <em>A native macOS workspace for turning scattered documents into one organized PDF workflow.</em>
 </p>
 
 <p align="center">
-  <strong>Native Mac document assembly, markup, signing, search, and export.</strong>
+  <strong>Import, arrange, annotate, sign, search, save, and export without sending your files anywhere.</strong>
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
   &nbsp;&nbsp;
   <img alt="Version 2.0" src="https://img.shields.io/badge/version-2.0-2563EB?style=for-the-badge">
   &nbsp;&nbsp;
-  <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?style=for-the-badge&logo=swift&logoColor=white">
+  <img alt="Zero compile installer" src="https://img.shields.io/badge/install-zero%20compile-10B981?style=for-the-badge">
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@
   &nbsp;&nbsp;
   <img alt="PDFKit" src="https://img.shields.io/badge/engine-PDFKit-10B981?style=for-the-badge">
   &nbsp;&nbsp;
-  <img alt="Local installer" src="https://img.shields.io/badge/setup-local%20installer-7C3AED?style=for-the-badge">
+  <img alt="One line setup" src="https://img.shields.io/badge/setup-one%20line-7C3AED?style=for-the-badge">
 </p>
 
 <p align="center">
@@ -56,68 +56,64 @@
 
 ## Quick Start
 
-**Prerequisite:** [Xcode 15+](https://developer.apple.com/xcode/) on macOS 14 Sonoma or newer.
-
-1. Clone or download this repository
-2. Double-click **`Install or Update PDFold.app`** in the project folder — it builds, signs, and installs the app to `~/Applications`
-3. Open **PDFold** from the Desktop shortcut or `~/Applications/PDFold.app`
-
-To update: pull the latest code and double-click the installer again.
-
-<details>
-<summary>Terminal path</summary>
+Paste this into Terminal:
 
 ```zsh
-git clone https://github.com/udhawan97/PDFold.git
-cd PDFold
-./scripts/install-mac.sh
+curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | zsh
 ```
+
+The installer downloads the latest prebuilt app, places it in `~/Applications/PDFold.app`, and adds two Desktop shortcuts: **PDFold** and **Update PDFold**.
+
+No Xcode. No GitHub account. No compile step. Just paste, install, and get back to the documents.
+
+<details>
+<summary>How to open Terminal</summary>
+
+Open **Applications** -> **Utilities** -> **Terminal**, paste the command above, and press Return.
 </details>
 
 ---
 
 ## The Short Version
 
-> Personal pain point, professionally over-engineered into a native Mac app.
+PDFold is a local-first Mac app for the moment when "just send me the PDF" turns into six PDFs, two screenshots, a Word document, a form, and one file named `final_final_revised_ACTUAL.pdf`.
 
-PDFold is a local-first macOS application that transforms scattered documents into a single, organized PDF workspace. It supports importing PDFs, Word documents, HTML, Markdown, text files, structured data files, and images, then provides tools to read, organize, annotate, tag, comment, sign, search, save, print, and export them efficiently.
+It gives those files a calm place to live. Drop in documents, combine them into one workspace, reorder pages, add notes and markup, place signatures, search the full set, save your project, and export the result in the format you need.
 
-I built PDFold to solve a real workflow problem I kept running into: important documents rarely arrive as one clean, final file. They often come as multiple attachments, revisions, screenshots, forms, and supporting files that need to be reviewed and shared together.
-
-PDFold brings that fragmented process into one focused workspace, making document handling faster, cleaner, and easier to manage.
+Everything happens on your Mac. No account, no upload queue, and no mystery cloud detour.
 
 ## At A Glance
 
 |  | Signal | Why It Matters |
 | --- | --- | --- |
-| 🖥️ | Native macOS | SwiftUI, PDFKit, document-based app architecture, sandboxed file access |
-| 🔒 | Local-first | No accounts, no upload pipeline, no "where did my documents go?" subplot |
-| 🧭 | Real workflow | Import, combine, annotate, tag, comment, search, sign, save, print, export |
-| ⚡ | Simple setup | Download or clone the repo, then run the local installer |
-| ✅ | Release-ready | Installer build, crash hardening, syntax checks, and README hygiene are part of the project workflow |
-| 🧑‍💼 | Portfolio-ready | Clear product problem, practical engineering, user-facing polish |
+| 🖥️ | Native macOS | Built with SwiftUI, PDFKit, document-based app architecture, and sandboxed file access |
+| 📥 | Broad import support | Handles PDFs, Word documents, HTML, Markdown, text files, structured data, and images |
+| 🧭 | Real workflow tools | Combine, reorder, rotate, delete, annotate, tag, comment, sign, search, save, print, and export |
+| 🔒 | Local-first privacy | Files stay on the user's Mac instead of being uploaded to a service |
+| ⚡ | Simple installation | One pasted command installs the prebuilt app and creates Desktop shortcuts |
+| 🧱 | Release-minded engineering | Includes installer automation, crash hardening, import safety, export checks, and CI coverage |
 
 ## Who This Is For
 
 |  | Audience | What to Notice |
 | --- | --- | --- |
-| 🧑‍💼 | Recruiters | A polished native macOS app with a clear user problem, visible product thinking, and practical engineering choices. |
-| 🧑‍💻 | Developers | SwiftUI, PDFKit, custom import conversion, metadata persistence, multi-format export, undo-aware page operations, crash hardening, and installer automation. |
-| 📎 | Actual humans with PDFs | Drag files in, make sense of them, sign what needs signing, export one clean document, and move on with your day. |
+| 📎 | People with document chaos | Pull scattered files into one workspace, clean them up, and export something usable |
+| 🧑‍💼 | Recruiters and hiring teams | A polished desktop product with clear user empathy, practical scope, and visible product judgment |
+| 🧑‍💻 | Engineers | SwiftUI, PDFKit, file conversion, document persistence, undo-aware page operations, export pipelines, sandboxing, and installer automation |
 
 ## What It Does
 
 |  | Capability | Details |
 | --- | --- | --- |
-| 📥 | Import | PDFs, Word docs, HTML, RTF, Markdown, plain text, CSV, JSON, XML, and images |
-| 🗂️ | Organize | Combine files, reorder source documents, move pages within documents, rotate pages, and delete pages |
-| 📖 | Read | Native PDF canvas, generated section banners, table of contents, sidebar navigation, inspector views, and search |
-| ✍️ | Mark up | Highlight, note, editable text overlay, ink, underline, strikeout, and signature tools |
-| 🏷️ | Track | Workspace tags, workspace comments, and an inspector markup list for reviewing annotations |
-| 💾 | Save | Local workspace state with metadata, tags, comments, signatures, and source PDF data |
-| 📤 | Export | PDF, Word `.docx`, Markdown `.md`, text, HTML, PNG pages, JPEG pages, or printable workspace |
+| 📥 | Import | PDFs, Word docs, HTML, RTF, Markdown, plain text, CSV, JSON, XML, and common image formats |
+| 🗂️ | Organize | Combine files, reorder source documents, move pages, rotate pages, delete pages, and keep navigation aligned |
+| 📖 | Read | Native PDF canvas, generated section banners, table of contents, sidebar navigation, inspector views, and workspace search |
+| ✍️ | Mark up | Highlight, note, editable text overlay, ink, underline, strikeout, and drawn signature placement |
+| 🏷️ | Track | Workspace tags, workspace comments, document metadata, and an inspector list for reviewing annotations |
+| 💾 | Save | Persistent `.pdfoldproj` workspaces with metadata, comments, tags, signatures, page order, and source PDF data |
+| 📤 | Export | PDF, Word `.docx`, Markdown `.md`, plain text, HTML, PNG pages, JPEG pages, or print-ready output |
 | 🔑 | Unlock | Password-protected PDF prompt using native PDFKit behavior |
-| 🛡️ | Protect | Local-first by design; your files stay on your Mac |
+| 🛡️ | Protect | Local-first design with sandboxed file access and no network upload pipeline |
 
 ## Product Flow
 
@@ -126,7 +122,7 @@ PDFold brings that fragmented process into one focused workspace, making documen
 </p>
 
 <p align="center">
-  <em>From scattered files to a local editable workspace, then out to clean shareable artifacts.</em>
+  <em>Bring in messy inputs, work with them as one local workspace, and export a clean result.</em>
 </p>
 
 ## Architecture
@@ -152,68 +148,67 @@ flowchart LR
 </p>
 
 <p align="center">
-  <em>High-level flow first, then the implementation view: SwiftUI views, observable workspace state, PDFKit services, local persistence, exports, and release guardrails.</em>
+  <em>SwiftUI handles the workspace experience, PDFKit powers document composition and annotation, and local persistence keeps projects editable.</em>
 </p>
 
 |  | Layer | Responsibility |
 | --- | --- | --- |
-| 🖥️ | SwiftUI app | Presents the workspace, sidebar, reader, tools, search, and export actions |
-| ⚙️ | Document engine | Converts imports, builds the combined PDF, manages annotations, and writes exports |
-| 💾 | Local storage | Keeps workspace state and generated output on the user's Mac |
+| 🖥️ | SwiftUI app | Presents the document workspace, sidebar, reader, annotation tools, search, inspector, and export actions |
+| ⚙️ | Document engine | Converts imports, composes PDFs, manages page state, preserves annotations, and writes export formats |
+| 💾 | Local storage | Saves workspace metadata, page order, source PDF data, comments, tags, signatures, and generated output |
 
 ## Why It Matters
 
-Most PDF tools either feel like a full-time job or only solve one tiny part of the workflow. PDFold aims for the middle: focused enough to be fast, native enough to feel at home on macOS, and practical enough to handle the document chaos that shows up in real life.
+Most PDF tools live at one of two extremes: too tiny to handle a real workflow, or so large that opening them feels like clocking in for a shift. PDFold aims for the useful middle.
 
-The app is intentionally local-first. No account. No upload step. No mysterious cloud conveyor belt. Just your Mac, your files, and a small amount of hard-earned order.
+It is built for document assembly as a workflow, not just PDF viewing as a feature. The goal is simple: take the pile, make sense of it, mark what matters, and send out one clean artifact.
+
+For reviewers, the interesting part is not just that PDFold works. It is that the app ties together product thinking, native Mac engineering, file handling, persistence, export reliability, and distribution polish into one coherent project.
 
 ## Release Status
 
-PDFold is prepared for version `2.0`: a release-hardened local-first macOS workflow for collecting scattered documents, turning them into one workspace, marking them up, tracking workspace context, and exporting clean PDF, Word, Markdown, text, HTML, and image artifacts.
+PDFold v2 is a release-hardened local-first macOS app for collecting scattered documents, turning them into one editable workspace, marking them up, tracking context, and exporting clean deliverables.
 
 |  | Detail | Status |
 | --- | --- | --- |
 | 🚢 | Version | `2.0` |
 | 🧾 | App metadata | `CFBundleShortVersionString` `2.0`, `CFBundleVersion` `2` |
-| ⚡ | Install path | Download or clone the repo, then run the local installer/updater |
+| ⚡ | Install path | One-line installer downloads the latest prebuilt GitHub release |
 | 🧪 | Smoke test | `./scripts/install-mac.sh --no-open` |
-| 🔐 | Signing | Local ad-hoc signing for development/source distribution |
-| 📦 | Distribution style | Source distribution; no notarized binary is included |
+| 🔐 | Signing | Local ad-hoc signing for source and release packaging |
+| 📦 | Distribution style | Prebuilt release zip, with source build fallback for developers |
 
 ### What Changed In v2
 
 |  | Area | Release Hardening |
 | --- | --- | --- |
-| 🏷️ | Workspace context | Tags and workspace comments are persisted with saved workspaces, with inspector tabs for metadata, tags, comments, and markup review. |
-| ✍️ | Text editing | The text tool can create clean free-text boxes or convert selected PDF text into an editable overlay. |
-| 📝 | Markdown export | Workspaces can export `.md` files with a workspace summary, comments, document sections, and extracted PDF text. |
-| 🖊️ | Ink stability | Ink annotations now use PDFKit-native paths, and malformed legacy ink data is sanitized before display to prevent PDFKit drawing crashes. |
-| 🛡️ | Import safety | Import failures now show actionable messages, oversized files are rejected before loading, and dragged/selected files use security-scoped access. |
-| 🔐 | Protected PDFs | Password-protected documents unlock from the already-loaded PDF instance instead of reopening the file after sandbox access may have ended. |
-| ↩️ | Undo reliability | Page deletion and page reordering undo restore serialized PDF state, not only sidebar metadata. |
-| 🗂️ | Page order | Reordered pages now rebuild the workspace page map correctly, keeping navigation, export, signatures, and saved projects aligned. |
-| 📤 | Export reliability | PDF and multi-format exports now report write failures instead of failing silently. |
-| 🧯 | Crash hardening | Document reordering, page operations, PDF serialization, HTML rendering, image export, and signature storage now guard failure cases instead of assuming ideal input. |
+| 🏷️ | Workspace context | Tags and workspace comments persist with saved projects and appear in dedicated inspector tabs |
+| ✍️ | Text editing | The text tool can create clean free-text boxes or convert selected PDF text into editable overlays |
+| 📝 | Markdown export | Workspaces export `.md` files with a summary, comments, document sections, and extracted PDF text |
+| 🖊️ | Ink stability | Ink annotations use PDFKit-native paths, with malformed legacy ink data sanitized before display |
+| 🛡️ | Import safety | Import failures show actionable messages, oversized files are rejected early, and selected files use security-scoped access |
+| 🔐 | Protected PDFs | Password-protected documents unlock from the already-loaded PDF instance for safer sandbox behavior |
+| ↩️ | Undo reliability | Page deletion and reordering undo restore serialized PDF state, not just sidebar metadata |
+| 🗂️ | Page order | Reordered pages rebuild the workspace page map so navigation, export, signatures, and saved projects stay aligned |
+| 📤 | Export reliability | PDF and multi-format exports report write failures instead of failing quietly |
+| 🧯 | Crash hardening | Reordering, page operations, PDF serialization, HTML rendering, image export, and signature storage guard failure cases |
 
 ## Simplest Local Setup
 
-The installer is one double-click after the project is on your Mac.
+Paste one command into Terminal:
 
-|  | Step | Action |
-| --- | --- | --- |
-| 📦 | 1 | Download or clone this repository from GitHub |
-| ⚡ | 2 | Open the project folder in Finder and double-click `Install or Update PDFold.app` |
-| 🏗️ | 3 | Let it build PDFold locally |
-| 🚀 | 4 | Use the `PDFold` Desktop launcher it creates |
+```zsh
+curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | zsh
+```
 
-That is it. The installer puts the app in `~/Applications/PDFold.app`, refreshes a Desktop launcher named `PDFold`, signs the local build ad-hoc, opens the app, and writes a setup log to `.build/install.log`.
+The installer downloads the latest prebuilt `PDFold.zip` from GitHub Releases, installs `PDFold.app` to `~/Applications`, creates Desktop shortcuts, removes download quarantine metadata, and opens the app.
 
-No admin password, no global package manager, no "please install five unrelated things because a PDF app sneezed" detour.
+The normal path does not require Xcode, Apple's Command Line Tools, a package manager, or a GitHub account. The installer is intentionally uneventful, which is exactly how installers should behave.
 
-Important GitHub note: clicking installer files inside the GitHub README opens them in the browser. Browsers cannot run local Mac installer scripts or apps from a README link. Download or clone the repository first, then double-click the installer app from Finder.
+Important release note: the zero-compile installer depends on a published GitHub release containing `PDFold.zip`. If no prebuilt release is available, the installer falls back to a source build and macOS may ask for Apple's free Command Line Tools.
 
 <details>
-<summary>Fresh install from Terminal</summary>
+<summary>Developer source install</summary>
 
 ```zsh
 git clone https://github.com/udhawan97/PDFold.git
@@ -224,16 +219,16 @@ cd PDFold
 
 ## Updating The App
 
-To update PDFold locally:
+Double-click **Update PDFold** on the Desktop, or paste the installer command again:
 
-1. Pull the latest project code, or download a fresh copy from GitHub.
-2. Open the project folder in Finder.
-3. Double-click `Install or Update PDFold.app` again.
+```zsh
+curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | zsh
+```
 
-The installer is intentionally repeatable. If PDFold is already installed, it rebuilds the latest code, closes the running app if needed, replaces `~/Applications/PDFold.app`, refreshes the Desktop launcher, and opens the updated app.
+If PDFold is already installed, the updater closes the running app if needed, replaces `~/Applications/PDFold.app`, refreshes both Desktop shortcuts, removes quarantine metadata, and opens the updated app.
 
 <details>
-<summary>Prefer Terminal?</summary>
+<summary>Developer source update</summary>
 
 ```zsh
 git pull
@@ -248,7 +243,7 @@ Useful terminal options:
 ./scripts/install-mac.sh --help
 ```
 
-The terminal script performs the same install/update flow as the double-click version.
+The local script can install a release build, package a release zip, or build from the current source checkout.
 </details>
 
 ## Requirements
@@ -256,23 +251,24 @@ The terminal script performs the same install/update flow as the double-click ve
 |  | Requirement | Version |
 | --- | --- | --- |
 | 🍎 | macOS | 14 Sonoma or newer |
-| 🧰 | Xcode | 15 or newer |
-| 🦅 | Swift | 5.9 |
+| 📦 | Normal install | Published `PDFold.zip` release |
+| 🧰 | Source build fallback | Apple Command Line Tools with Swift 5.9+ |
 
 <details>
-<summary>Why Xcode?</summary>
+<summary>Why might Command Line Tools appear?</summary>
 
-PDFold is a native SwiftUI document app. The setup script uses `xcodebuild` to produce a real `.app` bundle, copy it into your user Applications folder, apply a local ad-hoc signature, and create a Desktop launcher that behaves like a normal Mac app.
+The normal installer downloads a prebuilt `.app`. If no release artifact is available, PDFold falls back to a source build with SwiftPM, which requires Apple's free Command Line Tools. Full Xcode is not required.
 </details>
 
 ## Daily Workflow
 
 1. Launch PDFold.
-2. Drag in one or more files.
-3. Read, reorder, annotate, tag, comment, search, sign, rotate, or remove pages.
-4. Review workspace metadata, tags, comments, and markup in the inspector.
-5. Save the workspace if you want to keep editing later.
-6. Export a PDF, Word document, Markdown file, text file, HTML file, or page images when you need to share the workspace in a useful format.
+2. Drag in PDFs, Word documents, text files, web exports, data files, or images.
+3. Reorder documents and pages until the workspace matches the story you need to tell.
+4. Highlight, annotate, add notes, tag the workspace, capture comments, or place a drawn signature.
+5. Search across the combined document set when the one detail you need is hiding on page 37.
+6. Save the workspace if you want to keep editing later.
+7. Export a PDF, Word document, Markdown file, text file, HTML file, or page images.
 
 ## Technical Layout
 
@@ -280,14 +276,16 @@ PDFold is a native SwiftUI document app. The setup script uses `xcodebuild` to p
 PDFold/
   App/             App entry point and command wiring
   Document/        macOS document package read/write support
-  Engine/          PDF loading, conversion, concatenation, manifests, export helpers
-  Models/          Workspace, page, annotation, and signature data models
+  Engine/          PDF loading, conversion, composition, manifests, export helpers
+  Models/          Workspace, page, annotation, comment, and signature data models
   Resources/       App metadata, entitlements, and asset catalogs
   ViewModels/      Workspace state, document operations, search, export, undo
   Views/           SwiftUI interface components
 scripts/
   install-mac.command  Compatibility double-click installer
-  install-mac.sh       Terminal installer
+  install-mac.sh       Release-first installer, source builder, and release packager
+install.sh
+  Hosted one-line bootstrap
 Install or Update PDFold.app
   Finder installer/updater that bypasses Terminal shell startup
 Install or Update PDFold.command
@@ -302,25 +300,19 @@ Open the project in Xcode:
 open PDFold.xcodeproj
 ```
 
-Build from the command line:
+Build with SwiftPM:
 
 ```zsh
-xcodebuild -project PDFold.xcodeproj -scheme PDFold -configuration Debug build
+swift build
 ```
 
-Run the same release build path used by the installer:
+Create the same release zip used by GitHub Releases:
 
 ```zsh
-xcodebuild \
-  -project PDFold.xcodeproj \
-  -scheme PDFold \
-  -configuration Release \
-  -derivedDataPath .build/xcode \
-  CODE_SIGNING_ALLOWED=NO \
-  build
+./scripts/install-mac.sh --package-only --package /tmp/PDFold.zip
 ```
 
-Or use the installer in no-open mode:
+Install from the current source checkout without opening the app:
 
 ```zsh
 ./scripts/install-mac.sh --no-open
@@ -328,17 +320,17 @@ Or use the installer in no-open mode:
 
 ## Privacy & Security
 
-PDFold is a local-first Mac app. Documents are opened, edited, saved, and exported on your machine.
+PDFold is local-first by design. Documents are opened, edited, saved, and exported on your machine.
 
-The app uses macOS sandboxing and file access through user-selected documents. In normal-person English: it handles the files you give it, not your entire digital attic.
+The app uses macOS sandboxing and file access through user-selected documents. In plain English: PDFold works with the files you hand it, not your entire digital attic.
 
-Release v2 also adds practical guardrails around the most failure-prone paths:
+Release v2 also includes practical guardrails around failure-prone paths:
 
 - Files larger than 512 MB are rejected before loading to avoid memory pressure from accidental giant imports.
 - PDF serialization failures preserve existing package data or report an actionable import error instead of writing broken workspace state.
 - Malformed legacy ink annotations are rebuilt before display so PDFKit does not crash while drawing them.
 - Markdown exports include workspace metadata, comments, document headings, and extracted document text.
-- HTML rendering, image export, page operations, and signature storage now guard invalid or unavailable state.
+- HTML rendering, image export, page operations, and signature storage guard invalid or unavailable state.
 - Export failures are surfaced to the user, including failed writes and image-rendering errors.
 
 <details>
@@ -354,33 +346,35 @@ These entitlements allow sandboxed read/write access to files selected by the us
 
 ## Quality Checks
 
-Before shipping a build, verify the app from both sides: the developer path and the human-with-documents path.
+Before shipping a build, verify both the developer path and the human-with-documents path.
 
 |  | Check | What To Verify |
 | --- | --- | --- |
-| ✅ | Build | `xcodebuild` completes for the `PDFold` scheme |
-| 🧪 | Installer smoke test | `./scripts/install-mac.sh --no-open` builds, signs, installs, and refreshes the launcher |
-| 📥 | Import | Drag-and-drop works with multiple supported file types |
+| ✅ | Build | `swift build` completes |
+| 🧪 | Installer smoke test | `./scripts/install-mac.sh --no-open` installs the release or builds, signs, installs, and refreshes launchers |
+| 📦 | Release package | `./scripts/install-mac.sh --package-only --package /tmp/PDFold.zip` creates the release artifact |
+| 📥 | Import | Drag-and-drop works with supported file types |
 | 🔑 | Protected PDFs | Password-protected PDFs show the unlock flow |
-| 💾 | Persistence | Saved workspaces reopen with metadata, markup, comments, and document data intact |
-| 🔎 | Search | Search results work across the combined workspace |
+| 💾 | Persistence | Saved workspaces reopen with metadata, markup, comments, signatures, and document data intact |
+| 🔎 | Search | Search results navigate across the combined workspace |
 | 🏷️ | Inspector | Tags, comments, info, and markup tabs reflect workspace state |
 | ✍️ | Annotation | Highlight, note, editable text, ink, underline, strikeout, and undo behavior work |
-| 🗂️ | Pages | Page rotation, deletion, and reordering behave correctly |
+| 🗂️ | Pages | Page rotation, deletion, and reordering stay aligned with navigation and export |
 | 📤 | Export | PDF, Word, Markdown, text, HTML, PNG, and JPEG exports complete successfully |
-| 🚀 | Launch | Desktop launcher opens the installed app after running the installer |
+| 🚀 | Launch | Desktop shortcuts open or update the installed app |
 
 For v2 release preparation, the local verification pass should include:
 
 ```zsh
 plutil -lint PDFold/Resources/Info.plist
 plutil -lint PDFold/Resources/PDFold.entitlements
+zsh -n install.sh
 zsh -n scripts/install-mac.sh
 zsh -n scripts/install-mac.command
 zsh -n "Install or Update PDFold.command"
 plutil -lint "Install or Update PDFold.app/Contents/Info.plist"
 swift build
-xcodebuild -project PDFold.xcodeproj -scheme PDFold -configuration Debug CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
+./scripts/install-mac.sh --package-only --package /tmp/PDFold.zip
 ```
 
 ## Roadmap
@@ -389,15 +383,15 @@ xcodebuild -project PDFold.xcodeproj -scheme PDFold -configuration Debug CODE_SI
 - More export presets.
 - Improved document thumbnails and faster page navigation.
 - Automated UI smoke tests.
-- Notarized release builds for easier distribution.
+- Developer ID signing and notarized release builds for the smoothest possible macOS install path.
 
 ## Contributing
 
-Good contributions are focused, tested, and kind to the next person reading the code at 11:47 PM.
+Contributions are welcome when they keep the product focused and the workflow calm.
 
 1. Create a focused branch.
 2. Keep changes scoped.
-3. Run a local build.
+3. Run the local verification checks.
 4. Include screenshots or notes for UI changes.
 5. Open a pull request with the problem, approach, and verification steps.
 
@@ -408,7 +402,7 @@ Good contributions are focused, tested, and kind to the next person reading the 
 
 That is expected on GitHub. README links open files in the browser; they do not execute Mac installer scripts.
 
-Download or clone the repository first, then open the downloaded `PDFold` folder in Finder and double-click `Install or Update PDFold.app`.
+Use the Quick Start command from Terminal, or download the repository first and run the installer from Finder.
 </details>
 
 <details>
@@ -424,37 +418,33 @@ Then double-click `Install or Update PDFold.app` again from Finder.
 </details>
 
 <details>
-<summary>The installer says Xcode is missing or not ready</summary>
+<summary>The installer says Command Line Tools are needed</summary>
 
-Install Xcode from the Mac App Store, then open it once so macOS can finish setup. After that, run the installer again.
+The normal installer uses a prebuilt app and does not need developer tools. This message means a prebuilt release was not available, so the installer fell back to a source build.
 
-If Xcode is installed but still not ready, run:
-
-```zsh
-xcodebuild -version
-```
-
-macOS may ask you to accept the Xcode license or finish installing command line tools.
+Install Apple's free Command Line Tools from the macOS prompt, then run the installer again. Full Xcode is not required.
 </details>
 
 <details>
 <summary>The Desktop launcher does not open the app</summary>
 
-Run `Install or Update PDFold.app` again from Finder. It refreshes `~/Applications/PDFold.app` and recreates the Desktop launcher.
+Run the installer again. It refreshes `~/Applications/PDFold.app` and recreates the Desktop shortcuts.
 </details>
 
 <details>
 <summary>macOS warns the app is from an unidentified developer</summary>
 
-This local development build is not notarized. Open it from Finder, then use **Open** from the security prompt. For distributed releases, sign and notarize the app with an Apple Developer account.
+PDFold release builds are ad-hoc signed but not notarized. The installer removes download quarantine from the installed app. If macOS still warns, open it from Finder, then use **Open** from the security prompt.
+
+Fully silent Gatekeeper behavior requires Apple Developer ID signing and notarization, which is listed on the roadmap.
 </details>
 
 <details>
 <summary>The app did not update</summary>
 
-Make sure you pulled or downloaded the latest project code first, then run the installer again.
+Double-click **Update PDFold** on the Desktop, or paste the Quick Start command again.
 
-For a fully fresh local build:
+For a fully fresh developer source build:
 
 ```zsh
 ./scripts/install-mac.sh --clean

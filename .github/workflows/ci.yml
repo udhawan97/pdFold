@@ -41,8 +41,10 @@ jobs:
 
       - name: Check installer script syntax
         run: |
+          zsh -n install.sh
           zsh -n scripts/install-mac.sh
           zsh -n scripts/install-mac.command
+          zsh -n "Install or Update PDFold.command"
 
       - name: Swift Package build
         run: swift build
