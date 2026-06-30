@@ -50,9 +50,9 @@
     <text x="32" y="50" class="tag" fill="#67E8F9">01 IMPORT</text>
     <text x="32" y="86" class="step">Source files</text>
     <text x="32" y="124" class="body">Bring in user-selected PDFs,</text>
-    <text x="32" y="146" class="body">Office documents, HTML files,</text>
-    <text x="32" y="168" class="body">text, data, images, and local</text>
-    <text x="32" y="190" class="body">PDFium validation checks.</text>
+    <text x="32" y="146" class="body">Office, HTML, text, data, and</text>
+    <text x="32" y="168" class="body">images. PDFium validates PDFs</text>
+    <text x="32" y="190" class="body">before PDFKit fallback import.</text>
 
     <g transform="translate(32 218)">
       <rect x="0" y="0" width="46" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
@@ -72,6 +72,12 @@
       <text x="139.5" y="64" text-anchor="middle" class="chip" fill="#BAE6FD">JSON</text>
       <rect x="177" y="44" width="66" height="30" rx="15" fill="#082F49" stroke="#38BDF8"/>
       <text x="210" y="64" text-anchor="middle" class="chip" fill="#BAE6FD">Images</text>
+      <rect x="0" y="88" width="72" height="30" rx="15" fill="#0F2D3D" stroke="#38BDF8"/>
+      <text x="36" y="108" text-anchor="middle" class="chip" fill="#BAE6FD">PDFium</text>
+      <rect x="82" y="88" width="66" height="30" rx="15" fill="#0F2D3D" stroke="#38BDF8"/>
+      <text x="115" y="108" text-anchor="middle" class="chip" fill="#BAE6FD">PDFKit</text>
+      <rect x="158" y="88" width="82" height="30" rx="15" fill="#0F2D3D" stroke="#38BDF8"/>
+      <text x="199" y="108" text-anchor="middle" class="chip" fill="#BAE6FD">Fallback</text>
     </g>
   </g>
 
@@ -80,9 +86,9 @@
     <rect width="318" height="5" rx="2.5" fill="#2DD4BF"/>
     <text x="32" y="50" class="tag" fill="#5EEAD4">02 WORKSPACE</text>
     <text x="32" y="86" class="step">Organize and mark up</text>
-    <text x="32" y="124" class="body">Review in the reader, reorder</text>
-    <text x="32" y="146" class="body">pages, search, annotate, tag,</text>
-    <text x="32" y="168" class="body">comment, and place signatures.</text>
+    <text x="32" y="124" class="body">PDFKit composes the reader;</text>
+    <text x="32" y="146" class="body">then reorder, search, annotate,</text>
+    <text x="32" y="168" class="body">tag, comment, and sign.</text>
 
     <g transform="translate(39 196)">
       <rect x="0" y="12" width="52" height="84" rx="12" fill="#0F172A" stroke="#274155"/>
@@ -155,9 +161,11 @@
     <path d="M24 14 L32 22 L24 30" class="arrow"/>
   </g>
 
-  <g transform="translate(248 596)">
-    <rect width="784" height="44" rx="22" fill="#08251C" stroke="#166534"/>
-    <circle cx="28" cy="22" r="6" fill="#22C55E"/>
-    <text x="48" y="27" class="caption">v3: local PDF backend, automatic launch updates, and clean uninstall commands.</text>
+  <g transform="translate(188 580)">
+    <rect width="904" height="64" rx="24" fill="#08251C" stroke="#166534"/>
+    <circle cx="30" cy="22" r="6" fill="#22C55E"/>
+    <text x="50" y="26" class="caption">Launch/update: PDFold.command checks the latest release before opening.</text>
+    <circle cx="30" cy="44" r="6" fill="#22C55E"/>
+    <text x="50" y="48" class="caption">Clean uninstall: removes app artifacts while saved workspaces stay user-owned.</text>
   </g>
 </svg>

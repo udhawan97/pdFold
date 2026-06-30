@@ -144,7 +144,7 @@ flowchart LR
 ```
 
 <p align="center">
-  <img src="docs/assets/pdfold-v3-architecture-diagram.svg" alt="PDFold architecture diagram showing the SwiftUI app layer, PDFKit document engine, local artifacts, update and uninstall commands, and stability guards">
+  <img src="docs/assets/pdfold-v3-architecture-diagram.svg" alt="PDFold architecture diagram showing the SwiftUI app layer, local PDFium processing backend, PDFKit document engine, local artifacts, update and uninstall commands, and stability guards">
 </p>
 
 <p align="center">

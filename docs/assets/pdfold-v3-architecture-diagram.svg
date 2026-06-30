@@ -100,16 +100,18 @@
     <rect width="820" height="126" rx="16" class="engineLayer"/>
     <rect width="5" height="126" rx="2.5" fill="#818CF8"/>
     <text x="30" y="34" class="tag" fill="#C4B5FD">PDF PROCESSING BACKEND</text>
-    <text x="30" y="62" class="body">PDFium validation, PDFKit fallback, import conversion, composition, markup, and artifact writers.</text>
+    <text x="30" y="62" class="body">PDFium validates first; PDFKit remains the fallback, composition, markup, and artifact writer path.</text>
     <g transform="translate(30 88)">
-      <rect x="0" y="0" width="152" height="28" rx="14" fill="#312E81" stroke="#818CF8"/>
-      <text x="76" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFProcessing</text>
-      <rect x="164" y="0" width="132" height="28" rx="14" fill="#312E81" stroke="#818CF8"/>
-      <text x="230" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFiumBackend</text>
-      <rect x="308" y="0" width="124" height="28" rx="14" fill="#312E81" stroke="#818CF8"/>
-      <text x="370" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFKitFallback</text>
-      <rect x="444" y="0" width="112" height="28" rx="14" fill="#312E81" stroke="#818CF8"/>
-      <text x="500" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFKitEngine</text>
+      <rect x="0" y="0" width="158" height="28" rx="14" fill="#1E1B4B" stroke="#818CF8"/>
+      <text x="79" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFProcessingEngine</text>
+      <path d="M170 14 H188" stroke="#818CF8" stroke-width="2" stroke-linecap="round"/>
+      <path d="M184 9 L190 14 L184 19" stroke="#818CF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="204" y="0" width="154" height="28" rx="14" fill="#4338CA" stroke="#A5B4FC"/>
+      <text x="281" y="19" text-anchor="middle" class="chip" fill="#EEF2FF">PDFium validate</text>
+      <rect x="370" y="0" width="142" height="28" rx="14" fill="#241B56" stroke="#818CF8"/>
+      <text x="441" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFKit fallback</text>
+      <rect x="524" y="0" width="132" height="28" rx="14" fill="#241B56" stroke="#818CF8"/>
+      <text x="590" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFKit compose</text>
     </g>
   </g>
 

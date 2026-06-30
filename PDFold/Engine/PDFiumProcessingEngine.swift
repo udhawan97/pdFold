@@ -1,7 +1,29 @@
 import Foundation
 
-#if canImport(PDFium)
-import PDFium
+private let pdfiumPasswordErrorCode: UInt = 4
+private let pdfiumLock = NSLock()
+
+@_silgen_name("FPDF_InitLibrary")
+private func FPDF_InitLibrary()
+
+@_silgen_name("FPDF_DestroyLibrary")
+private func FPDF_DestroyLibrary()
+
+@_silgen_name("FPDF_LoadMemDocument")
+private func FPDF_LoadMemDocument(
+    _ data: UnsafeRawPointer?,
+    _ size: Int32,
+    _ password: UnsafePointer<CChar>?
+) -> OpaquePointer?
+
+@_silgen_name("FPDF_CloseDocument")
+private func FPDF_CloseDocument(_ document: OpaquePointer?)
+
+@_silgen_name("FPDF_GetPageCount")
+private func FPDF_GetPageCount(_ document: OpaquePointer?) -> Int32
+
+@_silgen_name("FPDF_GetLastError")
+private func FPDF_GetLastError() -> UInt
 
 final class PDFiumProcessingEngine: PDFProcessingEngine {
     let name = "PDFium"
@@ -10,23 +32,29 @@ final class PDFiumProcessingEngine: PDFProcessingEngine {
         guard !data.isEmpty else {
             throw PDFProcessingError.unreadableDocument
         }
+        guard data.count <= Int(Int32.max) else {
+            throw PDFProcessingError.unreadableDocument
+        }
 
+        pdfiumLock.lock()
+        defer { pdfiumLock.unlock() }
         FPDF_InitLibrary()
         defer { FPDF_DestroyLibrary() }
+        let byteCount = Int32(data.count)
 
-        let document = try data.withUnsafeBytes { rawBuffer -> FPDF_DOCUMENT? in
+        let document = data.withUnsafeBytes { rawBuffer -> OpaquePointer? in
             guard let baseAddress = rawBuffer.baseAddress else { return nil }
             if let password {
                 return password.withCString { passwordPointer in
-                    FPDF_LoadMemDocument(baseAddress, CInt(data.count), passwordPointer)
+                    FPDF_LoadMemDocument(baseAddress, byteCount, passwordPointer)
                 }
             }
-            return FPDF_LoadMemDocument(baseAddress, CInt(data.count), nil)
+            return FPDF_LoadMemDocument(baseAddress, byteCount, nil)
         }
 
         guard let document else {
             let error = FPDF_GetLastError()
-            if error == FPDF_ERR_PASSWORD {
+            if error == pdfiumPasswordErrorCode {
                 throw PDFProcessingError.lockedOrEncrypted
             }
             throw PDFProcessingError.unreadableDocument
@@ -45,12 +73,3 @@ final class PDFiumProcessingEngine: PDFProcessingEngine {
         )
     }
 }
-#else
-final class PDFiumProcessingEngine: PDFProcessingEngine {
-    let name = "PDFium unavailable"
-
-    func validatePDF(data: Data, password: String? = nil) throws -> PDFProcessingValidation {
-        throw PDFProcessingError.unsupported
-    }
-}
-#endif

@@ -127,6 +127,28 @@ final class PDFKitEngineTests: XCTestCase {
 }
 
 final class PDFProcessingEngineTests: XCTestCase {
+    func testPDFiumProcessingEngineValidatesPDFData() throws {
+        let data = try makePDF(pageTexts: ["pdfium"]).dataRepresentation().unwrap()
+        let engine = PDFiumProcessingEngine()
+
+        let validation = try engine.validatePDF(data: data, password: nil)
+
+        XCTAssertEqual(validation.engine, .pdfium)
+        XCTAssertEqual(validation.pageCount, 1)
+        XCTAssertFalse(validation.isEncrypted)
+    }
+
+    func testPDFiumProcessingEngineGracefullyRejectsInvalidData() {
+        let engine = PDFiumProcessingEngine()
+
+        XCTAssertThrowsError(try engine.validatePDF(data: Data(), password: nil)) { error in
+            XCTAssertEqual(error as? PDFProcessingError, .unreadableDocument)
+        }
+        XCTAssertThrowsError(try engine.validatePDF(data: Data("not a pdf".utf8), password: nil)) { error in
+            XCTAssertEqual(error as? PDFProcessingError, .unreadableDocument)
+        }
+    }
+
     func testPDFKitProcessingFallbackValidatesPDFData() throws {
         let data = try makePDF(pageTexts: ["processing"]).dataRepresentation().unwrap()
         let engine = PDFKitProcessingEngineFallback()
@@ -201,6 +223,35 @@ final class PDFProcessingEngineTests: XCTestCase {
         XCTAssertEqual(viewModel.pageCount, 1)
         XCTAssertNil(viewModel.lastProcessingValidation)
         XCTAssertEqual(processingEngine.validateCallCount, 1)
+    }
+
+    func testProcessingValidationFailureClearsStaleValidationState() throws {
+        let document = WorkspaceDocument()
+        let fixture = try makeMemberWithPDF(name: "Fixture", pageTexts: ["validation"])
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let processingEngine = FlippingProcessingEngine()
+        let viewModel = WorkspaceViewModel(
+            document: document,
+            engine: PDFKitEngine(),
+            processingEngine: processingEngine
+        )
+        XCTAssertEqual(viewModel.lastProcessingValidation?.pageCount, 1)
+
+        let importData = try makePDF(pageTexts: ["second"]).dataRepresentation().unwrap()
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("pdf")
+        try importData.write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        viewModel.importFiles(urls: [tempURL])
+
+        XCTAssertNil(viewModel.importError)
+        XCTAssertEqual(viewModel.memberDocuments.count, 2)
+        XCTAssertNil(viewModel.lastProcessingValidation)
+        XCTAssertEqual(processingEngine.validateCallCount, 2)
     }
 }
 
@@ -379,6 +430,23 @@ private final class ThrowingProcessingEngine: PDFProcessingEngine {
     func validatePDF(data: Data, password: String?) throws -> PDFProcessingValidation {
         validateCallCount += 1
         throw PDFProcessingError.unreadableDocument
+    }
+}
+
+private final class FlippingProcessingEngine: PDFProcessingEngine {
+    let name = "Flipping"
+    private(set) var validateCallCount = 0
+
+    func validatePDF(data: Data, password: String?) throws -> PDFProcessingValidation {
+        validateCallCount += 1
+        guard validateCallCount == 1 else {
+            throw PDFProcessingError.unreadableDocument
+        }
+        return PDFProcessingValidation(
+            engine: .pdfKit,
+            pageCount: 1,
+            isEncrypted: false
+        )
     }
 }
 

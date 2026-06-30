@@ -284,8 +284,15 @@ final class WorkspaceViewModel {
     }
 
     private func smokeValidatePDFData(_ data: Data?, password: String? = nil) {
-        guard let data else { return }
-        lastProcessingValidation = try? processingEngine.validatePDF(data: data, password: password)
+        guard let data else {
+            lastProcessingValidation = nil
+            return
+        }
+        do {
+            lastProcessingValidation = try processingEngine.validatePDF(data: data, password: password)
+        } catch {
+            lastProcessingValidation = nil
+        }
     }
 
     func rebuild() {
