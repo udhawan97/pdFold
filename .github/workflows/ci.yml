@@ -18,8 +18,10 @@ concurrency:
 jobs:
   build:
     name: Build and Validate
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
 
     steps:
       - name: Checkout
@@ -51,6 +53,17 @@ jobs:
             -project PDFold.xcodeproj \
             -scheme PDFold \
             -configuration Debug \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/PDFoldDerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/PDFold.xcresult" \
             CODE_SIGNING_ALLOWED=NO \
             SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
             build
+
+      - name: Upload Xcode result bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDFold-xcresult
+          path: ${{ runner.temp }}/PDFold.xcresult
+          if-no-files-found: ignore
