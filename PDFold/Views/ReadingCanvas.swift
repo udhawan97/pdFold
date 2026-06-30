@@ -220,6 +220,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
             context.coordinator,
             selector: #selector(Coordinator.pageChanged(_:)),
             name: .PDFViewPageChanged, object: view)
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.saveAsPDF(_:)),
+            name: .pdfoldSaveAsPDF, object: nil)
 
         context.coordinator.pdfView = view
         context.coordinator.setupInkOverlay()
@@ -359,6 +363,16 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 guard let self else { return }
                 switch result {
                 case .commit(let edit):
+                    // Capture scroll position so the edit appears in place (not jumping to page 1).
+                    let savedDestination = pdfView?.currentDestination
+                    let savedPageIdx: Int? = {
+                        guard let pv = pdfView,
+                              let pg = pv.currentPage,
+                              let doc = pv.document else { return nil }
+                        let idx = doc.index(for: pg)
+                        return idx == NSNotFound ? nil : idx
+                    }()
+
                     let didApply = viewModel.applyInlineTextEdit(
                         pageRef: edit.pageRef,
                         sourceBlock: edit.block,
@@ -370,7 +384,17 @@ struct PDFViewRepresentable: NSViewRepresentable {
                         alignment: edit.alignment
                     )
                     if didApply {
-                        pdfView?.document = viewModel.combinedPDF
+                        let newDoc = viewModel.combinedPDF
+                        // Always assign; SwiftUI may not have fired updateNSView yet.
+                        pdfView?.document = newDoc
+                        if let idx = savedPageIdx, let targetPage = newDoc.page(at: idx) {
+                            if let dest = savedDestination {
+                                pdfView?.go(to: PDFDestination(page: targetPage, at: dest.point))
+                            } else {
+                                pdfView?.go(to: targetPage)
+                            }
+                        }
+                        pdfView?.layoutDocumentView()
                         pdfView?.needsDisplay = true
                     }
                 case .cancel:
@@ -417,6 +441,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
             guard let pdfView, let doc = pdfView.document,
                   let page = pdfView.currentPage else { return }
             viewModel.currentPageNumber = viewModel.workspacePageNumber(for: page, in: doc)
+        }
+
+        @objc func saveAsPDF(_ notification: Notification) {
+            viewModel.saveFlattenedPDF()
         }
 
         func setupInkOverlay() {
@@ -970,7 +998,7 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
         layer?.backgroundColor = NSColor.clear.cgColor
 
         patchView.wantsLayer = true
-        patchView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.985).cgColor
+        patchView.layer?.backgroundColor = NSColor.white.cgColor
         addSubview(patchView)
 
         textView.delegate = self

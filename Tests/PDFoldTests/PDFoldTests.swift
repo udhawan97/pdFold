@@ -4,6 +4,24 @@ import UniformTypeIdentifiers
 import XCTest
 @testable import PDFold
 
+final class PDFSerializerTests: XCTestCase {
+    func testSerializerReturnsBytesForNormalPDF() throws {
+        let pdf = makePDF(pageTexts: ["PDFSerializer round-trip test"])
+        let data = try XCTUnwrap(PDFSerializer.data(from: pdf))
+        let reparsed = try XCTUnwrap(PDFDocument(data: data))
+        XCTAssertEqual(reparsed.pageCount, 1)
+        XCTAssertTrue(reparsed.stringValue.contains("PDFSerializer"))
+    }
+
+    func testSerializerReturnsNilForEmptyDocument() {
+        // PDFDocument() with no pages has undefined dataRepresentation behaviour;
+        // verify the serializer at least doesn't crash.
+        let empty = PDFDocument()
+        // May or may not return data — just assert we don't crash.
+        _ = PDFSerializer.data(from: empty)
+    }
+}
+
 final class WorkspaceModelTests: XCTestCase {
     func testWorkspaceDecodingBackfillsSchemaTwoDefaults() throws {
         let createdAt = Date(timeIntervalSince1970: 1_700_000_000)

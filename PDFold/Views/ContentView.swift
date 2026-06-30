@@ -108,8 +108,13 @@ struct ContentView: View {
             AnnotationToolPicker(viewModel: viewModel)
         }
 
-        // Trailing primary: Share + Inspector
+        // Trailing primary: Save as PDF + Share + Inspector
         ToolbarItemGroup(placement: .primaryAction) {
+            Button { viewModel.saveFlattenedPDF() } label: {
+                Label("Save as PDF", systemImage: "arrow.down.doc.fill")
+            }
+            .help("Save as PDF\u{2026} (\u{2318}\u{21E7}S)")
+
             Menu {
                 ForEach(WorkspaceExportFormat.allCases) { format in
                     Button("Export as \(format.menuTitle)…") {

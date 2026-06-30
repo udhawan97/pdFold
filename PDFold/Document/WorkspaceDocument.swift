@@ -37,6 +37,8 @@ final class WorkspaceDocument: ReferenceFileDocument {
     ]
 
     static var readableContentTypes: [UTType] { [.pdfoldproj] + importableContentTypes }
+    // .pdf is listed second so macOS can autosave an imported PDF as a flat PDF
+    // (the first type, .pdfoldproj, remains the preferred format for Save As).
     static var writableContentTypes: [UTType] { [.pdfoldproj, .pdf] }
 
     var workspace: Workspace
@@ -130,13 +132,22 @@ final class WorkspaceDocument: ReferenceFileDocument {
     // MARK: - Write
 
     func fileWrapper(snapshot: WorkspacePackage, configuration: WriteConfiguration) throws -> FileWrapper {
+        // When macOS autosaves an imported PDF document it uses .pdf as the content type.
+        // Return a flat PDF file wrapper so the autosave succeeds without errors.
         if configuration.contentType.conforms(to: .pdf) {
-            guard let data = exportedPDFData(from: snapshot) else {
+            let docs: [(MemberDocument, PDFDocument)] = snapshot.workspace.documents.compactMap { member in
+                guard let data = snapshot.memberPDFData[member.id],
+                      let pdf = PDFDocument(data: data) else { return nil }
+                return (member, pdf)
+            }
+            let flat = PDFKitEngine().concatenate(documents: docs, includeBanners: false)
+            guard let pdfData = PDFSerializer.data(from: flat) else {
                 throw CocoaError(.fileWriteUnknown)
             }
-            return FileWrapper(regularFileWithContents: data)
+            return FileWrapper(regularFileWithContents: pdfData)
         }
 
+        // Standard .pdfoldproj bundle
         let wsData = try JSONEncoder().encode(snapshot.workspace)
         let wsWrapper = FileWrapper(regularFileWithContents: wsData)
         wsWrapper.preferredFilename = "workspace.json"
@@ -153,22 +164,5 @@ final class WorkspaceDocument: ReferenceFileDocument {
             "workspace.json": wsWrapper,
             "pdfs": pdfsWrapper
         ])
-    }
-
-    func exportedPDFData(from snapshot: WorkspacePackage) -> Data? {
-        let exportDoc = PDFDocument()
-        var outputIndex = 0
-        for ref in snapshot.workspace.pageOrder {
-            guard let member = snapshot.workspace.documents.first(where: { $0.id == ref.memberDocId }),
-                  let sourceIndex = member.pageRefs.firstIndex(of: ref.id),
-                  let data = snapshot.memberPDFData[member.id],
-                  let pdf = PDFDocument(data: data),
-                  let page = pdf.page(at: sourceIndex) else {
-                continue
-            }
-            exportDoc.insert(page, at: outputIndex)
-            outputIndex += 1
-        }
-        return exportDoc.pageCount > 0 ? exportDoc.dataRepresentation() : nil
     }
 }

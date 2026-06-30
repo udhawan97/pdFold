@@ -40,9 +40,11 @@ enum PDFEditedPageRenderer {
     }
 
     private static func drawErasePatch(for sourceBounds: CGRect, in context: CGContext) {
-        let patch = sourceBounds.insetBy(dx: -1.5, dy: -1.5)
+        // Expand by 2.5pt on each side to ensure ascenders/descenders outside the
+        // measured text bounds are fully covered before drawing replacement text.
+        let patch = sourceBounds.insetBy(dx: -2.5, dy: -2.5)
         context.saveGState()
-        context.setFillColor(NSColor.white.withAlphaComponent(0.985).cgColor)
+        context.setFillColor(NSColor.white.cgColor)
         context.fill(patch)
         context.restoreGState()
     }

@@ -157,6 +157,10 @@ final class WorkspaceViewModel {
     var pageCount: Int = 0
     private(set) var lastProcessingValidation: PDFProcessingValidation? = nil
 
+    /// In-memory map from MemberDocument.id to the URL it was imported from.
+    /// Used by saveFlattenedPDF to default the save-panel name to the original filename.
+    private var memberSourceURLs: [UUID: URL] = [:]
+
     /// Reactive list of member documents — backed by loadedPDFs so the sidebar
     /// re-renders whenever documents are added, removed, or reordered.
     var memberDocuments: [MemberDocument] { loadedPDFs.map { $0.0 } }
@@ -167,6 +171,10 @@ final class WorkspaceViewModel {
     private let processingEngine: PDFProcessingEngine
     private let textAnalysisEngine = PDFTextAnalysisEngine()
     private var textAnalysisCache: [UUID: PDFTextPageAnalysis] = [:]
+    /// Raw PDF bytes captured ONCE when each member is first loaded or attached.
+    /// Never mutated during editing — used as the immutable base for page regeneration
+    /// so multiple edits on the same page always start from the original content.
+    private var originalMemberPDFData: [UUID: Data] = [:]
     static let textReplacementAnnotationKey = PDFAnnotationKey(rawValue: "/PDFoldTextReplacement")
     static let draftTextAnnotationKey = PDFAnnotationKey(rawValue: "/PDFoldDraftText")
 
@@ -219,6 +227,8 @@ final class WorkspaceViewModel {
                 smokeValidatePDFData(data)
                 sanitizeInkAnnotations(in: pdf)
                 loadedPDFs.append((member, pdf))
+                // Capture original (pre-edit) bytes exactly once for clean regeneration.
+                originalMemberPDFData[member.id] = data
             }
         }
 
@@ -227,10 +237,13 @@ final class WorkspaceViewModel {
             guard let self else { return [:] }
             var result: [UUID: Data] = [:]
             for (member, pdf) in self.loadedPDFs {
-                if let data = pdf.dataRepresentation() {
+                if let data = PDFSerializer.data(from: pdf) {
                     result[member.id] = data
                 } else if let existingData = self.document.memberPDFData[member.id] {
-                    self.showEditWarning(.serializationFailed)
+                    // Surface a blocking, actionable error — do not silently drop edits.
+                    self.exportError = ExportError(
+                        message: "PDFold couldn\u{2019}t serialize \u{201C}\(member.displayName)\u{201D}; your edits to it weren\u{2019}t saved. Use \u{201C}Save as PDF\u{2026}\u{201D} (\u{2318}\u{21E7}S) to preserve your work."
+                    )
                     result[member.id] = existingData
                 }
             }
@@ -289,7 +302,7 @@ final class WorkspaceViewModel {
     private func attachPDF(_ pdf: PDFDocument, from url: URL) {
         sanitizeInkAnnotations(in: pdf)
 
-        guard let data = pdf.dataRepresentation() else {
+        guard let data = PDFSerializer.data(from: pdf) else {
             importError = ImportError(
                 fileName: url.lastPathComponent,
                 message: "PDFold could not prepare this file for saving. Try exporting it to PDF first, then import the exported file."
@@ -305,6 +318,8 @@ final class WorkspaceViewModel {
         document.workspace.documents.append(member)
         document.workspace.pageOrder.append(contentsOf: refs)
         document.memberPDFData[member.id] = data
+        originalMemberPDFData[member.id] = data
+        memberSourceURLs[member.id] = url
         loadedPDFs.append((member, pdf))
     }
 
@@ -427,7 +442,7 @@ final class WorkspaceViewModel {
     private func currentPDFData() -> [UUID: Data] {
         var result: [UUID: Data] = [:]
         for (member, pdf) in loadedPDFs {
-            if let data = pdf.dataRepresentation() {
+            if let data = PDFSerializer.data(from: pdf) {
                 result[member.id] = data
             } else if let existingData = document.memberPDFData[member.id] {
                 result[member.id] = existingData
@@ -575,6 +590,30 @@ final class WorkspaceViewModel {
               let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex) else {
             return nil
         }
+        // If the click lands inside a previously-placed replacement (editedBounds) or the
+        // original source area (sourceBounds), re-route to that operation so the editor
+        // opens with the current replacement text and updates the op in-place rather than
+        // accumulating a second operation for the same location.
+        if let pageState = document.workspace.pageEditStates.first(where: { $0.pageRefID == ref.id }),
+           let existingOp = pageState.operations.first(where: {
+               $0.editedBounds.insetBy(dx: -3, dy: -3).contains(pagePoint) ||
+               $0.sourceBounds.insetBy(dx: -2, dy: -2).contains(pagePoint)
+           }) {
+            let syntheticBlock = EditableTextBlock(
+                id: existingOp.sourceBlockID,
+                pageRefID: ref.id,
+                text: existingOp.replacementText,
+                bounds: existingOp.editedBounds,
+                lines: [],
+                fontName: existingOp.fontName,
+                fontSize: existingOp.fontSize,
+                textColor: existingOp.textColor,
+                rotation: 0,
+                baseline: existingOp.editedBounds.minY,
+                confidence: .high
+            )
+            return (ref, syntheticBlock)
+        }
         let analysis = textAnalysis(for: ref, page: page, memberID: ref.memberDocId, localIndex: localIdx)
         let block = textAnalysisEngine.hitTest(pagePoint, in: analysis) ?? insertionTextBlock(at: pagePoint, pageRefID: ref.id, page: page)
         return (ref, block)
@@ -627,15 +666,20 @@ final class WorkspaceViewModel {
         textColor: NSColor,
         alignment: NSTextAlignment
     ) -> Bool {
-        let normalized = replacementText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else {
-            showEditMessage("Replacement text cannot be empty. Use a future redaction tool for removal.", isError: true)
-            return false
-        }
         guard let lookup = memberPDF(for: pageRef),
               let localIdx = localIndex(ref: pageRef, memberIndex: lookup.documentIndex),
-              let page = lookup.pdf.page(at: localIdx) else {
+              lookup.pdf.page(at: localIdx) != nil else {
             showEditMessage("PDFold could not locate that page for inline editing.", isError: true)
+            return false
+        }
+        // Always regenerate from the original (pre-edit) page so that multiple edits on
+        // the same page don't stack erase patches on top of previously-regenerated content.
+        // Fall back to current memberPDFData if the original snapshot is unavailable.
+        let baseData = originalMemberPDFData[pageRef.memberDocId] ?? document.memberPDFData[pageRef.memberDocId]
+        guard let baseData,
+              let basePDF = PDFDocument(data: baseData),
+              let basePage = basePDF.page(at: localIdx) else {
+            showEditMessage("PDFold could not access the original page for editing.", isError: true)
             return false
         }
 
@@ -652,6 +696,13 @@ final class WorkspaceViewModel {
             textColor: CodableColor(nsColor: textColor),
             alignment: CodableTextAlignment(alignment)
         )
+        // When updating an existing op (same sourceBlockID), preserve the original
+        // sourceBounds so the erase patch targets the true original text location even
+        // when the user re-edits a previously-placed replacement.
+        if let stateIndex = document.workspace.pageEditStates.firstIndex(where: { $0.pageRefID == pageRef.id }),
+           let existingOp = document.workspace.pageEditStates[stateIndex].operations.first(where: { $0.sourceBlockID == sourceBlock.id }) {
+            operation.sourceBounds = existingOp.sourceBounds
+        }
         operation.editedBounds = PDFEditedPageRenderer.measuredBounds(for: operation)
         if let stateIndex = document.workspace.pageEditStates.firstIndex(where: { $0.pageRefID == pageRef.id }) {
             document.workspace.pageEditStates[stateIndex].operations.removeAll { $0.sourceBlockID == sourceBlock.id }
@@ -660,7 +711,7 @@ final class WorkspaceViewModel {
             document.workspace.pageEditStates.append(PageEditState(pageRefID: pageRef.id, operations: [operation]))
         }
         guard let operations = document.workspace.pageEditStates.first(where: { $0.pageRefID == pageRef.id })?.operations,
-              let regenerated = PDFEditedPageRenderer.regeneratedPage(from: page, applying: operations) else {
+              let regenerated = PDFEditedPageRenderer.regeneratedPage(from: basePage, applying: operations) else {
             document.workspace.pageEditStates = previousEditStates
             showEditMessage("PDFold could not regenerate that edited page. The original page is unchanged.", isError: true)
             return false
@@ -669,16 +720,14 @@ final class WorkspaceViewModel {
         lookup.pdf.removePage(at: localIdx)
         lookup.pdf.insert(regenerated, at: localIdx)
         textAnalysisCache.removeValue(forKey: pageRef.id)
-        guard let data = lookup.pdf.dataRepresentation() else {
-            lookup.pdf.removePage(at: localIdx)
-            lookup.pdf.insert(page, at: localIdx)
-            document.workspace.pageEditStates = previousEditStates
-            showEditMessage("PDFold could not save the regenerated page. The original page is unchanged.", isError: true)
-            return false
-        }
-        document.memberPDFData[pageRef.memberDocId] = data
-        markWorkspaceModified()
+        // Rebuild immediately so the edit is visible regardless of serialization outcome.
         rebuild()
+        markWorkspaceModified()
+        if let data = PDFSerializer.data(from: lookup.pdf) {
+            document.memberPDFData[pageRef.memberDocId] = data
+        } else {
+            NSLog("[PDFold] Warning: serialization failed after inline edit on page %@; edit is visible — pageEditStates will be used to re-render on re-open", pageRef.id.uuidString)
+        }
 
         undoManager?.registerUndo(withTarget: self) { vm in
             vm.document.workspace.pageEditStates = previousEditStates
@@ -999,15 +1048,39 @@ final class WorkspaceViewModel {
     }
 
     func exportPlainPDF() {
+        saveFlattenedPDF()
+    }
+
+    func saveFlattenedPDF(to url: URL? = nil) {
         let exportDoc = engine.concatenate(documents: loadedPDFs, includeBanners: false)
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = "\(document.workspace.title).pdf"
-        panel.title = "Export as PDF"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard exportDoc.write(to: url) else {
-            exportError = ExportError(message: "PDFold could not write the exported PDF. Check that the destination is writable and has enough free space.")
+        guard let pdfData = PDFSerializer.data(from: exportDoc) else {
+            exportError = ExportError(message: "PDFold could not serialize the PDF for saving. Try exporting individual documents first.")
             return
+        }
+
+        let targetURL: URL
+        if let url {
+            targetURL = url
+        } else {
+            let defaultName: String
+            if loadedPDFs.count == 1,
+               let sourceURL = memberSourceURLs[loadedPDFs[0].0.id] {
+                defaultName = sourceURL.lastPathComponent
+            } else {
+                defaultName = "\(safeFilename(document.workspace.title)).pdf"
+            }
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.pdf]
+            panel.nameFieldStringValue = defaultName
+            panel.title = "Save as PDF"
+            guard panel.runModal() == .OK, let chosenURL = panel.url else { return }
+            targetURL = chosenURL
+        }
+
+        do {
+            try pdfData.write(to: targetURL, options: .atomic)
+        } catch {
+            exportError = ExportError(message: "PDFold could not save the PDF: \(error.localizedDescription)")
         }
     }
 
@@ -1452,7 +1525,9 @@ final class WorkspaceViewModel {
         if let cached = textAnalysisCache[ref.id] {
             return cached
         }
-        let data = document.memberPDFData[memberID] ?? currentPDFData()[memberID] ?? Data()
+        // Prefer original bytes so text-block hit-testing reflects the unedited PDF content,
+        // consistent with regeneration always starting from the original page.
+        let data = originalMemberPDFData[memberID] ?? document.memberPDFData[memberID] ?? currentPDFData()[memberID] ?? Data()
         let analysis = textAnalysisEngine.analyze(
             data: data,
             pageIndex: localIndex,
