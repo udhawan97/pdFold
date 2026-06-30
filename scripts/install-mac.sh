@@ -23,7 +23,8 @@ STAGE_ROOT="${TMPDIR:-/tmp}/pdfold-install-$$"
 STAGED_APP="$STAGE_ROOT/$APP_NAME.app"
 INSTALL_DIR="$HOME/Applications"
 INSTALLED_APP="$INSTALL_DIR/$APP_NAME.app"
-DESKTOP_LAUNCHER="$HOME/Desktop/$APP_NAME"
+DESKTOP_LAUNCHER="$HOME/Desktop/$APP_NAME.command"
+LEGACY_DESKTOP_LAUNCHER="$HOME/Desktop/$APP_NAME"
 DESKTOP_UPDATER="$HOME/Desktop/Update $APP_NAME.command"
 RELEASE_API="https://api.github.com/repos/$REPO/releases/latest"
 
@@ -147,14 +148,13 @@ install_staged_app() {
 
     print_step "Refreshing Desktop shortcuts"
     if [[ -d "$HOME/Desktop" ]]; then
-        rm -f "$DESKTOP_LAUNCHER" "$DESKTOP_UPDATER"
-        ln -s "$INSTALLED_APP" "$DESKTOP_LAUNCHER" 2>>"$LOG_FILE" || print_note "Could not create the Desktop app shortcut."
-        cat > "$DESKTOP_UPDATER" <<'UPDATER'
+        rm -f "$DESKTOP_LAUNCHER" "$LEGACY_DESKTOP_LAUNCHER" "$DESKTOP_UPDATER"
+        cat > "$DESKTOP_LAUNCHER" <<'LAUNCHER'
 #!/bin/zsh
 set -euo pipefail
 curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | zsh
-UPDATER
-        chmod +x "$DESKTOP_UPDATER" 2>/dev/null || true
+LAUNCHER
+        chmod +x "$DESKTOP_LAUNCHER" 2>/dev/null || print_note "Could not make the Desktop launcher executable."
     else
         print_note "Desktop folder not found, so shortcuts were not created."
     fi
@@ -266,7 +266,6 @@ $APP_NAME is ready.
 
 App:     $INSTALLED_APP
 Desktop: $DESKTOP_LAUNCHER
-Update:  $DESKTOP_UPDATER
 Log:     $LOG_FILE
 MESSAGE
         exit 0
@@ -305,7 +304,6 @@ $APP_NAME is ready.
 
 App:     $INSTALLED_APP
 Desktop: $DESKTOP_LAUNCHER
-Update:  $DESKTOP_UPDATER
 Log:     $LOG_FILE
 MESSAGE
 fi

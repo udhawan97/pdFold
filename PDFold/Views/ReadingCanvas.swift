@@ -268,11 +268,6 @@ struct PDFViewRepresentable: NSViewRepresentable {
         }
 
         private func editableTextSelection(at point: CGPoint, on page: PDFPage) -> PDFSelection? {
-            if let line = page.selectionForLine(at: point),
-               isUsableTextSelection(line, near: point, on: page, tolerance: 8) {
-                return line
-            }
-
             if let word = page.selectionForWord(at: point),
                isUsableTextSelection(word, near: point, on: page, tolerance: 5) {
                 return word
@@ -282,6 +277,12 @@ struct PDFViewRepresentable: NSViewRepresentable {
             if let nearby = page.selection(for: searchRect),
                isUsableTextSelection(nearby, near: point, on: page, tolerance: 10) {
                 return nearby
+            }
+
+            if let line = page.selectionForLine(at: point),
+               isUsableTextSelection(line, near: point, on: page, tolerance: 8),
+               line.bounds(for: page).width <= 160 {
+                return line
             }
 
             return nil
@@ -404,6 +405,9 @@ final class NoteEditorViewController: NSViewController {
     private var editorFontTraits: NSFontTraitMask = []
     private var editorTextColor: NSColor = .labelColor
     private var isFreeTextAnnotation: Bool { annotation.type == "FreeText" }
+    private var isTextReplacementAnnotation: Bool {
+        (annotation.value(forAnnotationKey: WorkspaceViewModel.textReplacementAnnotationKey) as? Bool) == true
+    }
 
     init(annotation: PDFAnnotation) {
         self.annotation = annotation
@@ -523,22 +527,26 @@ final class NoteEditorViewController: NSViewController {
                 annotation.font = originalAnnotationFont ?? annotation.font
                 annotation.fontColor = originalAnnotationFontColor ?? annotation.fontColor
             }
-            resizeFreeTextAnnotationToFit(textView.string)
+            resizeFreeTextAnnotationToFit(textView.string, preserveReplacementWidth: isTextReplacementAnnotation)
         }
     }
 
-    private func resizeFreeTextAnnotationToFit(_ text: String) {
+    private func resizeFreeTextAnnotationToFit(_ text: String, preserveReplacementWidth: Bool) {
         guard isFreeTextAnnotation else { return }
         let font = annotation.font ?? NSFont.systemFont(ofSize: minimumEditorFontSize)
         let measured = (text.isEmpty ? " " : text) as NSString
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let currentBounds = annotation.bounds
+        let measurementWidth = preserveReplacementWidth ? max(currentBounds.width - 10, 1) : 600
         let size = measured.boundingRect(
-            with: CGSize(width: 600, height: CGFloat.infinity),
+            with: CGSize(width: measurementWidth, height: CGFloat.infinity),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: attributes
         ).size
-        var bounds = annotation.bounds
-        bounds.size.width = max(bounds.width, ceil(size.width) + 10)
+        var bounds = currentBounds
+        if !preserveReplacementWidth {
+            bounds.size.width = max(bounds.width, ceil(size.width) + 10)
+        }
         bounds.size.height = max(font.pointSize * 1.35, ceil(size.height) + 6)
         annotation.bounds = bounds
     }

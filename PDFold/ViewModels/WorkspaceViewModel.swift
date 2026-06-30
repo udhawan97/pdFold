@@ -75,7 +75,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .none:      return "Select"
         case .highlight: return "Highlight"
         case .note:      return "Note"
-        case .editText:  return "Edit Text"
+        case .editText:  return "Replace Text"
         case .ink:       return "Ink"
         case .underline: return "Underline"
         case .strikeout: return "Strikeout"
@@ -101,7 +101,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .none:      return "Select annotations on the page. Press Delete to remove the selected annotation."
         case .highlight: return "Select PDF text to add a colored highlight."
         case .note:      return "Click the page to add a sticky note, or click an existing note to edit it."
-        case .editText:  return "Click existing PDF text to edit a matched replacement, or click blank space to add text."
+        case .editText:  return "Click a word to place a matched replacement, or click blank space to add text."
         case .ink:       return "Draw freehand marks on the page."
         case .underline: return "Select PDF text to underline it."
         case .strikeout: return "Select PDF text to strike it out."
@@ -164,6 +164,7 @@ final class WorkspaceViewModel {
 
     private let engine: PDFEngine
     private let processingEngine: PDFProcessingEngine
+    static let textReplacementAnnotationKey = PDFAnnotationKey(rawValue: "/PDFoldTextReplacement")
 
     struct ImportError: Identifiable {
         let id = UUID()
@@ -614,12 +615,13 @@ final class WorkspaceViewModel {
         ann.font = font
         ann.fontColor = fontColor
         ann.color = NSColor.white.withAlphaComponent(0.96)
+        ann.setValue(true, forAnnotationKey: Self.textReplacementAnnotationKey)
         let border = PDFBorder()
         border.lineWidth = 0
         ann.border = border
         page.addAnnotation(ann)
         undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
-        undoManager?.setActionName("Edit PDF Text")
+        undoManager?.setActionName("Replace PDF Text")
         return ann
     }
 

@@ -62,7 +62,7 @@ Paste this into Terminal:
 curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | zsh
 ```
 
-The installer downloads the latest prebuilt app, places it in `~/Applications/PDFold.app`, and adds two Desktop shortcuts: **PDFold** and **Update PDFold**.
+The installer downloads the latest prebuilt app, places it in `~/Applications/PDFold.app`, and adds a Desktop launcher, **PDFold.command**, that checks for updates each time it opens the app.
 
 No Xcode. No GitHub account. No compile step. Just paste, install, and get back to the documents.
 
@@ -201,7 +201,7 @@ Paste one command into Terminal:
 curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | zsh
 ```
 
-The installer downloads the latest prebuilt `PDFold.zip` from GitHub Releases, installs `PDFold.app` to `~/Applications`, creates Desktop shortcuts, removes download quarantine metadata, and opens the app.
+The installer downloads the latest prebuilt `PDFold.zip` from GitHub Releases, installs `PDFold.app` to `~/Applications`, creates a self-updating Desktop launcher, removes download quarantine metadata, and opens the app.
 
 The normal path does not require Xcode, Apple's Command Line Tools, a package manager, or a GitHub account. The installer is intentionally uneventful, which is exactly how installers should behave.
 
@@ -219,13 +219,15 @@ cd PDFold
 
 ## Updating The App
 
-Double-click **Update PDFold** on the Desktop, or paste the installer command again:
+Double-click **PDFold.command** on the Desktop. The launcher checks for the latest release, refreshes the installed app when needed, and then opens PDFold.
+
+You can also paste the installer command again:
 
 ```zsh
 curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | zsh
 ```
 
-If PDFold is already installed, the updater closes the running app if needed, replaces `~/Applications/PDFold.app`, refreshes both Desktop shortcuts, removes quarantine metadata, and opens the updated app.
+If PDFold is already installed, the updater closes the running app if needed, replaces `~/Applications/PDFold.app`, refreshes the Desktop launcher, removes quarantine metadata, and opens the updated app.
 
 <details>
 <summary>Developer source update</summary>
@@ -361,7 +363,7 @@ Before shipping a build, verify both the developer path and the human-with-docum
 | ✍️ | Annotation | Highlight, note, editable text, ink, underline, strikeout, and undo behavior work |
 | 🗂️ | Pages | Page rotation, deletion, and reordering stay aligned with navigation and export |
 | 📤 | Export | PDF, Word, Markdown, text, HTML, PNG, and JPEG exports complete successfully |
-| 🚀 | Launch | Desktop shortcuts open or update the installed app |
+| 🚀 | Launch | Desktop launcher updates and opens the installed app |
 
 For v2 release preparation, the local verification pass should include:
 
@@ -442,7 +444,7 @@ Fully silent Gatekeeper behavior requires Apple Developer ID signing and notariz
 <details>
 <summary>The app did not update</summary>
 
-Double-click **Update PDFold** on the Desktop, or paste the Quick Start command again.
+Double-click **PDFold.command** on the Desktop, or paste the Quick Start command again.
 
 For a fully fresh developer source build:
 

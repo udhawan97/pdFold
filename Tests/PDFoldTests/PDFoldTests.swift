@@ -232,6 +232,25 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.loadedPDFs[0].1.pageCount, 2)
         XCTAssertEqual(viewModel.combinedPageIndex(forWorkspacePageNumber: 3), 4)
     }
+
+    func testEditableTextOverlayIsMarkedAsReplacementAnnotation() throws {
+        let pdf = makePDF(pageTexts: ["Replaceable text"])
+        let page = try XCTUnwrap(pdf.page(at: 0))
+        let selection = try XCTUnwrap(page.selectionForWord(at: CGPoint(x: 75, y: 720)))
+        let viewModel = WorkspaceViewModel(
+            document: WorkspaceDocument(),
+            processingEngine: PDFKitProcessingEngineFallback()
+        )
+
+        let annotation = try XCTUnwrap(viewModel.addEditableTextOverlay(from: selection, on: page))
+
+        XCTAssertEqual(annotation.type, "FreeText")
+        XCTAssertEqual(
+            annotation.value(forAnnotationKey: WorkspaceViewModel.textReplacementAnnotationKey) as? Bool,
+            true
+        )
+        XCTAssertLessThan(annotation.bounds.width, 180)
+    }
 }
 
 private func makeMemberPDF(name: String, pageTexts: [String]) -> (MemberDocument, PDFDocument) {
