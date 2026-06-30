@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var viewModel: WorkspaceViewModel
     @State private var showInspector = false
     @State private var showTOC = false
+    @State private var isWorkspaceDropTargeted = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @Environment(\.undoManager) private var undoManager
 
@@ -40,7 +41,16 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.18), value: viewModel.memberDocuments.isEmpty)
         .tint(Color.dsAccent)
-        .onDrop(of: WorkspaceDocument.importableContentTypes + [.fileURL], isTargeted: nil, perform: handleDrop)
+        .overlay {
+            if !viewModel.memberDocuments.isEmpty {
+                workspaceDropOverlay
+            }
+        }
+        .onDrop(
+            of: WorkspaceDocument.importableContentTypes + [.fileURL],
+            isTargeted: $isWorkspaceDropTargeted,
+            perform: handleDrop
+        )
         .onAppear { viewModel.undoManager = undoManager }
         .onChange(of: undoManager) { _, um in viewModel.undoManager = um }
         .popover(isPresented: $viewModel.isShowingSearch, arrowEdge: .top) {
@@ -154,6 +164,35 @@ struct ContentView: View {
     }
 
     // MARK: - Helpers
+
+    private var workspaceDropOverlay: some View {
+        RoundedRectangle(cornerRadius: .dsRadiusLg, style: .continuous)
+            .strokeBorder(
+                Color.dsAccent.opacity(isWorkspaceDropTargeted ? 0.55 : 0),
+                lineWidth: 2
+            )
+            .background {
+                if isWorkspaceDropTargeted {
+                    ZStack {
+                        Color.dsAccent.opacity(0.08)
+                        VStack(spacing: .dsSM) {
+                            Image(systemName: "tray.and.arrow.down.fill")
+                                .font(.system(size: 34, weight: .light))
+                                .symbolRenderingMode(.hierarchical)
+                            Text("Drop to add documents")
+                                .font(.dsHeadline())
+                        }
+                        .foregroundStyle(Color.dsAccent)
+                        .padding(.horizontal, .dsXL)
+                        .padding(.vertical, .dsLG)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: .dsRadiusLg, style: .continuous))
+                    }
+                }
+            }
+            .padding(.dsMD)
+            .allowsHitTesting(false)
+            .animation(.easeInOut(duration: 0.15), value: isWorkspaceDropTargeted)
+    }
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         resolveImportURLs(from: providers) { viewModel.importFiles(urls: $0) }
@@ -379,24 +418,114 @@ private struct AnnotationPalettePopover: View {
 // MARK: - Shared drop helper
 
 func resolveImportURLs(from providers: [NSItemProvider], completion: @escaping ([URL]) -> Void) {
-    var urls: [URL] = []
+    var resolvedURLs: [(index: Int, url: URL)] = []
     let lock = DispatchQueue(label: "PDFold.importURLs")
     let group = DispatchGroup()
-    for provider in providers {
-        guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { continue }
+
+    for (index, provider) in providers.enumerated() {
         group.enter()
-        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+
+        loadImportURL(from: provider) { url in
             defer { group.leave() }
-            guard let data = item as? Data,
-                  let url = URL(dataRepresentation: data, relativeTo: nil),
-                  isSupportedImportURL(url) else { return }
-            lock.sync { urls.append(url) }
+            guard let url, isSupportedImportURL(url) else { return }
+            lock.sync { resolvedURLs.append((index, url)) }
         }
     }
-    group.notify(queue: .main) { completion(urls) }
+
+    group.notify(queue: .main) {
+        let urls = resolvedURLs
+            .sorted { $0.index < $1.index }
+            .map(\.url)
+            .uniquedByFileURL()
+        completion(urls)
+    }
+}
+
+private func loadImportURL(from provider: NSItemProvider, completion: @escaping (URL?) -> Void) {
+    if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            completion(urlFromProviderItem(item))
+        }
+        return
+    }
+
+    guard let type = supportedImportContentType(from: provider) else {
+        completion(nil)
+        return
+    }
+
+    provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
+        guard let url else {
+            completion(nil)
+            return
+        }
+        completion(copyTemporaryDropFile(from: url, contentType: type))
+    }
+}
+
+private func supportedImportContentType(from provider: NSItemProvider) -> UTType? {
+    for identifier in provider.registeredTypeIdentifiers {
+        guard let type = UTType(identifier),
+              WorkspaceDocument.importableContentTypes.contains(where: { type.conforms(to: $0) }) else {
+            continue
+        }
+        return type
+    }
+
+    return WorkspaceDocument.importableContentTypes.first {
+        provider.hasItemConformingToTypeIdentifier($0.identifier)
+    }
+}
+
+private func urlFromProviderItem(_ item: NSSecureCoding?) -> URL? {
+    if let url = item as? URL { return url }
+    if let url = item as? NSURL { return url as URL }
+    if let data = item as? Data {
+        return URL(dataRepresentation: data, relativeTo: nil)
+    }
+    if let string = item as? String {
+        return URL(string: string) ?? URL(fileURLWithPath: string)
+    }
+    return nil
+}
+
+private func copyTemporaryDropFile(from url: URL, contentType: UTType) -> URL? {
+    let extensionHint = url.pathExtension.isEmpty
+        ? (contentType.preferredFilenameExtension ?? "dat")
+        : url.pathExtension
+    let name = url.deletingPathExtension().lastPathComponent.isEmpty
+        ? UUID().uuidString
+        : url.deletingPathExtension().lastPathComponent
+    let destination = FileManager.default.temporaryDirectory
+        .appendingPathComponent("PDFoldDrops", isDirectory: true)
+        .appendingPathComponent("\(name)-\(UUID().uuidString).\(extensionHint)")
+
+    do {
+        try FileManager.default.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.copyItem(at: url, to: destination)
+        return destination
+    } catch {
+        return nil
+    }
 }
 
 func isSupportedImportURL(_ url: URL) -> Bool {
     guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
     return WorkspaceDocument.importableContentTypes.contains { type.conforms(to: $0) }
+}
+
+private extension Array where Element == URL {
+    func uniquedByFileURL() -> [URL] {
+        var seen: Set<String> = []
+        return filter { url in
+            let key = url.isFileURL ? url.standardizedFileURL.path : url.absoluteString
+            return seen.insert(key).inserted
+        }
+    }
 }
