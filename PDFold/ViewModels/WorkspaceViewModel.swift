@@ -273,6 +273,10 @@ final class WorkspaceViewModel {
     func rebuild() {
         combinedPDF = engine.concatenate(documents: loadedPDFs, includeBanners: true)
         pageCount = combinedPDF.pageCount
+        // PDFSelections are bound to the old document; drop them so search navigation
+        // doesn't jump to pages in a detached doc.
+        searchResults = []
+        searchResultIndex = -1
     }
 
     // MARK: - Reorder / Remove (with undo)
@@ -662,13 +666,14 @@ final class WorkspaceViewModel {
     // MARK: - Signature
 
     func placeSignature(imageData: Data, at pagePoint: CGPoint, on page: PDFPage, size: CGSize = CGSize(width: 120, height: 48)) {
+        guard let refID = pageRefID(for: page) else { return }
         let bounds = CGRect(
             x: pagePoint.x - size.width / 2,
             y: pagePoint.y - size.height / 2,
             width: size.width, height: size.height
         )
         let placement = SignaturePlacement(
-            pageRefId: pageRefID(for: page),
+            pageRefId: refID,
             imageData: imageData,
             rect: bounds,
             signedAt: Date()
@@ -684,18 +689,18 @@ final class WorkspaceViewModel {
         undoManager?.setActionName("Place Signature")
     }
 
-    private func pageRefID(for page: PDFPage) -> UUID {
-        // Map the PDFPage back to a PageRef.id using position in combinedPDF
+    private func pageRefID(for page: PDFPage) -> UUID? {
+        // Map the PDFPage back to a PageRef.id using position in combinedPDF.
         guard let doc = page.document,
               let idx = (0..<doc.pageCount).first(where: { doc.page(at: $0) === page })
-        else { return UUID() }
-        // The combinedPDF interleaves banner pages; skip them
+        else { return nil }
+        // combinedPDF interleaves BoundaryPage banners; count only real pages.
         var realPageIdx = 0
         for i in 0..<idx {
             if !(doc.page(at: i) is BoundaryPage) { realPageIdx += 1 }
         }
         let refs = document.workspace.pageOrder
-        guard realPageIdx < refs.count else { return UUID() }
+        guard realPageIdx < refs.count else { return nil }
         return refs[realPageIdx].id
     }
 

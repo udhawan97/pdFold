@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 extension UTType {
     static let pdfoldproj = UTType(exportedAs: "com.ud.PDFold.pdfoldproj")
+    static let pdfoldPageRef = UTType(exportedAs: "com.ud.PDFold.page-ref")
     static let docx = UTType(filenameExtension: "docx") ?? UTType(importedAs: "org.openxmlformats.wordprocessingml.document")
     static let wordDoc = UTType(filenameExtension: "doc") ?? UTType(importedAs: "com.microsoft.word.doc")
     static let odt = UTType(filenameExtension: "odt") ?? UTType(importedAs: "org.oasis-open.opendocument.text")
@@ -70,7 +71,13 @@ final class WorkspaceDocument: ReferenceFileDocument {
         }
         if let wsWrapper = wrappers["workspace.json"],
            let data = wsWrapper.regularFileContents {
-            workspace = (try? JSONDecoder().decode(Workspace.self, from: data)) ?? Workspace()
+            do {
+                workspace = try JSONDecoder().decode(Workspace.self, from: data)
+            } catch {
+                // workspace.json exists but is unreadable — refuse to open rather than
+                // silently substituting an empty workspace and overwriting the user's data.
+                throw CocoaError(.fileReadCorruptFile)
+            }
         } else {
             workspace = Workspace()
         }

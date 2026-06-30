@@ -12,6 +12,15 @@ final class PDFKitEngine: PDFEngine {
     /// Concatenate member documents into one PDFDocument for display.
     /// Each member is preceded by a styled BoundaryPage header.
     /// Pass `includeBanners: false` to build a plain export PDF.
+    ///
+    /// The display path (`includeBanners: true`) shares the live PDFPage objects with
+    /// their member PDFDocuments so that annotations written to a page are reflected in
+    /// combinedPDF without a rebuild. Do NOT change this sharing intentionally.
+    ///
+    /// The export path (`includeBanners: false`) copies each page so that inserting it
+    /// into the export document does not reassign the page's `document` back-pointer
+    /// away from the live combinedPDF, which would silently break annotation serialisation
+    /// and could corrupt dataRepresentation() on the display doc.
     func concatenate(documents: [(MemberDocument, PDFDocument)], includeBanners: Bool = true) -> PDFDocument {
         let combined = PDFDocument()
         var insertIndex = 0
@@ -28,7 +37,10 @@ final class PDFKitEngine: PDFEngine {
             }
             for i in 0..<pdf.pageCount {
                 if let page = pdf.page(at: i) {
-                    combined.insert(page, at: insertIndex)
+                    // Export: copy so the live combinedPDF retains sole ownership of the page.
+                    // Display: share the live page so annotations persist across rebuilds.
+                    let insertPage = includeBanners ? page : (page.copy() as! PDFPage)
+                    combined.insert(insertPage, at: insertIndex)
                     insertIndex += 1
                 }
             }
@@ -91,7 +103,9 @@ enum DocumentImportConverter {
     }
 
     static func pdfDocument(from url: URL) throws -> PDFDocument {
-        let type = UTType(filenameExtension: url.pathExtension) ?? .data
+        guard url.isFileURL else { throw ConversionError.unsupportedType }
+        let resourceType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
+        let type = resourceType ?? UTType(filenameExtension: url.pathExtension) ?? .data
         if let byteCount = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
             try validateByteCount(Int64(byteCount), contentType: type)
         }
