@@ -7,6 +7,7 @@ RAW_BASE="https://raw.githubusercontent.com/$REPO/main"
 WORK_DIR="$HOME/.pdfold"
 SRC_DIR="$WORK_DIR/src"
 INSTALLER="$SRC_DIR/scripts/install-mac.sh"
+VERBOSE="${PDFOLD_INSTALL_VERBOSE:-0}"
 
 print_step() {
     printf "\n==> %s\n" "$1"
@@ -14,6 +15,11 @@ print_step() {
 
 print_note() {
     printf "    %s\n" "$1"
+}
+
+print_debug() {
+    [[ "$VERBOSE" == "1" ]] || return 0
+    printf "    [debug] %s\n" "$1"
 }
 
 fail() {
@@ -27,14 +33,23 @@ mkdir -p "$WORK_DIR"
 
 print_step "Installing or updating $APP_NAME"
 print_note "Trying the prebuilt app first. No Xcode or Command Line Tools needed."
+print_debug "Set PDFOLD_INSTALL_VERBOSE=1 before the README command for detailed console output."
 
 REMOTE_INSTALLER="$WORK_DIR/install-mac.sh"
+PREBUILT_LOG="$WORK_DIR/prebuilt-install.log"
 if /usr/bin/curl -fsSL "$RAW_BASE/scripts/install-mac.sh" -o "$REMOTE_INSTALLER"; then
     chmod +x "$REMOTE_INSTALLER" 2>/dev/null || true
-    if /bin/zsh "$REMOTE_INSTALLER" --prebuilt-only; then
+    installer_args=(--prebuilt-only)
+    [[ "$VERBOSE" == "1" ]] && installer_args+=(--verbose)
+    if /bin/zsh "$REMOTE_INSTALLER" "${installer_args[@]}" >"$PREBUILT_LOG" 2>&1; then
+        cat "$PREBUILT_LOG"
         exit 0
     fi
-    print_note "A prebuilt release was not available. Falling back to a local source build."
+    print_note "The v3 prebuilt release was not available yet. Falling back to a local source build."
+    print_note "Prebuilt attempt log: $PREBUILT_LOG"
+    if [[ "$VERBOSE" == "1" ]]; then
+        tail -n 60 "$PREBUILT_LOG" 2>/dev/null || true
+    fi
 else
     print_note "Could not download the remote installer. Falling back to a local source build."
 fi
@@ -61,4 +76,6 @@ fi
 
 [[ -f "$INSTALLER" ]] || fail "Source downloaded, but the installer was not found."
 chmod +x "$INSTALLER" 2>/dev/null || true
-exec /bin/zsh "$INSTALLER"
+installer_args=()
+[[ "$VERBOSE" == "1" ]] && installer_args+=(--verbose)
+exec /bin/zsh "$INSTALLER" "${installer_args[@]}"
