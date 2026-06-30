@@ -26,7 +26,6 @@
       .artifactLayer { fill: #1B1430; stroke: #A78BFA; stroke-width: 1.25; }
       .exportLayer { fill: #241609; stroke: #F59E0B; stroke-width: 1.25; }
       .rail { fill: #08251C; stroke: #22C55E; stroke-width: 1.25; }
-      .arrow { stroke: #64748B; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
     </style>
   </defs>
 
@@ -99,14 +98,14 @@
   </g>
 
   <g transform="translate(86 734)" filter="url(#shadow)">
-    <rect width="400" height="76" rx="16" class="artifactLayer"/>
+    <rect width="390" height="76" rx="16" class="artifactLayer"/>
     <rect width="5" height="76" rx="2.5" fill="#A78BFA"/>
     <text x="30" y="31" class="tag" fill="#C4B5FD">LOCAL DOCUMENT STATE</text>
     <text x="30" y="54" class="body">Workspace metadata and member PDF data</text>
   </g>
 
-  <g transform="translate(520 734)" filter="url(#shadow)">
-    <rect width="386" height="76" rx="16" class="exportLayer"/>
+  <g transform="translate(516 734)" filter="url(#shadow)">
+    <rect width="390" height="76" rx="16" class="exportLayer"/>
     <rect width="5" height="76" rx="2.5" fill="#F59E0B"/>
     <text x="30" y="31" class="tag" fill="#FDBA74">EXPORT ARTIFACTS</text>
     <text x="30" y="54" class="body">PDF, DOCX, MD, TXT, HTML, PNG, and JPEG</text>
@@ -116,7 +115,8 @@
     <rect width="240" height="662" rx="18" class="rail"/>
     <rect width="240" height="5" rx="2.5" fill="#22C55E"/>
     <text x="32" y="42" class="tag" fill="#86EFAC">RELEASE GUARDRAILS</text>
-    <g transform="translate(32 82)">
+    <rect x="24" y="70" width="192" height="236" rx="14" fill="#0B1220" stroke="#166534"/>
+    <g transform="translate(46 104)">
       <circle cx="6" cy="6" r="5" fill="#22C55E"/>
       <text x="22" y="10" class="body">Import size limits</text>
       <circle cx="6" cy="48" r="5" fill="#22C55E"/>
@@ -128,18 +128,9 @@
       <circle cx="6" cy="174" r="5" fill="#22C55E"/>
       <text x="22" y="178" class="body">Write-error reporting</text>
     </g>
-    <rect x="32" y="496" width="176" height="86" rx="14" fill="#0B1220" stroke="#166534"/>
-    <text x="52" y="530" class="tag" fill="#86EFAC">LOCAL INSTALLER</text>
-    <text x="52" y="556" class="body">xcodebuild, signing,</text>
-    <text x="52" y="578" class="body">Desktop launcher</text>
+    <rect x="24" y="330" width="192" height="118" rx="14" fill="#0B1220" stroke="#166534"/>
+    <text x="46" y="372" class="tag" fill="#86EFAC">LOCAL INSTALLER</text>
+    <text x="46" y="402" class="body">xcodebuild, signing,</text>
+    <text x="46" y="426" class="body">Desktop launcher</text>
   </g>
-
-  <path d="M496 262 V274" class="arrow"/>
-  <path d="M486 266 L496 276 L506 266" class="arrow"/>
-  <path d="M496 402 V414" class="arrow"/>
-  <path d="M486 406 L496 416 L506 406" class="arrow"/>
-  <path d="M496 542 V554" class="arrow"/>
-  <path d="M486 546 L496 556 L506 546" class="arrow"/>
-  <path d="M496 698 V728" class="arrow"/>
-  <path d="M486 722 L496 732 L506 722" class="arrow"/>
 </svg>

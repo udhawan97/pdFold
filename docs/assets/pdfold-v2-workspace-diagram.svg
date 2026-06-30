@@ -32,6 +32,7 @@
       .card { fill: url(#panel); stroke: #263A55; stroke-width: 1.25; }
       .workspaceCard { fill: url(#workspace); stroke: #2DD4BF; stroke-width: 1.35; }
       .arrow { stroke: #2DD4BF; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+      .connector { fill: #062A2B; stroke: #2DD4BF; stroke-width: 1.4; }
     </style>
   </defs>
 
@@ -43,8 +44,8 @@
   <text x="640" y="82" text-anchor="middle" class="title">PDFold Product Flow</text>
   <text x="640" y="112" text-anchor="middle" class="subtitle">Import files, assemble a local workspace, and export clean artifacts.</text>
 
-  <g transform="translate(86 170)" filter="url(#shadow)">
-    <rect width="318" height="340" rx="20" class="card"/>
+  <g transform="translate(86 160)" filter="url(#shadow)">
+    <rect width="318" height="360" rx="20" class="card"/>
     <rect width="318" height="5" rx="2.5" fill="#38BDF8"/>
     <text x="32" y="50" class="tag" fill="#67E8F9">01 IMPORT</text>
     <text x="32" y="86" class="step">Source files</text>
@@ -73,8 +74,8 @@
     </g>
   </g>
 
-  <g transform="translate(481 144)" filter="url(#shadow)">
-    <rect width="318" height="392" rx="22" class="workspaceCard"/>
+  <g transform="translate(481 160)" filter="url(#shadow)">
+    <rect width="318" height="360" rx="20" class="workspaceCard"/>
     <rect width="318" height="5" rx="2.5" fill="#2DD4BF"/>
     <text x="32" y="50" class="tag" fill="#5EEAD4">02 WORKSPACE</text>
     <text x="32" y="86" class="step">Organize and mark up</text>
@@ -82,7 +83,7 @@
     <text x="32" y="146" class="body">pages, search, annotate, tag,</text>
     <text x="32" y="168" class="body">comment, and place signatures.</text>
 
-    <g transform="translate(46 218)">
+    <g transform="translate(46 204)">
       <rect x="0" y="0" width="56" height="98" rx="12" fill="#0F172A" stroke="#274155"/>
       <rect x="13" y="17" width="30" height="18" rx="5" fill="#334155"/>
       <rect x="13" y="45" width="30" height="18" rx="5" fill="#334155"/>
@@ -103,7 +104,7 @@
       <rect x="236" y="74" width="15" height="7" rx="3.5" fill="#475569"/>
     </g>
 
-    <g transform="translate(36 350)">
+    <g transform="translate(36 318)">
       <rect x="0" y="0" width="54" height="28" rx="14" fill="#064E3B" stroke="#2DD4BF"/>
       <text x="27" y="19" text-anchor="middle" class="chip" fill="#CCFBF1">Tags</text>
       <rect x="66" y="0" width="92" height="28" rx="14" fill="#064E3B" stroke="#2DD4BF"/>
@@ -113,8 +114,8 @@
     </g>
   </g>
 
-  <g transform="translate(876 170)" filter="url(#shadow)">
-    <rect width="318" height="340" rx="20" class="card"/>
+  <g transform="translate(876 160)" filter="url(#shadow)">
+    <rect width="318" height="360" rx="20" class="card"/>
     <rect width="318" height="5" rx="2.5" fill="#A78BFA"/>
     <text x="32" y="50" class="tag" fill="#C4B5FD">03 OUTPUT</text>
     <text x="32" y="86" class="step">Export artifacts</text>
@@ -141,10 +142,17 @@
     </g>
   </g>
 
-  <path d="M424 340 H456" class="arrow"/>
-  <path d="M444 329 L458 340 L444 351" class="arrow"/>
-  <path d="M824 340 H856" class="arrow"/>
-  <path d="M844 329 L858 340 L844 351" class="arrow"/>
+  <g transform="translate(420 318)">
+    <circle cx="22" cy="22" r="22" class="connector"/>
+    <path d="M12 22 H29" class="arrow"/>
+    <path d="M24 14 L32 22 L24 30" class="arrow"/>
+  </g>
+
+  <g transform="translate(820 318)">
+    <circle cx="22" cy="22" r="22" class="connector"/>
+    <path d="M12 22 H29" class="arrow"/>
+    <path d="M24 14 L32 22 L24 30" class="arrow"/>
+  </g>
 
   <g transform="translate(248 596)">
     <rect width="784" height="44" rx="22" fill="#08251C" stroke="#166534"/>
