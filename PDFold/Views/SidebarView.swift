@@ -295,9 +295,17 @@ struct ThumbnailCell: View {
         .onTapGesture { viewModel.selectPage(pageRef) }
         .onDrag {
             viewModel.beginDraggingPage(pageRef)
-            return NSItemProvider(object: pageRef.id.uuidString as NSString)
+            let provider = NSItemProvider()
+            provider.registerDataRepresentation(
+                forTypeIdentifier: UTType.pdfoldPageRef.identifier,
+                visibility: .ownProcess
+            ) { completion in
+                completion(pageRef.id.uuidString.data(using: .utf8), nil)
+                return nil
+            }
+            return provider
         }
-        .onDrop(of: [UTType.text], isTargeted: nil) { _ in
+        .onDrop(of: [.pdfoldPageRef], isTargeted: nil) { _ in
             viewModel.moveDraggedPage(to: pageRef)
         }
         .task(id: pageNumber) {

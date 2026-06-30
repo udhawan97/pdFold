@@ -77,6 +77,7 @@ struct EmptyStateView: View {
             }
             .padding(.dsXXL)
             .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
 
             GuideButton(autoShow: true)
                 .buttonStyle(.borderless)
@@ -90,7 +91,16 @@ struct EmptyStateView: View {
                 .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
         }
         .onDrop(of: WorkspaceDocument.importableContentTypes + [.fileURL], isTargeted: $isDropTargeted) { providers in
-            resolveImportURLs(from: providers) { viewModel.importFiles(urls: $0) }
+            resolveImportURLs(from: providers) { urls in
+                guard !urls.isEmpty else {
+                    viewModel.importError = WorkspaceViewModel.ImportError(
+                        fileName: "Dropped Files",
+                        message: "PDFold could not find a supported document in that drop."
+                    )
+                    return
+                }
+                viewModel.importFiles(urls: urls)
+            }
             return true
         }
     }

@@ -196,6 +196,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
             self.viewModel = viewModel
         }
 
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
         @objc func selectionChanged(_ notification: Notification) {
             guard let pdfView,
                   let selection = pdfView.currentSelection,

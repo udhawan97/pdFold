@@ -34,6 +34,12 @@ struct ContentView: View {
                         }
                     }
                     .animation(.easeInOut(duration: 0.18), value: showInspector)
+                    .overlay { workspaceDropOverlay }
+                    .onDrop(
+                        of: WorkspaceDocument.importableContentTypes + [.fileURL],
+                        isTargeted: $isWorkspaceDropTargeted,
+                        perform: handleDrop
+                    )
                 }
                 .navigationTitle(viewModel.document.workspace.title)
                 .toolbar { mainToolbar }
@@ -41,16 +47,6 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.18), value: viewModel.memberDocuments.isEmpty)
         .tint(Color.dsAccent)
-        .overlay {
-            if !viewModel.memberDocuments.isEmpty {
-                workspaceDropOverlay
-            }
-        }
-        .onDrop(
-            of: WorkspaceDocument.importableContentTypes + [.fileURL],
-            isTargeted: $isWorkspaceDropTargeted,
-            perform: handleDrop
-        )
         .onAppear { viewModel.undoManager = undoManager }
         .onChange(of: undoManager) { _, um in viewModel.undoManager = um }
         .popover(isPresented: $viewModel.isShowingSearch, arrowEdge: .top) {
@@ -195,7 +191,16 @@ struct ContentView: View {
     }
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        resolveImportURLs(from: providers) { viewModel.importFiles(urls: $0) }
+        resolveImportURLs(from: providers) { urls in
+            guard !urls.isEmpty else {
+                viewModel.importError = WorkspaceViewModel.ImportError(
+                    fileName: "Dropped Files",
+                    message: "PDFold could not find a supported document in that drop."
+                )
+                return
+            }
+            viewModel.importFiles(urls: urls)
+        }
         return true
     }
 
@@ -484,15 +489,19 @@ private func urlFromProviderItem(_ item: NSSecureCoding?) -> URL? {
         return URL(dataRepresentation: data, relativeTo: nil)
     }
     if let string = item as? String {
-        return URL(string: string) ?? URL(fileURLWithPath: string)
+        if let url = URL(string: string), url.isFileURL {
+            return url
+        }
+        return URL(fileURLWithPath: string)
     }
     return nil
 }
 
 private func copyTemporaryDropFile(from url: URL, contentType: UTType) -> URL? {
-    let extensionHint = url.pathExtension.isEmpty
-        ? (contentType.preferredFilenameExtension ?? "dat")
-        : url.pathExtension
+    let existingExtension = url.pathExtension
+    let extensionHint = isSupportedImportExtension(existingExtension)
+        ? existingExtension
+        : preferredImportExtension(for: contentType, fallback: existingExtension)
     let name = url.deletingPathExtension().lastPathComponent.isEmpty
         ? UUID().uuidString
         : url.deletingPathExtension().lastPathComponent
@@ -516,8 +525,36 @@ private func copyTemporaryDropFile(from url: URL, contentType: UTType) -> URL? {
 }
 
 func isSupportedImportURL(_ url: URL) -> Bool {
+    guard url.isFileURL else { return false }
+    if let resourceType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType,
+       WorkspaceDocument.importableContentTypes.contains(where: { resourceType.conforms(to: $0) }) {
+        return true
+    }
     guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
     return WorkspaceDocument.importableContentTypes.contains { type.conforms(to: $0) }
+}
+
+private func isSupportedImportExtension(_ pathExtension: String) -> Bool {
+    guard !pathExtension.isEmpty,
+          let type = UTType(filenameExtension: pathExtension) else {
+        return false
+    }
+    return WorkspaceDocument.importableContentTypes.contains { type.conforms(to: $0) }
+}
+
+private func preferredImportExtension(for contentType: UTType, fallback: String) -> String {
+    if let preferred = contentType.preferredFilenameExtension,
+       isSupportedImportExtension(preferred) {
+        return preferred
+    }
+    if contentType.conforms(to: .pdf) { return "pdf" }
+    if contentType.conforms(to: .html) { return "html" }
+    if contentType.conforms(to: .rtf) { return "rtf" }
+    if contentType.conforms(to: .json) { return "json" }
+    if contentType.conforms(to: .xml) { return "xml" }
+    if contentType.conforms(to: .image) { return "png" }
+    if contentType.conforms(to: .plainText) || contentType.conforms(to: .text) { return "txt" }
+    return fallback.isEmpty ? "dat" : fallback
 }
 
 private extension Array where Element == URL {
