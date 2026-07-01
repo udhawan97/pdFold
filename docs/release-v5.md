@@ -42,6 +42,13 @@ Direct download: [`pdFold.zip`](https://github.com/udhawan97/PDFold/releases/lat
 
 The installer downloads the latest `pdFold.zip`, installs `pdFold.app` to `~/Applications`, creates Desktop commands for launch/update and uninstall, clears quarantine metadata, and opens pdFold.
 
+Homebrew users can install the same prebuilt release app through the repository cask:
+
+```zsh
+brew tap udhawan97/pdfold https://github.com/udhawan97/PDFold
+brew install --cask udhawan97/pdfold/pdfold
+```
+
 ---
 
 ## What's New in v5
@@ -71,6 +78,12 @@ The installer downloads the latest `pdFold.zip`, installs `pdFold.app` to `~/App
 - Search, contents, signature, edit, annotation, export, guide, and inspector controls are grouped more deliberately in the toolbar.
 - Foldy, the optional pdFold helper, reacts to common actions and can be hidden from the app menu or popover.
 - Helper bubbles avoid blocking normal canvas input.
+
+### Installation Choices
+
+- The original one-line installer remains available and still creates Desktop launch/update and uninstall commands.
+- A tap-compatible Homebrew cask is included for users who prefer `brew install --cask`.
+- README install, update, and uninstall sections now document both routes.
 
 ---
 
@@ -122,12 +135,13 @@ Feature range used for the product-change summary: `release-v4..HEAD`
 Summary:
 
 ```text
-8 commits changed 18 files, with 2169 insertions and 294 deletions.
+9 commits changed 19 files, with 2211 insertions and 294 deletions.
 ```
 
 Commits:
 
-- `HEAD` Polish release README and CI test
+- `HEAD` Add optional Homebrew cask
+- `b92d4f6` Polish release README and CI test
 - `f709d96` Stabilize CI plist validation
 - `25ee541` Prepare release v5
 - `ad00fd9` Inline coverage +
@@ -143,6 +157,7 @@ Notable files:
 - `PDFold/Engine/PDFKitEngine.swift`
 - `PDFold/Models/SourceDocumentPayload.swift`
 - `PDFold.xcodeproj/project.pbxproj`
+- `Casks/pdfold.rb`
 - `.github/workflows/ci.yml`
 - `PDFold/Views/ContentView.swift`
 - `PDFold/Views/ReadingCanvas.swift`

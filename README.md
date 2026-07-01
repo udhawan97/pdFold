@@ -66,7 +66,16 @@ The installer downloads the latest prebuilt app, places it in `~/Applications/pd
 
 Direct download: [`pdFold.zip`](https://github.com/udhawan97/PDFold/releases/latest/download/pdFold.zip) from the latest GitHub release.
 
-No Xcode. No GitHub account. No compile step. Just paste, install, and get back to the documents.
+Homebrew cask:
+
+```zsh
+brew tap udhawan97/pdfold https://github.com/udhawan97/PDFold
+brew install --cask udhawan97/pdfold/pdfold
+```
+
+Both routes install the prebuilt app. The original installer also creates Desktop launch/update and uninstall commands; Homebrew uses `brew upgrade` and `brew uninstall --cask`.
+
+No Xcode. No GitHub account. No compile step. Pick an install route and get back to the documents.
 
 <details>
 <summary>How to open Terminal</summary>
@@ -207,6 +216,22 @@ The normal path does not require Xcode, Apple's Command Line Tools, a package ma
 
 Important release note: the zero-compile installer depends on a published GitHub latest release containing `pdFold.zip`. The release workflow publishes that prebuilt asset from `release-v*` tags, so normal users do not need Apple's developer tools.
 
+### Homebrew Cask
+
+```zsh
+brew tap udhawan97/pdfold https://github.com/udhawan97/PDFold
+brew install --cask udhawan97/pdfold/pdfold
+```
+
+This uses the tap-compatible cask in this repository and installs the same prebuilt `pdFold.zip` release app through Homebrew. The one-line installer above remains the recommended path until pdFold releases are Developer ID signed and notarized.
+
+To update later:
+
+```zsh
+brew update
+brew upgrade --cask udhawan97/pdfold/pdfold
+```
+
 For detailed install diagnostics, run the same command with verbose logging enabled:
 
 ```zsh
@@ -225,6 +250,8 @@ cd PDFold
 
 ## Updating The App
 
+### Original Installer
+
 Double-click **pdFold.command** on the Desktop. The launcher checks for the latest release, refreshes the installed app when needed, and then opens pdFold.
 
 You can also paste the installer command again:
@@ -235,7 +262,16 @@ curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | 
 
 If pdFold is already installed, the updater closes the running app if needed, replaces `~/Applications/pdFold.app`, refreshes the Desktop launcher, removes quarantine metadata, and opens the updated app.
 
+### Homebrew
+
+```zsh
+brew update
+brew upgrade --cask udhawan97/pdfold/pdfold
+```
+
 ## Uninstalling The App
+
+### Original Installer
 
 Double-click **Uninstall pdFold.command** on the Desktop to remove the installed app, generated Desktop commands, installer cache, and pdFold app data.
 
@@ -243,6 +279,18 @@ To keep app support, preferences, caches, and sandbox data, run:
 
 ```zsh
 curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/scripts/uninstall-mac.sh | zsh -s -- --keep-user-data
+```
+
+### Homebrew
+
+```zsh
+brew uninstall --cask udhawan97/pdfold/pdfold
+```
+
+For Homebrew's deeper cleanup path:
+
+```zsh
+brew uninstall --zap --cask udhawan97/pdfold/pdfold
 ```
 
 <details>
