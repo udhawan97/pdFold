@@ -788,17 +788,24 @@ final class WorkspaceViewModel {
         return true
     }
 
-    func applyHighlight(to selection: PDFSelection) {
+    @discardableResult
+    func applyHighlight(to selection: PDFSelection) -> Bool {
+        var didAddAnnotation = false
         selection.selectionsByLine().forEach { line in
             guard let page = line.pages.first else { return }
             let bounds = line.bounds(for: page)
+            guard !hasEquivalentAnnotation(on: page, subtype: .highlight, bounds: bounds) else { return }
             let ann = PDFAnnotation(bounds: bounds, forType: .highlight, withProperties: nil)
             ann.color = annotationColor.withAlphaComponent(0.4)
             page.addAnnotation(ann)
             undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
+            didAddAnnotation = true
         }
-        markAnnotationsModified()
-        undoManager?.setActionName("Highlight")
+        if didAddAnnotation {
+            markAnnotationsModified()
+            undoManager?.setActionName("Highlight")
+        }
+        return didAddAnnotation
     }
 
     @discardableResult
@@ -1549,17 +1556,31 @@ final class WorkspaceViewModel {
 
     // MARK: - Annotation helpers (underline, strikeout)
 
-    func applyMarkup(_ type: PDFAnnotationSubtype, to selection: PDFSelection) {
+    @discardableResult
+    func applyMarkup(_ type: PDFAnnotationSubtype, to selection: PDFSelection) -> Bool {
+        var didAddAnnotation = false
         selection.selectionsByLine().forEach { line in
             guard let page = line.pages.first else { return }
             let bounds = line.bounds(for: page)
+            guard !hasEquivalentAnnotation(on: page, subtype: type, bounds: bounds) else { return }
             let ann = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
             ann.color = annotationColor.withAlphaComponent(0.8)
             page.addAnnotation(ann)
             undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
+            didAddAnnotation = true
         }
-        markAnnotationsModified()
-        undoManager?.setActionName(type == .underline ? "Underline" : "Strikeout")
+        if didAddAnnotation {
+            markAnnotationsModified()
+            undoManager?.setActionName(type == .underline ? "Underline" : "Strikeout")
+        }
+        return didAddAnnotation
+    }
+
+    private func hasEquivalentAnnotation(on page: PDFPage, subtype: PDFAnnotationSubtype, bounds: CGRect) -> Bool {
+        let typeName = subtype.rawValue.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return page.annotations.contains { annotation in
+            annotation.type == typeName && annotation.bounds.isApproximatelyEqual(to: bounds)
+        }
     }
 
     // MARK: - TOC synthesis
@@ -1640,5 +1661,14 @@ final class WorkspaceViewModel {
     private func localIndex(ref: PageRef, memberIndex mi: Int) -> Int? {
         guard document.workspace.documents.indices.contains(mi) else { return nil }
         return document.workspace.documents[mi].pageRefs.firstIndex(of: ref.id)
+    }
+}
+
+private extension CGRect {
+    func isApproximatelyEqual(to other: CGRect, tolerance: CGFloat = 0.25) -> Bool {
+        abs(minX - other.minX) <= tolerance &&
+            abs(minY - other.minY) <= tolerance &&
+            abs(width - other.width) <= tolerance &&
+            abs(height - other.height) <= tolerance
     }
 }

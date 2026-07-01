@@ -173,6 +173,9 @@ struct PDFViewRepresentable: NSViewRepresentable {
         view.onDeleteKey = { [weak coordinator = context.coordinator] in
             coordinator?.viewModel.deleteSelectedAnnotation()
         }
+        view.onSelectionCommitted = { [weak coordinator = context.coordinator] in
+            coordinator?.commitCurrentMarkupSelection()
+        }
 
         // Click gesture
         let click = NSClickGestureRecognizer(target: context.coordinator,
@@ -189,10 +192,6 @@ struct PDFViewRepresentable: NSViewRepresentable {
         view.addSubview(overlay)
 
         // Notifications
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.selectionChanged(_:)),
-            name: .PDFViewSelectionChanged, object: view)
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(Coordinator.jumpToSelection(_:)),
@@ -262,7 +261,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
             inlineEditor?.finishForHandoff()
         }
 
-        @objc func selectionChanged(_ notification: Notification) {
+        func commitCurrentMarkupSelection() {
             guard let pdfView,
                   let selection = pdfView.currentSelection,
                   !(selection.string?.isEmpty ?? true) else { return }
@@ -516,6 +515,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
 
 final class PDFoldPDFView: PDFView {
     var onDeleteKey: (() -> Void)?
+    var onSelectionCommitted: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -526,6 +526,11 @@ final class PDFoldPDFView: PDFView {
         } else {
             super.keyDown(with: event)
         }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        onSelectionCommitted?()
     }
 }
 

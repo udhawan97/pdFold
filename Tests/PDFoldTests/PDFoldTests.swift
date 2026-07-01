@@ -978,6 +978,22 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.combinedPageIndex(forWorkspacePageNumber: 3), 4)
     }
 
+    func testRepeatedHighlightSelectionDoesNotStackAnnotations() throws {
+        let pdf = makePDF(pageTexts: ["Highlight target"])
+        let page = try XCTUnwrap(pdf.page(at: 0))
+        let selection = try XCTUnwrap(page.selectionForWord(at: CGPoint(x: 75, y: 720)))
+        let viewModel = WorkspaceViewModel(
+            document: WorkspaceDocument(),
+            processingEngine: PDFKitProcessingEngineFallback()
+        )
+
+        XCTAssertTrue(viewModel.applyHighlight(to: selection))
+        XCTAssertFalse(viewModel.applyHighlight(to: selection))
+
+        let highlights = page.annotations.filter { $0.type == "Highlight" }
+        XCTAssertEqual(highlights.count, 1)
+    }
+
     func testEditableTextOverlayIsMarkedAsReplacementAnnotation() throws {
         let pdf = makePDF(pageTexts: ["Replaceable text"])
         let page = try XCTUnwrap(pdf.page(at: 0))
