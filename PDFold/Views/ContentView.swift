@@ -60,6 +60,11 @@ struct ContentView: View {
         .overlay(alignment: .bottomTrailing) { PetOverlay().padding(18) }
         .onAppear { viewModel.undoManager = undoManager }
         .onChange(of: undoManager) { _, um in viewModel.undoManager = um }
+        .onChange(of: viewModel.selectedCommentID) { _, newValue in
+            guard newValue != nil else { return }
+            inspectorTab = .comments
+            showInspector = true
+        }
         .popover(isPresented: $viewModel.isShowingSearch, arrowEdge: .top) {
             SearchView(viewModel: viewModel)
         }
@@ -233,6 +238,7 @@ private struct AnnotationToolPicker: View {
         [.editText],
         [.signature],
         [.none],
+        [.comment],
         [.highlight, .underline, .strikeout, .eraser],
         [.note, .ink]
     ]
@@ -244,10 +250,11 @@ private struct AnnotationToolPicker: View {
                 toolGroup(tools, style: groupStyle(for: tools))
             }
 
-            if viewModel.currentTool.isColorable {
-                AnnotationColorButton(viewModel: viewModel)
-                    .transition(.scale.combined(with: .opacity))
-            }
+            AnnotationColorButton(viewModel: viewModel)
+                .opacity(viewModel.currentTool.isColorable ? 1 : 0)
+                .scaleEffect(viewModel.currentTool.isColorable ? 1 : 0.92)
+                .allowsHitTesting(viewModel.currentTool.isColorable)
+                .accessibilityHidden(!viewModel.currentTool.isColorable)
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
@@ -258,7 +265,7 @@ private struct AnnotationToolPicker: View {
         )
         .shadow(color: Color.black.opacity(0.10), radius: 8, x: 0, y: 2)
         .help("Annotation tool")
-        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.currentTool)
+        .animation(.spring(response: 0.22, dampingFraction: 0.9), value: viewModel.currentTool)
     }
 
     private func toolGroup(_ tools: [AnnotationTool], style: ToolGroupStyle) -> some View {
@@ -294,29 +301,14 @@ private struct AnnotationToolPicker: View {
                 if isSelected {
                     Capsule()
                         .fill(accent)
-                        .shadow(color: accent.opacity(tool.isServiceTool ? 0.24 : 0), radius: 6, x: 0, y: 2)
                         .matchedGeometryEffect(id: "selectedTool", in: selectionNamespace)
                 }
 
-                HStack(spacing: 5) {
-                    toolIcon(tool, isSelected: isSelected)
-
-                    if isSelected {
-                        Text(tool.label)
-                            .font(.dsCaption().weight(.semibold))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: tool.selectedLabelMaxWidth, alignment: .leading)
-                            .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .leading)))
-                    }
-                }
-                .foregroundStyle(isSelected ? Color.white : Color.dsTextSecondary)
-                .padding(.horizontal, isSelected ? 9 : 0)
+                toolIcon(tool, isSelected: isSelected)
+                    .foregroundStyle(isSelected ? Color.white : Color.dsTextSecondary)
             }
-            .frame(minWidth: 30, minHeight: 32)
-            .frame(height: 32)
+            .frame(width: 32, height: 32)
             .contentShape(Capsule())
-            .scaleEffect(isSelected && tool.isServiceTool ? 1.03 : 1)
         }
         .buttonStyle(ToolButtonStyle(isHovered: isHovered, isSelected: isSelected, hoverFill: hoverFill))
         .onHover { isHovered in
@@ -348,6 +340,8 @@ private struct AnnotationToolPicker: View {
             return Color.dsEditTextAccent
         case .signature:
             return Color.dsSignatureAccent
+        case .comment, .commentRegion:
+            return Color.dsAccent
         default:
             return Color.dsAccent
         }
@@ -359,6 +353,8 @@ private struct AnnotationToolPicker: View {
             return Color.dsEditTextSoft
         case .signature:
             return Color.dsSignatureSoft
+        case .comment, .commentRegion:
+            return Color.dsAccentSoft
         default:
             return Color.dsAccentSoft
         }
@@ -370,6 +366,8 @@ private struct AnnotationToolPicker: View {
             return Color.dsEditTextHover
         case .signature:
             return Color.dsSignatureHover
+        case .comment, .commentRegion:
+            return Color.dsAccentSoft
         default:
             return Color.dsAccentSoft
         }
@@ -423,15 +421,7 @@ private struct ToolGroupStyle {
 
 private extension AnnotationTool {
     var isServiceTool: Bool {
-        self == .editText || self == .signature
-    }
-
-    var selectedLabelMaxWidth: CGFloat {
-        switch self {
-        case .editText, .signature: return 64
-        case .highlight, .strikeout: return 68
-        default: return 58
-        }
+        self == .editText || self == .signature || self == .comment
     }
 }
 

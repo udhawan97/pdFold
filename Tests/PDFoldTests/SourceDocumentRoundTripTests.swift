@@ -40,6 +40,37 @@ final class SourceDocumentRoundTripTests: XCTestCase {
         XCTAssertEqual(exported, Data(markdown.utf8))
     }
 
+    func testDeletingSignedSecondaryPageRestoresSourcePreservingMarkdownExport() throws {
+        let markdown = Data("# Heading\n\nOriginal body".utf8)
+        let document = WorkspaceDocument()
+        try addImportedDocument(to: document, data: markdown, contentType: .markdown, filename: "notes.md")
+        try addImportedDocument(to: document, data: Data("Signed attachment".utf8), contentType: .plainText, filename: "attachment.txt")
+        let signedPageRef = try XCTUnwrap(document.workspace.pageOrder.last)
+        document.workspace.signatures = [
+            SignaturePlacement(
+                pageRefId: signedPageRef.id,
+                imageData: Data([1, 2, 3]),
+                rect: CGRect(x: 20, y: 20, width: 120, height: 40),
+                kind: .cryptographic
+            )
+        ]
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        viewModel.undoManager = undoManager
+
+        undoManager.beginUndoGrouping()
+        viewModel.deletePage(signedPageRef)
+        undoManager.endUndoGrouping()
+
+        XCTAssertTrue(viewModel.document.workspace.signatures.isEmpty)
+        XCTAssertEqual(viewModel.memberDocuments.count, 1)
+        XCTAssertEqual(try viewModel.dataForWorkspaceExport(as: .markdown), markdown)
+
+        undoManager.undo()
+        XCTAssertEqual(viewModel.document.workspace.signatures.map(\.pageRefId), [signedPageRef.id])
+    }
+
     func testSameFormatUnchangedExportsReturnOriginalBytesForAllSupportedTextFormats() throws {
         for sample in try makeSupportedSamples() {
             let viewModel = try makeViewModel(

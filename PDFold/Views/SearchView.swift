@@ -1,8 +1,10 @@
 import SwiftUI
 import PDFKit
+import AppKit
 
 struct SearchView: View {
     @Bindable var viewModel: WorkspaceViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var fieldFocused: Bool
 
     private enum Layout {
@@ -19,6 +21,10 @@ struct SearchView: View {
         return "\(n) result\(n == 1 ? "" : "s")"
     }
 
+    private var shouldReduceMotion: Bool {
+        reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Search field
@@ -31,17 +37,17 @@ struct SearchView: View {
                     .textFieldStyle(.plain)
                     .font(.dsBody())
                     .focused($fieldFocused)
-                    .onSubmit { viewModel.searchNext() }
+                    .onSubmit { viewModel.commitSearch() }
                     .onChange(of: viewModel.searchQuery) { _, q in
-                        if q.isEmpty { viewModel.searchResults = []; viewModel.searchResultIndex = -1 }
-                        else { viewModel.search(query: q) }
+                        viewModel.scheduleSearch(query: q)
                     }
 
                 if !viewModel.searchQuery.isEmpty {
                     Text(resultLabel)
                         .font(.dsCaption())
                         .foregroundStyle(Color.dsTextTertiary)
-                        .animation(.none, value: resultLabel)
+                        .contentTransition(shouldReduceMotion ? .identity : .numericText())
+                        .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.16), value: resultLabel)
 
                     Divider().frame(height: 14)
 

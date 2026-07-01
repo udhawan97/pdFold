@@ -4,7 +4,12 @@ import AppKit
 
 struct EmptyStateView: View {
     var viewModel: WorkspaceViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isDropTargeted = false
+
+    private var shouldReduceMotion: Bool {
+        reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -41,11 +46,7 @@ struct EmptyStateView: View {
 
                     // Drop zone card
                     VStack(spacing: .dsLG) {
-                        Image(systemName: isDropTargeted ? "tray.and.arrow.down.fill" : "doc.badge.plus")
-                            .font(.system(size: 28, weight: .light))
-                            .foregroundStyle(Color.dsAccent)
-                            .symbolRenderingMode(.hierarchical)
-                            .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+                        dropZoneIcon
 
                         VStack(spacing: 5) {
                             Text(isDropTargeted ? "Release to import" : "Drop files to begin")
@@ -111,6 +112,22 @@ struct EmptyStateView: View {
                 viewModel.importFiles(urls: urls)
             }
             return true
+        }
+    }
+
+    @ViewBuilder
+    private var dropZoneIcon: some View {
+        let icon = Image(systemName: isDropTargeted ? "tray.and.arrow.down.fill" : "doc.badge.plus")
+            .font(.system(size: 28, weight: .light))
+            .foregroundStyle(Color.dsAccent)
+            .symbolRenderingMode(.hierarchical)
+
+        if shouldReduceMotion {
+            icon
+        } else {
+            icon
+                .contentTransition(.symbolEffect(.replace))
+                .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
         }
     }
 

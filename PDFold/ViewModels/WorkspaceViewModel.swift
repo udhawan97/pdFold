@@ -75,6 +75,8 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
     case none      = "select"
     case highlight = "highlighter"
     case note      = "note.text"
+    case comment   = "text.bubble"
+    case commentRegion = "rectangle.and.text.magnifyingglass"
     case editText  = "textformat"
     case ink       = "pencil.tip"
     case eraser    = "eraser"
@@ -88,6 +90,8 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .none:      return "Select"
         case .highlight: return "Highlight"
         case .note:      return "Note"
+        case .comment:   return "Comment"
+        case .commentRegion: return "Region Comment"
         case .editText:  return "Edit Text"
         case .ink:       return "Ink"
         case .eraser:    return "Eraser"
@@ -102,6 +106,8 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .none:      return "cursorarrow"
         case .highlight: return "highlighter"
         case .note:      return "note.text"
+        case .comment:   return "text.bubble"
+        case .commentRegion: return "rectangle.dashed"
         case .editText:  return "character.cursor.ibeam"
         case .ink:       return "scribble.variable"
         case .eraser:    return "eraser"
@@ -116,6 +122,8 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .none:      return "Select annotations on the page. Press Delete to remove the selected annotation."
         case .highlight: return "Select PDF text to mark it with color."
         case .note:      return "Click the page to add a sticky note, or click an existing note to edit it."
+        case .comment:   return "Select PDF text, then create an anchored comment."
+        case .commentRegion: return "Drag a rectangle over a figure or region to create an anchored comment."
         case .editText:  return "Click existing text to replace it, or click blank space to add text."
         case .ink:       return "Draw freehand marks on the page."
         case .eraser:    return "Click a highlight, underline, or strikeout to remove it."
@@ -128,7 +136,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
     var isColorable: Bool {
         switch self {
         case .highlight, .note, .editText, .ink, .underline, .strikeout: return true
-        case .none, .eraser, .signature: return false
+        case .none, .comment, .commentRegion, .eraser, .signature: return false
         }
     }
 
@@ -145,6 +153,7 @@ final class WorkspaceViewModel {
     // MARK: - UI state
     var importError: ImportError? = nil
     var exportError: ExportError? = nil
+    var isImporting = false
     var pendingPasswordURL: URL? = nil
     var pendingPasswordPDF: PDFDocument? = nil
     var isShowingPasswordPrompt = false
@@ -160,6 +169,8 @@ final class WorkspaceViewModel {
     var pendingSignatureOptions: PendingSignaturePlacementOptions? = nil
     var selectedPageRefID: UUID? = nil
     var draggedPageRefID: UUID? = nil
+    var selectedCommentID: UUID? = nil
+    var commentFilter: CommentFilter = .open
     var editingStatus: EditingStatus? = nil
 
     // MARK: - Annotation colors (curated palette)
@@ -190,6 +201,10 @@ final class WorkspaceViewModel {
     private var textAnalysisCache: [UUID: PDFTextPageAnalysis] = [:]
     private var pendingSigningIdentity: (any SigningIdentity)?
     private var signingIdentitiesByPlacementID: [UUID: any SigningIdentity] = [:]
+    @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
+    @ObservationIgnored private var searchNotificationTokens: [NSObjectProtocol] = []
+    @ObservationIgnored private var activeSearchID = UUID()
+    @ObservationIgnored private var pendingSearchResults: [PDFSelection] = []
     /// Raw PDF bytes captured ONCE when each member is first loaded or attached.
     /// Never mutated during editing — used as the immutable base for page regeneration
     /// so multiple edits on the same page always start from the original content.
@@ -265,6 +280,14 @@ final class WorkspaceViewModel {
         }
     }
 
+    enum CommentFilter: String, CaseIterable, Identifiable {
+        case open = "Open"
+        case resolved = "Resolved"
+        case all = "All"
+
+        var id: String { rawValue }
+    }
+
     var hasCryptographicSignaturePlacement: Bool {
         document.workspace.signatures.contains { $0.isCryptographic }
     }
@@ -297,6 +320,29 @@ final class WorkspaceViewModel {
 
     var totalCommentCount: Int {
         document.workspace.comments.count + pdfNoteComments.count
+    }
+
+    var filteredWorkspaceComments: [WorkspaceComment] {
+        switch commentFilter {
+        case .open:
+            return document.workspace.comments.filter { !$0.isResolved }
+        case .resolved:
+            return document.workspace.comments.filter(\.isResolved)
+        case .all:
+            return document.workspace.comments
+        }
+    }
+
+    var usedCommentTags: [String] {
+        let tags = document.workspace.tags + document.workspace.comments.flatMap(\.tags)
+        return tags.reduce(into: [String]()) { result, tag in
+            guard !tag.isEmpty,
+                  !result.contains(where: { $0.localizedCaseInsensitiveCompare(tag) == .orderedSame }) else {
+                return
+            }
+            result.append(tag)
+        }
+        .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     // MARK: - Init
@@ -346,8 +392,10 @@ final class WorkspaceViewModel {
     // MARK: - Import
 
     func importFiles(urls: [URL]) {
-        for url in urls { addFile(from: url) }
-        rebuild()
+        guard beginImportIfPossible() else { return }
+        Task { [weak self] in
+            await self?.performImport(urls: urls)
+        }
     }
 
     func importPDFs(urls: [URL]) {
@@ -355,6 +403,68 @@ final class WorkspaceViewModel {
     }
 
     func addFile(from url: URL) {
+        guard !isImporting else { return }
+        addFileSynchronously(from: url)
+    }
+
+    private func beginImportIfPossible() -> Bool {
+        guard !isImporting else {
+            editingStatus = .warning("An import is already in progress.")
+            return false
+        }
+        isImporting = true
+        return true
+    }
+
+    private func performImport(urls: [URL]) async {
+        for url in urls {
+            let result = await importDocument(from: url)
+            await MainActor.run {
+                switch result {
+                case .success(let imported):
+                    self.attachImportedDocument(imported.document, from: imported.url)
+                case .failure(let failure):
+                    self.importError = ImportError(
+                        fileName: failure.url.lastPathComponent,
+                        message: "Could not open \"\(failure.url.lastPathComponent)\". \(DocumentImportConverter.userMessage(for: failure.error))"
+                    )
+                }
+            }
+        }
+        await MainActor.run {
+            self.rebuild()
+            self.isImporting = false
+        }
+    }
+
+    private struct AsyncImportedDocument {
+        var url: URL
+        var document: DocumentImportConverter.ImportedDocument
+    }
+
+    private struct AsyncImportFailure: Error {
+        var url: URL
+        var error: Error
+    }
+
+    private func importDocument(from url: URL) async -> Result<AsyncImportedDocument, AsyncImportFailure> {
+        await Task.detached(priority: .userInitiated) {
+            let fileName = url.lastPathComponent
+            let isSecurityScoped = url.startAccessingSecurityScopedResource()
+            defer {
+                if isSecurityScoped { url.stopAccessingSecurityScopedResource() }
+            }
+            do {
+                let document = try await DocumentImportConverter.importedDocumentAsync(from: url)
+                return .success(AsyncImportedDocument(url: url, document: document))
+            } catch {
+                let failedURL = URL(fileURLWithPath: fileName)
+                return .failure(AsyncImportFailure(url: failedURL, error: error))
+            }
+        }.value
+    }
+
+    private func addFileSynchronously(from url: URL) {
         let fileName = url.lastPathComponent
         let isSecurityScoped = url.startAccessingSecurityScopedResource()
         defer {
@@ -371,6 +481,17 @@ final class WorkspaceViewModel {
             )
             return
         }
+        let pdf = imported.pdfDocument
+        if pdf.isLocked {
+            pendingPasswordURL = url
+            pendingPasswordPDF = pdf
+            isShowingPasswordPrompt = true
+            return
+        }
+        attachPDF(pdf, from: url, sourcePayload: imported.sourcePayload)
+    }
+
+    private func attachImportedDocument(_ imported: DocumentImportConverter.ImportedDocument, from url: URL) {
         let pdf = imported.pdfDocument
         if pdf.isLocked {
             pendingPasswordURL = url
@@ -431,6 +552,7 @@ final class WorkspaceViewModel {
     }
 
     func rebuild() {
+        cancelPendingSearch()
         combinedPDF = engine.concatenate(documents: loadedPDFs, includeBanners: true)
         pageCount = document.workspace.pageOrder.count
         // PDFSelections are bound to the old document; drop them so search navigation
@@ -475,6 +597,7 @@ final class WorkspaceViewModel {
     // MARK: - Reorder / Remove (with undo)
 
     func moveDocument(from source: IndexSet, to destination: Int) {
+        guard canPerformMutatingAction() else { return }
         let validSource = source.filter { loadedPDFs.indices.contains($0) }
         guard validSource.count == source.count,
               destination >= 0,
@@ -491,6 +614,7 @@ final class WorkspaceViewModel {
     }
 
     func removeDocument(at offsets: IndexSet) {
+        guard canPerformMutatingAction() else { return }
         let validOffsets = offsets.filter { loadedPDFs.indices.contains($0) }
         guard validOffsets.count == offsets.count else { return }
 
@@ -501,6 +625,8 @@ final class WorkspaceViewModel {
             .flatMap(\.pageRefs))
         document.workspace.documents.removeAll { removedIds.contains($0.id) }
         document.workspace.pageEditStates.removeAll { removedPageRefIDs.contains($0.pageRefID) }
+        clearCommentAnchors(forRemovedPageRefIDs: removedPageRefIDs)
+        removeSignaturePlacements(forRemovedPageRefIDs: removedPageRefIDs)
         removedIds.forEach { document.memberPDFData.removeValue(forKey: $0) }
         removedIds.forEach { document.sourcePayloads.removeValue(forKey: $0) }
         loadedPDFs.removeAll { removedIds.contains($0.0.id) }
@@ -512,12 +638,17 @@ final class WorkspaceViewModel {
     private struct OrderSnapshot {
         var documents: [MemberDocument]
         var pageOrder: [PageRef]
+        var comments: [WorkspaceComment]
+        var signatures: [SignaturePlacement]
+        var signatureIdentities: [UUID: any SigningIdentity]
+        var pageRotations: [UUID: Int]
         var pdfData: [UUID: Data]
         var sourcePayloads: [UUID: SourceDocumentPayload]
     }
 
     private struct InlineTextEditSnapshot {
         var editStates: [PageEditState]
+        var pageRotations: [UUID: Int]
         var pdfData: [UUID: Data]
     }
 
@@ -525,6 +656,10 @@ final class WorkspaceViewModel {
         OrderSnapshot(
             documents: document.workspace.documents,
             pageOrder: document.workspace.pageOrder,
+            comments: document.workspace.comments,
+            signatures: document.workspace.signatures,
+            signatureIdentities: signingIdentitiesByPlacementID,
+            pageRotations: currentPageRotations(),
             pdfData: currentPDFData(),
             sourcePayloads: document.sourcePayloads
         )
@@ -533,6 +668,9 @@ final class WorkspaceViewModel {
     private func restore(_ snapshot: OrderSnapshot) {
         document.workspace.documents = snapshot.documents
         document.workspace.pageOrder = snapshot.pageOrder
+        document.workspace.comments = snapshot.comments
+        document.workspace.signatures = snapshot.signatures
+        signingIdentitiesByPlacementID = snapshot.signatureIdentities
         document.memberPDFData = snapshot.pdfData
         document.sourcePayloads = snapshot.sourcePayloads
         loadedPDFs = snapshot.documents.compactMap { member in
@@ -540,6 +678,7 @@ final class WorkspaceViewModel {
                   let pdf = PDFDocument(data: data) else { return nil }
             return (member, pdf)
         }
+        applyPageRotations(snapshot.pageRotations)
         rebuild()
     }
 
@@ -565,6 +704,7 @@ final class WorkspaceViewModel {
     private func captureInlineTextEditSnapshot() -> InlineTextEditSnapshot {
         InlineTextEditSnapshot(
             editStates: document.workspace.pageEditStates,
+            pageRotations: currentPageRotations(),
             pdfData: currentPDFData()
         )
     }
@@ -578,6 +718,7 @@ final class WorkspaceViewModel {
                   let pdf = PDFDocument(data: data) else { return nil }
             return (member, pdf)
         }
+        applyPageRotations(snapshot.pageRotations)
         textAnalysisCache.removeAll()
         rebuild()
         markWorkspaceModified()
@@ -591,6 +732,31 @@ final class WorkspaceViewModel {
         let order = document.workspace.documents.map(\.id)
         loadedPDFs.sort {
             (order.firstIndex(of: $0.0.id) ?? Int.max) < (order.firstIndex(of: $1.0.id) ?? Int.max)
+        }
+    }
+
+    private func currentPageRotations() -> [UUID: Int] {
+        var rotations: [UUID: Int] = [:]
+        for (member, pdf) in loadedPDFs {
+            for (pageIndex, refID) in member.pageRefs.enumerated() {
+                if let page = pdf.page(at: pageIndex) {
+                    rotations[refID] = page.rotation
+                }
+            }
+        }
+        return rotations
+    }
+
+    private func applyPageRotations(_ rotations: [UUID: Int]) {
+        guard !rotations.isEmpty else { return }
+        for loadedIndex in loadedPDFs.indices {
+            let member = loadedPDFs[loadedIndex].0
+            let pdf = loadedPDFs[loadedIndex].1
+            for (pageIndex, refID) in member.pageRefs.enumerated() {
+                guard let rotation = rotations[refID],
+                      let page = pdf.page(at: pageIndex) else { continue }
+                page.rotation = rotation
+            }
         }
     }
 
@@ -645,6 +811,30 @@ final class WorkspaceViewModel {
         PetBuddyHook.trigger(.comment)
     }
 
+    @discardableResult
+    func createAnchoredComment(body rawBody: String = "", anchor: WorkspaceCommentAnchor) -> UUID {
+        let comment = WorkspaceComment(
+            body: rawBody.trimmingCharacters(in: .whitespacesAndNewlines),
+            anchor: anchor,
+            anchorWasRemoved: false
+        )
+        document.workspace.comments.insert(comment, at: 0)
+        selectedCommentID = comment.id
+        markWorkspaceModified()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            vm.removeComment(comment)
+        }
+        undoManager?.setActionName("Add Comment")
+        PetBuddyHook.trigger(.comment)
+        return comment.id
+    }
+
+    @discardableResult
+    func createAnchoredTextComment(from selection: PDFSelection, in pdfDocument: PDFDocument?) -> UUID? {
+        guard let anchor = commentAnchor(from: selection, in: pdfDocument) else { return nil }
+        return createAnchoredComment(anchor: anchor)
+    }
+
     func removeComment(_ comment: WorkspaceComment) {
         guard let index = document.workspace.comments.firstIndex(where: { $0.id == comment.id }) else { return }
         let removed = document.workspace.comments.remove(at: index)
@@ -676,6 +866,16 @@ final class WorkspaceViewModel {
         var updated = document.workspace.comments[index]
         updated.style = style
         replaceComment(at: index, with: updated, actionName: "Format Comment")
+    }
+
+    func updateCommentResolved(_ comment: WorkspaceComment, isResolved: Bool) {
+        guard let index = document.workspace.comments.firstIndex(where: { $0.id == comment.id }),
+              document.workspace.comments[index].isResolved != isResolved else {
+            return
+        }
+        var updated = document.workspace.comments[index]
+        updated.isResolved = isResolved
+        replaceComment(at: index, with: updated, actionName: isResolved ? "Resolve Comment" : "Reopen Comment")
     }
 
     func addTag(_ rawTag: String, to comment: WorkspaceComment) {
@@ -723,6 +923,97 @@ final class WorkspaceViewModel {
         undoManager?.setActionName(actionName)
     }
 
+    private func commentAnchor(from selection: PDFSelection, in pdfDocument: PDFDocument?) -> WorkspaceCommentAnchor? {
+        guard let page = selection.pages.first,
+              let ref = pageRef(for: page, in: pdfDocument) else {
+            return nil
+        }
+        let rect = selection.bounds(for: page)
+        guard !rect.isEmpty else { return nil }
+        return WorkspaceCommentAnchor(
+            pageRefID: ref.id,
+            rect: rect,
+            kind: .text,
+            snippet: Self.commentSnippet(from: selection.string)
+        )
+    }
+
+    static func commentSnippet(from text: String?) -> String? {
+        let normalized = (text ?? "")
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        return String(normalized.prefix(60))
+    }
+
+    func pageNumber(for anchor: WorkspaceCommentAnchor) -> Int? {
+        guard let index = document.workspace.pageOrder.firstIndex(where: { $0.id == anchor.pageRefID }) else {
+            return nil
+        }
+        return index + 1
+    }
+
+    func anchorSubtitle(for comment: WorkspaceComment) -> String? {
+        guard let anchor = comment.anchor else {
+            return comment.anchorWasRemoved ? "(page removed)" : nil
+        }
+        guard let pageNumber = pageNumber(for: anchor) else { return "(page removed)" }
+        if let snippet = anchor.snippet, !snippet.isEmpty {
+            return "p. \(pageNumber) - \(snippet)"
+        }
+        return "p. \(pageNumber)"
+    }
+
+    func commentCount(for pageRefID: UUID) -> Int {
+        let anchored = document.workspace.comments.filter { $0.anchor?.pageRefID == pageRefID }.count
+        let notes = pdfNoteComments.filter { $0.pageRef.id == pageRefID }.count
+        return anchored + notes
+    }
+
+    func isCommentVisibleOnPage(_ comment: WorkspaceComment) -> Bool {
+        filteredWorkspaceComments.contains { $0.id == comment.id }
+    }
+
+    func jumpToComment(_ comment: WorkspaceComment) {
+        selectedCommentID = comment.id
+        guard let anchor = comment.anchor,
+              let ref = document.workspace.pageOrder.first(where: { $0.id == anchor.pageRefID }) else {
+            return
+        }
+        selectPage(ref)
+    }
+
+    private func clearCommentAnchors(forRemovedPageRefIDs removedPageRefIDs: Set<UUID>) {
+        guard !removedPageRefIDs.isEmpty else { return }
+        var didChange = false
+        for index in document.workspace.comments.indices {
+            guard let anchor = document.workspace.comments[index].anchor,
+                  removedPageRefIDs.contains(anchor.pageRefID) else {
+                continue
+            }
+            document.workspace.comments[index].anchor = nil
+            document.workspace.comments[index].anchorWasRemoved = true
+            didChange = true
+        }
+        if didChange {
+            markWorkspaceModified()
+        }
+    }
+
+    private func removeSignaturePlacements(forRemovedPageRefIDs removedPageRefIDs: Set<UUID>) {
+        guard !removedPageRefIDs.isEmpty else { return }
+        let removedPlacementIDs = Set(
+            document.workspace.signatures
+                .filter { removedPageRefIDs.contains($0.pageRefId) }
+                .map(\.id)
+        )
+        guard !removedPlacementIDs.isEmpty else { return }
+        document.workspace.signatures.removeAll { removedPlacementIDs.contains($0.id) }
+        for placementID in removedPlacementIDs {
+            signingIdentitiesByPlacementID.removeValue(forKey: placementID)
+        }
+    }
+
     func jumpToNoteComment(_ note: PDFNoteComment) {
         selectedAnnotation = note.annotation
         selectPage(note.pageRef)
@@ -750,6 +1041,14 @@ final class WorkspaceViewModel {
 
     private func markWorkspaceModified() {
         document.workspace.modifiedAt = Date()
+    }
+
+    private func canPerformMutatingAction() -> Bool {
+        guard !isImporting else {
+            editingStatus = .warning("Finish importing before making more changes.")
+            return false
+        }
+        return true
     }
 
     func markAnnotationsModified(warnAboutSignatureInvalidation: Bool = true) {
@@ -970,8 +1269,11 @@ final class WorkspaceViewModel {
         // never stack erase patches on top of each other), which would otherwise silently
         // drop any highlight/note/ink/text-box annotations already placed on this page.
         // Carry those over onto the freshly regenerated page.
-        let preservedAnnotations = lookup.pdf.page(at: localIdx)?.annotations ?? []
+        let currentPage = lookup.pdf.page(at: localIdx)
+        let preservedRotation = currentPage?.rotation ?? regenerated.rotation
+        let preservedAnnotations = currentPage?.annotations ?? []
         lookup.pdf.removePage(at: localIdx)
+        regenerated.rotation = preservedRotation
         lookup.pdf.insert(regenerated, at: localIdx)
         preservedAnnotations.forEach { regenerated.addAnnotation($0) }
         textAnalysisCache.removeValue(forKey: pageRef.id)
@@ -1666,17 +1968,119 @@ final class WorkspaceViewModel {
     // MARK: - Search
 
     func search(query: String) {
+        cancelPendingSearch()
+        performSearch(query: query, autoJump: true)
+    }
+
+    func scheduleSearch(query: String) {
+        searchDebounceTask?.cancel()
+        combinedPDF.cancelFindString()
+
+        guard !query.isEmpty else {
+            finishSearch(with: [], autoJump: false)
+            return
+        }
+
+        let searchID = UUID()
+        activeSearchID = searchID
+        searchDebounceTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 250_000_000)
+            } catch {
+                return
+            }
+            guard let self,
+                  self.activeSearchID == searchID,
+                  self.searchQuery == query else { return }
+            self.beginAsyncSearch(query: query, searchID: searchID, autoJump: true)
+        }
+    }
+
+    func commitSearch() {
+        searchDebounceTask?.cancel()
+        guard !searchQuery.isEmpty else {
+            finishSearch(with: [], autoJump: false)
+            return
+        }
+
+        if !searchResults.isEmpty {
+            if searchResultIndex < 0 { searchResultIndex = 0 }
+            jumpToSearchResult(searchResultIndex)
+        } else {
+            performSearch(query: searchQuery, autoJump: true)
+        }
+    }
+
+    private func performSearch(query: String, autoJump: Bool) {
+        removeSearchObservers()
         searchResults = []
         searchResultIndex = -1
         guard !query.isEmpty else { return }
         combinedPDF.cancelFindString()
         let results = combinedPDF.findString(query, withOptions: .caseInsensitive)
+        finishSearch(with: results, autoJump: autoJump)
+    }
+
+    private func beginAsyncSearch(query: String, searchID: UUID, autoJump: Bool) {
+        removeSearchObservers()
+        pendingSearchResults = []
+        searchResults = []
+        searchResultIndex = -1
+
+        let center = NotificationCenter.default
+        let matchToken = center.addObserver(
+            forName: .PDFDocumentDidFindMatch,
+            object: combinedPDF,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  self.activeSearchID == searchID,
+                  self.searchQuery == query,
+                  let selection = notification.userInfo?[PDFDocumentFoundSelectionKey] as? PDFSelection else { return }
+            self.pendingSearchResults.append(selection)
+        }
+        let endToken = center.addObserver(
+            forName: .PDFDocumentDidEndFind,
+            object: combinedPDF,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self,
+                  self.activeSearchID == searchID,
+                  self.searchQuery == query else { return }
+            let results = self.pendingSearchResults
+            self.removeSearchObservers()
+            self.finishSearch(with: results, autoJump: autoJump)
+        }
+        searchNotificationTokens = [matchToken, endToken]
+        combinedPDF.cancelFindString()
+        combinedPDF.beginFindString(query, withOptions: .caseInsensitive)
+    }
+
+    private func finishSearch(with results: [PDFSelection], autoJump: Bool) {
         searchResults = results
+        searchResultIndex = -1
         if !results.isEmpty {
             searchResultIndex = 0
-            jumpToSearchResult(0)
+            if autoJump { jumpToSearchResult(0) }
             PetBuddyHook.trigger(.search)
         }
+    }
+
+    private func cancelPendingSearch() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = nil
+        activeSearchID = UUID()
+        combinedPDF.cancelFindString()
+        removeSearchObservers()
+    }
+
+    private func removeSearchObservers() {
+        let center = NotificationCenter.default
+        for token in searchNotificationTokens {
+            center.removeObserver(token)
+        }
+        searchNotificationTokens = []
+        pendingSearchResults = []
     }
 
     func searchNext() {
@@ -1705,6 +2109,7 @@ final class WorkspaceViewModel {
     // MARK: - Export
 
     func exportWorkspace(as format: WorkspaceExportFormat) {
+        guard canPerformMutatingAction() else { return }
         let didExport = switch format {
         case .pdf:
             exportPlainPDF()
@@ -1726,18 +2131,23 @@ final class WorkspaceViewModel {
             exportPageImages(as: format)
         }
         if didExport {
+            if let message = commentExportStatusMessage(for: format) {
+                editingStatus = .warning(message)
+            }
             PetBuddyHook.trigger(.export)
         }
     }
 
     @discardableResult
     func exportPlainPDF() -> Bool {
-        saveFlattenedPDF(to: nil, triggerPet: false)
+        guard canPerformMutatingAction() else { return false }
+        return saveFlattenedPDF(to: nil, triggerPet: false)
     }
 
     @discardableResult
     func saveFlattenedPDF(to url: URL? = nil) -> Bool {
-        saveFlattenedPDF(to: url, triggerPet: true)
+        guard canPerformMutatingAction() else { return false }
+        return saveFlattenedPDF(to: url, triggerPet: true)
     }
 
     private func saveFlattenedPDF(to url: URL?, triggerPet: Bool) -> Bool {
@@ -1865,6 +2275,41 @@ final class WorkspaceViewModel {
             exportError = ExportError(message: "pdFold could not write the \(format.menuTitle) export: \(error.localizedDescription)")
             return false
         }
+    }
+
+    private func commentExportStatusMessage(for format: WorkspaceExportFormat) -> String? {
+        guard totalCommentCount > 0 else { return nil }
+        if [.pdf, .png, .jpeg].contains(format),
+           hasCryptographicSignaturePlacement {
+            return "Exported without embedded comments because digital signatures are present; \(commentCountPhrase(totalCommentCount)) skipped to preserve signed bytes."
+        }
+
+        var parts: [String] = []
+        let workspaceCount = document.workspace.comments.filter { $0.anchor == nil }.count
+        if workspaceCount > 0 {
+            parts.append("\(workspaceCount) workspace")
+        }
+
+        let anchoredPages = document.workspace.comments.compactMap { comment -> Int? in
+            guard let anchor = comment.anchor else { return nil }
+            return pageNumber(for: anchor)
+        }
+        if !anchoredPages.isEmpty {
+            let pages = Array(Set(anchoredPages)).sorted().map(String.init).joined(separator: ", ")
+            parts.append("\(anchoredPages.count) anchored on pages \(pages)")
+        }
+
+        let noteCount = pdfNoteComments.count
+        if noteCount > 0 {
+            parts.append("\(noteCount) PDF notes")
+        }
+
+        let detail = parts.isEmpty ? "" : " (\(parts.joined(separator: ", ")))"
+        return "Exported with \(commentCountPhrase(totalCommentCount))\(detail)."
+    }
+
+    private func commentCountPhrase(_ count: Int) -> String {
+        count == 1 ? "1 comment" : "\(count) comments"
     }
 
     enum ExportBuildError: Error {
@@ -2303,16 +2748,18 @@ final class WorkspaceViewModel {
         var tags: [String]
         var style: WorkspaceCommentStyle
         var createdAt: Date?
+        var isResolved: Bool
     }
 
     private var commentExportItems: [CommentExportItem] {
         let workspaceItems = document.workspace.comments.map { comment in
             CommentExportItem(
-                title: comment.createdAt.formatted(date: .abbreviated, time: .shortened),
+                title: exportTitle(for: comment),
                 body: comment.body,
                 tags: comment.tags,
                 style: comment.style,
-                createdAt: comment.createdAt
+                createdAt: comment.createdAt,
+                isResolved: comment.isResolved
             )
         }
         let noteItems = pdfNoteComments.map { note in
@@ -2321,10 +2768,28 @@ final class WorkspaceViewModel {
                 body: note.body,
                 tags: [],
                 style: WorkspaceCommentStyle(),
-                createdAt: nil
+                createdAt: nil,
+                isResolved: false
             )
         }
         return workspaceItems + noteItems
+    }
+
+    private func exportTitle(for comment: WorkspaceComment) -> String {
+        if let anchor = comment.anchor,
+           let pageNumber = pageNumber(for: anchor),
+           let snippet = anchor.snippet,
+           !snippet.isEmpty {
+            return "p. \(pageNumber) - \(snippet)"
+        }
+        if let anchor = comment.anchor,
+           let pageNumber = pageNumber(for: anchor) {
+            return "p. \(pageNumber)"
+        }
+        if comment.anchorWasRemoved {
+            return "(page removed)"
+        }
+        return comment.createdAt.formatted(date: .abbreviated, time: .shortened)
     }
 
     private func appendAttributedComments(to output: NSMutableAttributedString,
@@ -2334,6 +2799,19 @@ final class WorkspaceViewModel {
         guard !comments.isEmpty else { return }
         output.append(NSAttributedString(string: "Comments\n", attributes: headingAttributes))
         output.append(NSAttributedString(string: "--------\n\n", attributes: bodyAttributes))
+        let openComments = comments.filter { !$0.isResolved }
+        let resolvedComments = comments.filter(\.isResolved)
+        appendAttributedCommentItems(openComments, to: output, bodyAttributes: bodyAttributes)
+        if !resolvedComments.isEmpty {
+            output.append(NSAttributedString(string: "\n\nResolved\n", attributes: headingAttributes))
+            output.append(NSAttributedString(string: "--------\n\n", attributes: bodyAttributes))
+            appendAttributedCommentItems(resolvedComments, to: output, bodyAttributes: bodyAttributes)
+        }
+    }
+
+    private func appendAttributedCommentItems(_ comments: [CommentExportItem],
+                                              to output: NSMutableAttributedString,
+                                              bodyAttributes: [NSAttributedString.Key: Any]) {
         for (index, item) in comments.enumerated() {
             if index > 0 {
                 output.append(NSAttributedString(string: "\n\n", attributes: bodyAttributes))
@@ -2365,49 +2843,85 @@ final class WorkspaceViewModel {
     private func plainTextCommentsSection() -> String? {
         let comments = commentExportItems
         guard !comments.isEmpty else { return nil }
-        let rows = comments.map { item in
-            var lines: [String] = [item.title]
-            if !item.tags.isEmpty {
-                lines.append("Tags: \(item.tags.joined(separator: ", "))")
+        func rows(_ items: [CommentExportItem]) -> [String] {
+            items.map { item in
+                var lines: [String] = [item.title]
+                if !item.tags.isEmpty {
+                    lines.append("Tags: \(item.tags.joined(separator: ", "))")
+                }
+                lines.append(item.body)
+                return lines.joined(separator: "\n")
             }
-            lines.append(item.body)
-            return lines.joined(separator: "\n")
         }
-        return "Comments\n========\n\n" + rows.joined(separator: "\n\n")
+        let openRows = rows(comments.filter { !$0.isResolved })
+        let resolvedRows = rows(comments.filter(\.isResolved))
+        var sections: [String] = []
+        if !openRows.isEmpty {
+            sections.append(openRows.joined(separator: "\n\n"))
+        }
+        if !resolvedRows.isEmpty {
+            sections.append("Resolved\n--------\n\n" + resolvedRows.joined(separator: "\n\n"))
+        }
+        return "Comments\n========\n\n" + sections.joined(separator: "\n\n")
     }
 
-    private func markdownCommentsSection() -> String? {
-        let comments = commentExportItems
-        guard !comments.isEmpty else { return nil }
-        let rows = comments.map { item in
+    private func markdownRows(_ comments: [CommentExportItem]) -> [String] {
+        comments.map { item in
+            var lines: [String] = [item.title]
+            if !item.tags.isEmpty {
+                lines.append("Tags: \(item.tags.map(markdownInlineEscaped).joined(separator: ", "))")
+            }
             var line = "- **\(markdownInlineEscaped(item.title))**: \(markdownFormattedCommentBody(item.body, style: item.style))"
             if !item.tags.isEmpty {
                 line += " _Tags: \(item.tags.map(markdownInlineEscaped).joined(separator: ", "))_"
             }
             return line
         }
-        return "## Comments\n\n" + rows.joined(separator: "\n")
+    }
+
+    private func markdownCommentsSection() -> String? {
+        let comments = commentExportItems
+        guard !comments.isEmpty else { return nil }
+        let openRows = markdownRows(comments.filter { !$0.isResolved })
+        let resolvedRows = markdownRows(comments.filter(\.isResolved))
+        var sections: [String] = []
+        if !openRows.isEmpty {
+            sections.append(openRows.joined(separator: "\n"))
+        }
+        if !resolvedRows.isEmpty {
+            sections.append("### Resolved\n\n" + resolvedRows.joined(separator: "\n"))
+        }
+        return "## Comments\n\n" + sections.joined(separator: "\n\n")
     }
 
     private func htmlCommentsSection() -> String {
         let comments = commentExportItems
         guard !comments.isEmpty else { return "" }
-        let rows = comments.map { item in
-            let tags = item.tags.map { "<span class=\"tag\">\(htmlEscaped($0))</span>" }.joined(separator: " ")
-            let tagLine = tags.isEmpty ? "" : "<div>\(tags)</div>"
-            return """
-            <div class="comment">
-              <div class="comment-meta">\(htmlEscaped(item.title))</div>
-              <div style="\(htmlStyle(for: item.style))">\(htmlEscaped(item.body).replacingOccurrences(of: "\n", with: "<br>"))</div>
-              \(tagLine)
-            </div>
-            """
+        func rows(_ items: [CommentExportItem]) -> String {
+            items.map { item in
+                let tags = item.tags.map { "<span class=\"tag\">\(htmlEscaped($0))</span>" }.joined(separator: " ")
+                let tagLine = tags.isEmpty ? "" : "<div>\(tags)</div>"
+                return """
+                <div class="comment">
+                  <div class="comment-meta">\(htmlEscaped(item.title))</div>
+                  <div style="\(htmlStyle(for: item.style))">\(htmlEscaped(item.body).replacingOccurrences(of: "\n", with: "<br>"))</div>
+                  \(tagLine)
+                </div>
+                """
+            }
+            .joined(separator: "\n")
         }
-        .joined(separator: "\n")
+        let openRows = rows(comments.filter { !$0.isResolved })
+        let resolvedRows = rows(comments.filter(\.isResolved))
+        let resolvedSection = resolvedRows.isEmpty ? "" : """
+          <h3>Resolved</h3>
+          \(resolvedRows)
+        """
         return """
         <section>
           <h2>Comments</h2>
-          \(rows)
+          \(openRows)
+          \(resolvedSection)
         </section>
         """
     }
@@ -2573,21 +3087,37 @@ final class WorkspaceViewModel {
     // MARK: - Page operations (all keyed by PageRef.id, all undoable)
 
     func rotatePage(_ ref: PageRef, by degrees: Int) {
+        guard canPerformMutatingAction() else { return }
+        guard let currentRotation = rotation(for: ref) else { return }
+        setRotation(for: ref, to: (currentRotation + degrees + 360) % 360, actionName: "Rotate Page")
+        PetBuddyHook.trigger(.rotate)
+    }
+
+    private func rotation(for ref: PageRef) -> Int? {
+        guard let lookup = memberPDF(for: ref),
+              let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
+              let page = lookup.pdf.page(at: localIdx) else { return nil }
+        return page.rotation
+    }
+
+    private func setRotation(for ref: PageRef, to rotation: Int, actionName: String) {
         guard let lookup = memberPDF(for: ref),
               let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
               let page = lookup.pdf.page(at: localIdx) else { return }
         let before = page.rotation
-        page.rotation = (page.rotation + degrees + 360) % 360
+        let normalizedRotation = (rotation + 360) % 360
+        guard before != normalizedRotation else { return }
+        page.rotation = normalizedRotation
         rebuild()
+        markWorkspaceModified()
         undoManager?.registerUndo(withTarget: self) { vm in
-            page.rotation = before
-            vm.rebuild()
+            vm.setRotation(for: ref, to: before, actionName: actionName)
         }
-        undoManager?.setActionName("Rotate Page")
-        PetBuddyHook.trigger(.rotate)
+        undoManager?.setActionName(actionName)
     }
 
     func deletePage(_ ref: PageRef) {
+        guard canPerformMutatingAction() else { return }
         guard let lookup = memberPDF(for: ref),
               let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
               lookup.pdf.page(at: localIdx) != nil else { return }
@@ -2598,6 +3128,8 @@ final class WorkspaceViewModel {
         document.workspace.pageOrder.removeAll { $0.id == ref.id }
         document.workspace.documents[lookup.documentIndex].pageRefs.removeAll { $0 == ref.id }
         document.workspace.pageEditStates.removeAll { $0.pageRefID == ref.id }
+        clearCommentAnchors(forRemovedPageRefIDs: [ref.id])
+        removeSignaturePlacements(forRemovedPageRefIDs: [ref.id])
         textAnalysisCache.removeValue(forKey: ref.id)
 
         // Drop empty member
@@ -2618,6 +3150,7 @@ final class WorkspaceViewModel {
 
     @discardableResult
     func movePage(_ ref: PageRef, toIndex destination: Int) -> Bool {
+        guard canPerformMutatingAction() else { return false }
         guard let lookup = memberPDF(for: ref),
               let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
               let page = lookup.pdf.page(at: localIdx) else { return false }

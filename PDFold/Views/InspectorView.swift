@@ -223,6 +223,10 @@ private struct InspectorWorkspaceCommentsView: View {
     @State private var draftComment = ""
 
     private var workspaceComments: [WorkspaceComment] {
+        viewModel.filteredWorkspaceComments
+    }
+
+    private var allWorkspaceComments: [WorkspaceComment] {
         viewModel.document.workspace.comments
     }
 
@@ -231,7 +235,7 @@ private struct InspectorWorkspaceCommentsView: View {
     }
 
     private var hasComments: Bool {
-        !workspaceComments.isEmpty || !noteComments.isEmpty
+        !allWorkspaceComments.isEmpty || !noteComments.isEmpty
     }
 
     var body: some View {
@@ -257,6 +261,14 @@ private struct InspectorWorkspaceCommentsView: View {
             .tint(Color.dsAccent)
             .disabled(draftComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
+            Picker("Comment filter", selection: $viewModel.commentFilter) {
+                Text("Open").tag(WorkspaceViewModel.CommentFilter.open)
+                Text("Resolved").tag(WorkspaceViewModel.CommentFilter.resolved)
+                Text("All").tag(WorkspaceViewModel.CommentFilter.all)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
             if !hasComments {
                 InspectorEmptyState(icon: "text.bubble", title: "No comments yet.")
             } else {
@@ -266,6 +278,8 @@ private struct InspectorWorkspaceCommentsView: View {
                         ForEach(workspaceComments) { comment in
                             WorkspaceCommentRow(viewModel: viewModel, comment: comment)
                         }
+                    } else if !allWorkspaceComments.isEmpty {
+                        InspectorEmptyState(icon: "line.3.horizontal.decrease.circle", title: "No matching comments.")
                     }
 
                     if !noteComments.isEmpty {
@@ -364,10 +378,23 @@ private struct WorkspaceCommentRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: .dsSM) {
             HStack(alignment: .firstTextBaseline) {
-                Text(comment.createdAt.formatted(date: .abbreviated, time: .shortened))
+                Text(relativeTimestamp(for: comment.createdAt))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.dsTextTertiary)
+                    .help(comment.createdAt.formatted(date: .complete, time: .shortened))
                 Spacer()
+                Toggle(isOn: Binding(
+                    get: { comment.isResolved },
+                    set: { viewModel.updateCommentResolved(comment, isResolved: $0) }
+                )) {
+                    Image(systemName: comment.isResolved ? "checkmark.circle.fill" : "circle")
+                        .frame(width: 16, height: 16)
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.plain)
+                .foregroundStyle(comment.isResolved ? Color.dsAccent : Color.dsTextTertiary)
+                .help(comment.isResolved ? "Mark open" : "Mark resolved")
+
                 Button {
                     draftBody = comment.body
                     isEditing.toggle()
@@ -388,6 +415,24 @@ private struct WorkspaceCommentRow: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.dsTextTertiary)
                 .help("Delete comment")
+            }
+
+            if let subtitle = viewModel.anchorSubtitle(for: comment) {
+                Button {
+                    viewModel.jumpToComment(comment)
+                } label: {
+                    HStack(spacing: .dsXS) {
+                        Image(systemName: comment.anchor == nil ? "exclamationmark.circle" : "arrowshape.turn.up.right")
+                            .frame(width: 14, height: 14)
+                        Text(subtitle)
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(comment.anchor == nil ? Color.dsTextTertiary : Color.dsAccent)
+                }
+                .buttonStyle(.plain)
+                .disabled(comment.anchor == nil)
+                .help(comment.anchor == nil ? "The anchored page was removed" : "Jump to anchor")
             }
 
             if isEditing {
@@ -427,7 +472,11 @@ private struct WorkspaceCommentRow: View {
         .background(Color.dsCard, in: RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
-                .strokeBorder(Color.dsSeparator, lineWidth: 1)
+                .strokeBorder(viewModel.selectedCommentID == comment.id ? Color.dsAccent : Color.dsSeparator, lineWidth: viewModel.selectedCommentID == comment.id ? 1.5 : 1)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
+        .onTapGesture {
+            viewModel.selectedCommentID = comment.id
         }
         .onAppear {
             if draftBody.isEmpty {
@@ -520,6 +569,22 @@ private struct WorkspaceCommentRow: View {
                     .textFieldStyle(.roundedBorder)
                     .font(.dsCaption())
                     .onSubmit(addCommentTag)
+
+                Menu {
+                    ForEach(tagSuggestions, id: \.self) { tag in
+                        Button(tag) {
+                            viewModel.addTag(tag, to: comment)
+                            draftTag = ""
+                        }
+                    }
+                } label: {
+                    Image(systemName: "tag")
+                        .frame(width: 16, height: 16)
+                }
+                .menuStyle(.borderlessButton)
+                .disabled(tagSuggestions.isEmpty)
+                .help("Tag suggestions")
+
                 Button(action: addCommentTag) {
                     Image(systemName: "plus")
                         .frame(width: 16, height: 16)
@@ -527,6 +592,14 @@ private struct WorkspaceCommentRow: View {
                 .buttonStyle(.bordered)
                 .disabled(draftTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .help("Add tag to comment")
+            }
+        }
+    }
+
+    private var tagSuggestions: [String] {
+        viewModel.usedCommentTags.filter { suggestion in
+            !comment.tags.contains { existing in
+                existing.localizedCaseInsensitiveCompare(suggestion) == .orderedSame
             }
         }
     }
@@ -550,6 +623,29 @@ private struct WorkspaceCommentRow: View {
         case .regular: return 13
         case .large: return 16
         }
+    }
+
+    private func relativeTimestamp(for date: Date) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        }
+        if let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day,
+           days >= 7 {
+            return date.formatted(.dateTime.month(.abbreviated).day())
+        }
+        let seconds = max(0, now.timeIntervalSince(date))
+        if seconds < 60 {
+            return "Just now"
+        }
+        if seconds < 3_600 {
+            return "\(Int(seconds / 60))m ago"
+        }
+        if seconds < 86_400 {
+            return "\(Int(seconds / 3_600))h ago"
+        }
+        return "\(Int(seconds / 86_400))d ago"
     }
 
     private func color(fromHex value: String) -> Color {

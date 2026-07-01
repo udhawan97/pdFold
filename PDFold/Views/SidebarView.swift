@@ -1,6 +1,7 @@
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
+import AppKit
 
 struct SidebarView: View {
     var viewModel: WorkspaceViewModel
@@ -246,6 +247,11 @@ struct ThumbnailStrip: View {
     var member: MemberDocument
     var pdf: PDFDocument
     var viewModel: WorkspaceViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var shouldReduceMotion: Bool {
+        reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
 
     var body: some View {
         VStack(spacing: 4) {
@@ -253,11 +259,16 @@ struct ThumbnailStrip: View {
                 if let page = pdf.page(at: i),
                    let ref = viewModel.document.workspace.pageOrder.first(where: { $0.id == refId }) {
                     ThumbnailCell(page: page, pageRef: ref, pageNumber: i + 1, viewModel: viewModel)
+                        .transition(shouldReduceMotion ? .identity : .scale(scale: 0.92).combined(with: .opacity))
                 }
             }
         }
         .padding(.leading, 4)
         .padding(.vertical, 4)
+        .animation(
+            shouldReduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8),
+            value: member.pageRefs
+        )
     }
 }
 
@@ -268,11 +279,16 @@ struct ThumbnailCell: View {
     var pageRef: PageRef
     var pageNumber: Int
     var viewModel: WorkspaceViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var thumbnail: NSImage? = nil
     @State private var isHovered = false
 
     private static let thumbSize = CGSize(width: 48, height: 64)
     private var isSelected: Bool { viewModel.selectedPageRefID == pageRef.id }
+    private var commentCount: Int { viewModel.commentCount(for: pageRef.id) }
+    private var shouldReduceMotion: Bool {
+        reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
 
     var body: some View {
         HStack(spacing: .dsSM) {
@@ -296,6 +312,17 @@ struct ThumbnailCell: View {
                         isSelected ? Color.dsAccent : Color.dsSeparator,
                         lineWidth: isSelected ? 1.5 : 0.5
                     )
+            }
+            .overlay(alignment: .topTrailing) {
+                if commentCount > 0 {
+                    Text("\(commentCount)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .frame(minWidth: 15, minHeight: 15)
+                        .background(Color.dsAccent, in: Circle())
+                        .offset(x: 5, y: -5)
+                        .accessibilityLabel("\(commentCount) comments on page")
+                }
             }
             .shadow(color: .black.opacity(0.10), radius: 3, x: 0, y: 1)
             .background(Color.dsCard, in: RoundedRectangle(cornerRadius: 3))
@@ -325,7 +352,8 @@ struct ThumbnailCell: View {
             RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
                 .fill(isSelected ? Color.dsAccentSoft : (isHovered ? Color.dsSeparator : Color.clear))
         }
-        .animation(.easeInOut(duration: 0.12), value: isSelected)
+        .scaleEffect(shouldReduceMotion ? 1.0 : (isSelected ? 1.03 : 1.0))
+        .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.12), value: isSelected)
         .animation(.easeInOut(duration: 0.10), value: isHovered)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }

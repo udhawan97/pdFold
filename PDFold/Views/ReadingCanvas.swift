@@ -289,6 +289,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
             case .strikeout:
                 viewModel.applyMarkup(.strikeOut, to: selection)
                 pdfView.clearSelection()
+            case .comment:
+                if viewModel.createAnchoredTextComment(from: selection, in: pdfView.document) != nil {
+                    pdfView.clearSelection()
+                }
             default:
                 break
             }

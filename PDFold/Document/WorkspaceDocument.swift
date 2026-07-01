@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
@@ -22,6 +23,8 @@ struct WorkspacePackage {
 final class WorkspaceDocument: ReferenceFileDocument {
     typealias Snapshot = WorkspacePackage
     private static let workspaceCommentsAnnotationKey = PDFAnnotationKey(rawValue: "/PDFoldWorkspaceComments")
+    private static let commentSubjectAnnotationKey = PDFAnnotationKey(rawValue: "/Subj")
+    private static let commentAnchorRectAnnotationKey = PDFAnnotationKey(rawValue: "/PDFoldCommentAnchorRect")
 
     private struct PDFoldMetadata: Codable {
         var comments: [WorkspaceComment]
@@ -78,20 +81,34 @@ final class WorkspaceDocument: ReferenceFileDocument {
 
     // MARK: - Open existing
 
-    required init(configuration: ReadConfiguration) throws {
-        if Self.importableContentTypes.contains(where: { configuration.contentType.conforms(to: $0) }),
-           let data = configuration.file.regularFileContents {
-            workspace = Workspace()
-            try importFileData(
-                data,
-                filename: configuration.file.preferredFilename ?? "Imported Document",
-                contentType: configuration.contentType
-            )
-            return
-        }
-
-        workspace = Workspace()
+    required convenience init(configuration: ReadConfiguration) throws {
+        try self.init(
+            file: configuration.file,
+            contentType: configuration.contentType,
+            filename: configuration.file.preferredFilename
+        )
     }
+
+    private init(file: FileWrapper, contentType: UTType, filename: String?) throws {
+        guard Self.importableContentTypes.contains(where: { contentType.conforms(to: $0) }),
+              !file.isDirectory,
+              file.isRegularFile,
+              let data = file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        workspace = Workspace()
+        try importFileData(
+            data,
+            filename: filename ?? "Imported Document",
+            contentType: contentType
+        )
+    }
+
+    #if DEBUG
+    convenience init(testingFile file: FileWrapper, contentType: UTType, filename: String? = nil) throws {
+        try self.init(file: file, contentType: contentType, filename: filename)
+    }
+    #endif
 
     private func importFileData(_ data: Data, filename: String, contentType: UTType) throws {
         let imported = try DocumentImportConverter.importedDocument(
@@ -157,18 +174,172 @@ final class WorkspaceDocument: ReferenceFileDocument {
 
         let visualPlacements = snapshot.workspace.signatures.filter { !$0.isCryptographic }
         guard !visualPlacements.isEmpty else {
-            return Self.embedMetadata(in: pdfData, workspace: snapshot.workspace, sourcePayloads: snapshot.sourcePayloads) ?? pdfData
+            let commentData = Self.applyCommentExportAdditions(to: pdfData, workspace: snapshot.workspace) ?? pdfData
+            return Self.embedMetadata(in: commentData, workspace: snapshot.workspace, sourcePayloads: snapshot.sourcePayloads) ?? commentData
         }
 
         do {
             let bakedData = try SignatureExportBaker.bake(placements: visualPlacements, into: pdfData) { placement in
                 snapshot.workspace.pageOrder.firstIndex { $0.id == placement.pageRefId }
             }
-            return Self.embedMetadata(in: bakedData, workspace: snapshot.workspace, sourcePayloads: snapshot.sourcePayloads) ?? bakedData
+            let commentData = Self.applyCommentExportAdditions(to: bakedData, workspace: snapshot.workspace) ?? bakedData
+            return Self.embedMetadata(in: commentData, workspace: snapshot.workspace, sourcePayloads: snapshot.sourcePayloads) ?? commentData
         } catch SigningError.notImplemented {
-            return Self.embedMetadata(in: pdfData, workspace: snapshot.workspace, sourcePayloads: snapshot.sourcePayloads) ?? pdfData
+            let commentData = Self.applyCommentExportAdditions(to: pdfData, workspace: snapshot.workspace) ?? pdfData
+            return Self.embedMetadata(in: commentData, workspace: snapshot.workspace, sourcePayloads: snapshot.sourcePayloads) ?? commentData
         } catch {
             return nil
+        }
+    }
+
+    private struct PDFCommentSummaryItem {
+        var title: String
+        var body: String
+        var tags: [String]
+        var isResolved: Bool
+    }
+
+    private static func applyCommentExportAdditions(to data: Data, workspace: Workspace) -> Data? {
+        guard !workspace.signatures.contains(where: { $0.isCryptographic }),
+              let pdf = PDFDocument(data: data) else {
+            return data
+        }
+
+        let existingNotes = existingPDFNoteSummaryItems(from: pdf)
+        let workspaceItems = workspace.comments.map { comment in
+            PDFCommentSummaryItem(
+                title: commentExportTitle(comment, workspace: workspace),
+                body: comment.body,
+                tags: comment.tags,
+                isResolved: comment.isResolved
+            )
+        }
+        guard !workspaceItems.isEmpty || !existingNotes.isEmpty else {
+            return data
+        }
+
+        for comment in workspace.comments {
+            guard let anchor = comment.anchor,
+                  let pageIndex = workspace.pageOrder.firstIndex(where: { $0.id == anchor.pageRefID }),
+                  let page = pdf.page(at: pageIndex) else {
+                continue
+            }
+            let annotation = PDFAnnotation(bounds: anchor.rect, forType: .text, withProperties: nil)
+            annotation.contents = comment.body
+            annotation.color = NSColor.systemYellow
+            annotation.setValue(NSStringFromRect(anchor.rect), forAnnotationKey: commentAnchorRectAnnotationKey)
+            if !comment.tags.isEmpty {
+                annotation.setValue(comment.tags.joined(separator: ", "), forAnnotationKey: commentSubjectAnnotationKey)
+            }
+            page.addAnnotation(annotation)
+        }
+
+        let summaryItems = workspaceItems + existingNotes
+        if let summaryPage = commentsSummaryPage(for: summaryItems) {
+            pdf.insert(summaryPage, at: pdf.pageCount)
+        }
+
+        return PDFSerializer.data(from: pdf)
+    }
+
+    private static func existingPDFNoteSummaryItems(from pdf: PDFDocument) -> [PDFCommentSummaryItem] {
+        var items: [PDFCommentSummaryItem] = []
+        for pageIndex in 0..<pdf.pageCount {
+            guard let page = pdf.page(at: pageIndex) else { continue }
+            for annotation in page.annotations where annotation.type == "Text" {
+                let body = annotation.contents?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !body.isEmpty else { continue }
+                items.append(PDFCommentSummaryItem(
+                    title: "PDF note, page \(pageIndex + 1)",
+                    body: body,
+                    tags: [],
+                    isResolved: false
+                ))
+            }
+        }
+        return items
+    }
+
+    private static func commentExportTitle(_ comment: WorkspaceComment, workspace: Workspace) -> String {
+        if let anchor = comment.anchor,
+           let pageIndex = workspace.pageOrder.firstIndex(where: { $0.id == anchor.pageRefID }) {
+            if let snippet = anchor.snippet, !snippet.isEmpty {
+                return "p. \(pageIndex + 1) - \(snippet)"
+            }
+            return "p. \(pageIndex + 1)"
+        }
+        if comment.anchorWasRemoved {
+            return "(page removed)"
+        }
+        return comment.createdAt.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private static func commentsSummaryPage(for items: [PDFCommentSummaryItem]) -> PDFPage? {
+        let pageBounds = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let data = NSMutableData()
+        var mediaBox = pageBounds
+        guard let consumer = CGDataConsumer(data: data as CFMutableData),
+              let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else {
+            return nil
+        }
+
+        context.beginPDFPage(nil)
+        NSGraphicsContext.saveGraphicsState()
+        let graphicsContext = NSGraphicsContext(cgContext: context, flipped: false)
+        NSGraphicsContext.current = graphicsContext
+        context.translateBy(x: 0, y: pageBounds.height)
+        context.scaleBy(x: 1, y: -1)
+
+        let text = commentsSummaryAttributedString(for: items)
+        text.draw(in: CGRect(x: 54, y: 48, width: pageBounds.width - 108, height: pageBounds.height - 96))
+
+        NSGraphicsContext.restoreGraphicsState()
+        context.endPDFPage()
+        context.closePDF()
+
+        guard let summaryDocument = PDFDocument(data: data as Data) else { return nil }
+        return summaryDocument.page(at: 0)
+    }
+
+    private static func commentsSummaryAttributedString(for items: [PDFCommentSummaryItem]) -> NSAttributedString {
+        let output = NSMutableAttributedString()
+        let titleAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: 22),
+            .foregroundColor: NSColor.labelColor
+        ]
+        let headingAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: 14),
+            .foregroundColor: NSColor.labelColor
+        ]
+        let bodyAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.labelColor
+        ]
+        let metaAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: 11),
+            .foregroundColor: NSColor.labelColor
+        ]
+
+        output.append(NSAttributedString(string: "Comments\n\n", attributes: titleAttributes))
+        appendSummaryItems(items.filter { !$0.isResolved }, to: output, metaAttributes: metaAttributes, bodyAttributes: bodyAttributes)
+        let resolved = items.filter(\.isResolved)
+        if !resolved.isEmpty {
+            output.append(NSAttributedString(string: "\nResolved\n", attributes: headingAttributes))
+            appendSummaryItems(resolved, to: output, metaAttributes: metaAttributes, bodyAttributes: bodyAttributes)
+        }
+        return output
+    }
+
+    private static func appendSummaryItems(_ items: [PDFCommentSummaryItem],
+                                           to output: NSMutableAttributedString,
+                                           metaAttributes: [NSAttributedString.Key: Any],
+                                           bodyAttributes: [NSAttributedString.Key: Any]) {
+        for item in items {
+            output.append(NSAttributedString(string: "\(item.title)\n", attributes: metaAttributes))
+            if !item.tags.isEmpty {
+                output.append(NSAttributedString(string: "Tags: \(item.tags.joined(separator: ", "))\n", attributes: bodyAttributes))
+            }
+            output.append(NSAttributedString(string: "\(item.body)\n\n", attributes: bodyAttributes))
         }
     }
 

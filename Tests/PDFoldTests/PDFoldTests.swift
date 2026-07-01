@@ -61,6 +61,41 @@ final class WorkspaceModelTests: XCTestCase {
         XCTAssertEqual(comment.style.textSize, .regular)
         XCTAssertEqual(comment.style.colorHex, "#1F2933")
         XCTAssertTrue(comment.tags.isEmpty)
+        XCTAssertNil(comment.anchor)
+        XCTAssertFalse(comment.anchorWasRemoved)
+        XCTAssertFalse(comment.isResolved)
+    }
+
+    func testSchemaThreeWorkspaceCommentsLoadWithPhaseSixDefaults() throws {
+        let commentID = UUID()
+        let json = """
+        {
+          "title": "Legacy Comments",
+          "schemaVersion": 3,
+          "documents": [],
+          "pageOrder": [],
+          "comments": [
+            {
+              "id": "\(commentID.uuidString)",
+              "body": "Existing v3 comment",
+              "tags": ["review"]
+            }
+          ]
+        }
+        """
+
+        let workspace = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
+
+        XCTAssertEqual(workspace.schemaVersion, 3)
+        XCTAssertEqual(workspace.comments.first?.id, commentID)
+        XCTAssertEqual(workspace.comments.first?.body, "Existing v3 comment")
+        XCTAssertNil(workspace.comments.first?.anchor)
+        XCTAssertFalse(workspace.comments.first?.anchorWasRemoved ?? true)
+        XCTAssertFalse(workspace.comments.first?.isResolved ?? true)
+    }
+
+    func testNewWorkspaceDefaultsToSchemaVersionFour() {
+        XCTAssertEqual(Workspace().schemaVersion, 4)
     }
 
     func testRectBackedModelsRoundTripThroughCodable() throws {
@@ -1279,7 +1314,7 @@ final class DocumentImportConverterTests: XCTestCase {
         XCTAssertTrue(pdf.stringValue.contains("Second line"))
     }
 
-    func testHTMLImportPaginatesTallContentToLetterPages() throws {
+    func testHTMLImportPaginatesTallContentToLetterPages() async throws {
         guard ProcessInfo.processInfo.environment["XCODE_SCHEME_NAME"] == nil else {
             throw XCTSkip("Xcode's test runner can hang WebKit HTML rendering; SwiftPM covers this conversion path.")
         }
@@ -1289,12 +1324,13 @@ final class DocumentImportConverterTests: XCTestCase {
         <html><body><main style="height: 1800px">Tall import</main></body></html>
         """
 
-        let pdf = try DocumentImportConverter.pdfDocument(
+        let imported = try await DocumentImportConverter.importedDocumentAsync(
             from: Data(html.utf8),
             contentType: .html,
             filename: "tall.html",
             baseURL: nil
         )
+        let pdf = imported.pdfDocument
 
         XCTAssertGreaterThan(pdf.pageCount, 1)
         XCTAssertTrue(pdf.stringValue.contains("Tall import"))
@@ -1428,7 +1464,7 @@ final class PDFProcessingEngineTests: XCTestCase {
         XCTAssertEqual(processingEngine.validateCallCount, 1)
     }
 
-    func testProcessingValidationFailureDoesNotBlockFileImport() throws {
+    func testProcessingValidationFailureDoesNotBlockFileImport() async throws {
         let pdfData = try makePDF(pageTexts: ["import"]).dataRepresentation().unwrap()
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -1443,6 +1479,7 @@ final class PDFProcessingEngineTests: XCTestCase {
         )
 
         viewModel.importFiles(urls: [tempURL])
+        try await waitForImportsToFinish(in: viewModel)
 
         XCTAssertNil(viewModel.importError)
         XCTAssertEqual(viewModel.memberDocuments.count, 1)
@@ -1451,7 +1488,7 @@ final class PDFProcessingEngineTests: XCTestCase {
         XCTAssertEqual(processingEngine.validateCallCount, 1)
     }
 
-    func testProcessingValidationFailureClearsStaleValidationState() throws {
+    func testProcessingValidationFailureClearsStaleValidationState() async throws {
         let document = WorkspaceDocument()
         let fixture = try makeMemberWithPDF(name: "Fixture", pageTexts: ["validation"])
         document.workspace.documents = [fixture.member]
@@ -1473,6 +1510,7 @@ final class PDFProcessingEngineTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         viewModel.importFiles(urls: [tempURL])
+        try await waitForImportsToFinish(in: viewModel)
 
         XCTAssertNil(viewModel.importError)
         XCTAssertEqual(viewModel.memberDocuments.count, 2)
@@ -1488,6 +1526,22 @@ final class WorkspaceDocumentTests: XCTestCase {
 
     func testReadableContentTypesAcceptGenericText() {
         XCTAssertTrue(WorkspaceDocument.readableContentTypes.contains(.text))
+    }
+
+    func testOpeningUnreadableFileThrowsCorruptFileInsteadOfBlankWorkspace() {
+        let file = FileWrapper(directoryWithFileWrappers: [:])
+
+        XCTAssertThrowsError(try WorkspaceDocument(testingFile: file, contentType: .pdf)) { error in
+            XCTAssertEqual((error as? CocoaError)?.code, .fileReadCorruptFile)
+        }
+    }
+
+    func testOpeningUnmatchedTypeThrowsCorruptFileInsteadOfBlankWorkspace() {
+        let file = FileWrapper(regularFileWithContents: Data("not a workspace type".utf8))
+
+        XCTAssertThrowsError(try WorkspaceDocument(testingFile: file, contentType: .folder)) { error in
+            XCTAssertEqual((error as? CocoaError)?.code, .fileReadCorruptFile)
+        }
     }
 
     func testAppInfoPlistDoesNotAdvertiseWorkspaceSaveFormat() throws {
@@ -1547,6 +1601,71 @@ final class WorkspaceDocumentTests: XCTestCase {
 
         let clearedData = try XCTUnwrap(document.exportedPDFData(from: try document.snapshot(contentType: .pdf)))
         XCTAssertTrue(try workspaceCommentMetadataValues(in: clearedData).isEmpty)
+    }
+
+    func testPDFExportBakesAnchoredCommentAnnotationAndSummaryPage() throws {
+        let fixture = try makeMemberWithPDF(name: "Anchored", pageTexts: ["Anchor target"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        document.workspace.comments = [
+            WorkspaceComment(
+                body: "Check this claim.",
+                tags: ["review"],
+                anchor: WorkspaceCommentAnchor(
+                    pageRefID: fixture.refs[0].id,
+                    rect: CGRect(x: 72, y: 680, width: 120, height: 24),
+                    kind: .text,
+                    snippet: "Anchor target"
+                )
+            )
+        ]
+
+        let data = try XCTUnwrap(document.exportedPDFData(from: try document.snapshot(contentType: .pdf)))
+        let pdf = try XCTUnwrap(PDFDocument(data: data))
+
+        XCTAssertEqual(pdf.pageCount, 2)
+        let page = try XCTUnwrap(pdf.page(at: 0))
+        let annotation = try XCTUnwrap(page.annotations.first { $0.type == "Text" && $0.contents == "Check this claim." })
+        let anchorRect = try XCTUnwrap(annotation.value(forAnnotationKey: PDFAnnotationKey(rawValue: "/PDFoldCommentAnchorRect")) as? String)
+        XCTAssertEqual(NSRectFromString(anchorRect), CGRect(x: 72, y: 680, width: 120, height: 24))
+        XCTAssertEqual(annotation.value(forAnnotationKey: PDFAnnotationKey(rawValue: "/Subj")) as? String, "review")
+        XCTAssertTrue(pdf.page(at: 1)?.string?.contains("Anchor target") == true)
+        XCTAssertTrue(pdf.page(at: 1)?.string?.contains("Check this claim.") == true)
+    }
+
+    func testPDFExportSkipsCommentInjectionWhenCryptographicSignatureExists() throws {
+        let fixture = try makeMemberWithPDF(name: "Signed", pageTexts: ["Signed target"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        document.workspace.comments = [
+            WorkspaceComment(
+                body: "Do not inject",
+                anchor: WorkspaceCommentAnchor(
+                    pageRefID: fixture.refs[0].id,
+                    rect: CGRect(x: 72, y: 680, width: 120, height: 24),
+                    kind: .text,
+                    snippet: "Signed target"
+                )
+            )
+        ]
+        document.workspace.signatures = [
+            SignaturePlacement(
+                pageRefId: fixture.refs[0].id,
+                imageData: Data([1, 2, 3]),
+                rect: CGRect(x: 72, y: 72, width: 140, height: 40),
+                kind: .cryptographic
+            )
+        ]
+
+        let data = try XCTUnwrap(document.exportedPDFData(from: try document.snapshot(contentType: .pdf)))
+        let pdf = try XCTUnwrap(PDFDocument(data: data))
+
+        XCTAssertEqual(pdf.pageCount, 1)
+        XCTAssertFalse(pdf.page(at: 0)?.annotations.contains { $0.type == "Text" && $0.contents == "Do not inject" } ?? true)
     }
 
     private func workspaceCommentMetadataValues(in data: Data) throws -> [String] {
@@ -1627,6 +1746,198 @@ final class WorkspaceViewModelTests: XCTestCase {
         ])
         XCTAssertEqual(viewModel.loadedPDFs[0].1.pageCount, 2)
         XCTAssertEqual(viewModel.combinedPageIndex(forWorkspacePageNumber: 3), 4)
+    }
+
+    func testAnchoredCommentSurvivesDeletedPageAndUndoRestoresAnchor() throws {
+        let fixture = try makeMemberWithPDF(name: "Anchored", pageTexts: ["one", "two"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        document.workspace.comments = [
+            WorkspaceComment(
+                body: "Keep me",
+                anchor: WorkspaceCommentAnchor(
+                    pageRefID: fixture.refs[0].id,
+                    rect: CGRect(x: 72, y: 680, width: 120, height: 24),
+                    kind: .text,
+                    snippet: "one"
+                )
+            )
+        ]
+        let viewModel = WorkspaceViewModel(document: document)
+        let undoManager = UndoManager()
+        viewModel.undoManager = undoManager
+
+        viewModel.deletePage(fixture.refs[0])
+
+        XCTAssertEqual(viewModel.document.workspace.comments.count, 1)
+        XCTAssertNil(viewModel.document.workspace.comments[0].anchor)
+        XCTAssertTrue(viewModel.document.workspace.comments[0].anchorWasRemoved)
+        XCTAssertEqual(viewModel.anchorSubtitle(for: viewModel.document.workspace.comments[0]), "(page removed)")
+
+        undoManager.undo()
+
+        XCTAssertEqual(viewModel.document.workspace.comments[0].anchor?.pageRefID, fixture.refs[0].id)
+        XCTAssertFalse(viewModel.document.workspace.comments[0].anchorWasRemoved)
+    }
+
+    func testAnchoredCommentPageNumberFollowsReorder() throws {
+        let fixture = try makeMemberWithPDF(name: "Anchored", pageTexts: ["one", "two"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        document.workspace.comments = [
+            WorkspaceComment(
+                body: "Jump",
+                anchor: WorkspaceCommentAnchor(
+                    pageRefID: fixture.refs[0].id,
+                    rect: CGRect(x: 72, y: 680, width: 120, height: 24),
+                    kind: .text,
+                    snippet: "one"
+                )
+            )
+        ]
+        let viewModel = WorkspaceViewModel(document: document)
+
+        XCTAssertEqual(viewModel.anchorSubtitle(for: viewModel.document.workspace.comments[0]), "p. 1 - one")
+        XCTAssertTrue(viewModel.movePage(fixture.refs[0], toIndex: 2))
+        XCTAssertEqual(viewModel.anchorSubtitle(for: viewModel.document.workspace.comments[0]), "p. 2 - one")
+    }
+
+    func testPlainTextExportListsAnchoredCommentWithPageAndSnippet() throws {
+        let fixture = try makeMemberWithPDF(name: "Anchored", pageTexts: ["Anchor target"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        document.workspace.comments = [
+            WorkspaceComment(
+                body: "Review this.",
+                anchor: WorkspaceCommentAnchor(
+                    pageRefID: fixture.refs[0].id,
+                    rect: CGRect(x: 72, y: 680, width: 120, height: 24),
+                    kind: .text,
+                    snippet: "Anchor target"
+                )
+            )
+        ]
+        let viewModel = WorkspaceViewModel(document: document)
+
+        let text = try XCTUnwrap(String(data: try viewModel.dataForWorkspaceExport(as: .text), encoding: .utf8))
+
+        XCTAssertTrue(text.contains("p. 1 - Anchor target"))
+        XCTAssertTrue(text.contains("Review this."))
+    }
+
+    func testCommentTagSuggestionsDoNotRegisterUndo() {
+        let document = WorkspaceDocument()
+        document.workspace.tags = ["workspace"]
+        document.workspace.comments = [
+            WorkspaceComment(body: "A", tags: ["alpha"]),
+            WorkspaceComment(body: "B", tags: ["workspace", "beta"])
+        ]
+        let viewModel = WorkspaceViewModel(document: document)
+        let undoManager = UndoManager()
+        viewModel.undoManager = undoManager
+
+        XCTAssertEqual(viewModel.usedCommentTags, ["alpha", "beta", "workspace"])
+        XCTAssertFalse(undoManager.canUndo)
+    }
+
+    func testRotatePageMarksWorkspaceModified() throws {
+        let document = WorkspaceDocument()
+        document.workspace.modifiedAt = Date(timeIntervalSince1970: 0)
+        let fixture = try makeMemberWithPDF(name: "Rotate", pageTexts: ["rotate"])
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+
+        viewModel.rotatePage(fixture.refs[0], by: 90)
+
+        XCTAssertGreaterThan(viewModel.document.workspace.modifiedAt, Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(viewModel.loadedPDFs[0].1.page(at: 0)?.rotation, 90)
+    }
+
+    func testRotateUndoResolvesPageAfterInlineEditRestore() throws {
+        let fixture = try makeMemberWithPDF(name: "Editable", pageTexts: ["Original text"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(
+            document: document,
+            processingEngine: PDFKitProcessingEngineFallback()
+        )
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        viewModel.undoManager = undoManager
+
+        undoManager.beginUndoGrouping()
+        viewModel.rotatePage(fixture.refs[0], by: 90)
+        XCTAssertEqual(viewModel.loadedPDFs[0].1.page(at: 0)?.rotation, 90)
+        undoManager.endUndoGrouping()
+
+        let sourceBlock = EditableTextBlock(
+            pageRefID: fixture.refs[0].id,
+            text: "Original text",
+            bounds: CGRect(x: 70, y: 700, width: 120, height: 24),
+            lines: [],
+            fontName: "Helvetica",
+            fontSize: 16,
+            textColor: .documentText,
+            rotation: 0,
+            baseline: 700,
+            confidence: .high
+        )
+        undoManager.beginUndoGrouping()
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: sourceBlock,
+            replacementText: "Edited text",
+            editedBounds: CGRect(x: 70, y: 700, width: 160, height: 28),
+            fontName: "Helvetica",
+            fontSize: 16,
+            textColor: .black,
+            alignment: .left
+        ))
+        XCTAssertEqual(viewModel.loadedPDFs[0].1.page(at: 0)?.rotation, 90)
+        undoManager.endUndoGrouping()
+
+        undoManager.undo()
+        XCTAssertEqual(viewModel.loadedPDFs[0].1.page(at: 0)?.rotation, 90)
+
+        undoManager.undo()
+        XCTAssertEqual(viewModel.loadedPDFs[0].1.page(at: 0)?.rotation, 0)
+    }
+
+    @MainActor
+    func testDebouncedSearchUsesLastRapidQuery() async throws {
+        let document = WorkspaceDocument()
+        let fixture = try makeMemberWithPDF(name: "Search", pageTexts: ["alpha only", "target only"])
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+
+        viewModel.searchQuery = "alpha"
+        viewModel.scheduleSearch(query: "alpha")
+        viewModel.searchQuery = "target"
+        viewModel.scheduleSearch(query: "target")
+
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            if viewModel.searchResults.contains(where: { $0.string?.localizedCaseInsensitiveContains("target") == true }) {
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        XCTAssertFalse(viewModel.searchResults.isEmpty)
+        XCTAssertTrue(viewModel.searchResults.allSatisfy { $0.string?.localizedCaseInsensitiveContains("target") == true })
+        XCTAssertFalse(viewModel.searchResults.contains { $0.string?.localizedCaseInsensitiveContains("alpha") == true })
     }
 
     func testRepeatedHighlightSelectionDoesNotStackAnnotations() throws {
@@ -1951,6 +2262,14 @@ private func makeMemberWithPDF(
     member.pageRefs = refs.map(\.id)
     let pdfData = try pdf.dataRepresentation().unwrap()
     return (member, refs, pdfData)
+}
+
+private func waitForImportsToFinish(in viewModel: WorkspaceViewModel) async throws {
+    let deadline = Date().addingTimeInterval(2)
+    while viewModel.isImporting && Date() < deadline {
+        try await Task.sleep(nanoseconds: 20_000_000)
+    }
+    XCTAssertFalse(viewModel.isImporting, "import did not finish before timeout")
 }
 
 private func makePDF(pageTexts: [String]) -> PDFDocument {

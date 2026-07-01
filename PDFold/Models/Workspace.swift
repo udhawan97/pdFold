@@ -37,27 +37,70 @@ struct WorkspaceCommentStyle: Codable, Equatable {
     }
 }
 
+enum WorkspaceCommentAnchorKind: String, Codable {
+    case text
+    case region
+}
+
+struct WorkspaceCommentAnchor: Codable, Equatable {
+    var pageRefID: UUID
+    var rect: CGRect
+    var kind: WorkspaceCommentAnchorKind
+    var snippet: String?
+
+    enum CodingKeys: String, CodingKey {
+        case pageRefID, rect, kind, snippet
+    }
+
+    init(pageRefID: UUID,
+         rect: CGRect,
+         kind: WorkspaceCommentAnchorKind,
+         snippet: String? = nil) {
+        self.pageRefID = pageRefID
+        self.rect = rect
+        self.kind = kind
+        self.snippet = snippet
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pageRefID = try c.decode(UUID.self, forKey: .pageRefID)
+        rect = try c.decode(CGRect.self, forKey: .rect)
+        kind = try c.decodeIfPresent(WorkspaceCommentAnchorKind.self, forKey: .kind) ?? .text
+        snippet = try c.decodeIfPresent(String.self, forKey: .snippet)
+    }
+}
+
 struct WorkspaceComment: Codable, Identifiable {
     var id: UUID = UUID()
     var body: String
     var createdAt: Date = Date()
     var style: WorkspaceCommentStyle = WorkspaceCommentStyle()
     var tags: [String] = []
+    var anchor: WorkspaceCommentAnchor?
+    var anchorWasRemoved: Bool = false
+    var isResolved: Bool = false
 
     enum CodingKeys: String, CodingKey {
-        case id, body, createdAt, style, tags
+        case id, body, createdAt, style, tags, anchor, anchorWasRemoved, isResolved
     }
 
     init(id: UUID = UUID(),
          body: String,
          createdAt: Date = Date(),
          style: WorkspaceCommentStyle = WorkspaceCommentStyle(),
-         tags: [String] = []) {
+         tags: [String] = [],
+         anchor: WorkspaceCommentAnchor? = nil,
+         anchorWasRemoved: Bool = false,
+         isResolved: Bool = false) {
         self.id = id
         self.body = body
         self.createdAt = createdAt
         self.style = style
         self.tags = tags
+        self.anchor = anchor
+        self.anchorWasRemoved = anchorWasRemoved
+        self.isResolved = isResolved
     }
 
     init(from decoder: Decoder) throws {
@@ -67,6 +110,9 @@ struct WorkspaceComment: Codable, Identifiable {
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         style = try c.decodeIfPresent(WorkspaceCommentStyle.self, forKey: .style) ?? WorkspaceCommentStyle()
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+        anchor = try c.decodeIfPresent(WorkspaceCommentAnchor.self, forKey: .anchor)
+        anchorWasRemoved = try c.decodeIfPresent(Bool.self, forKey: .anchorWasRemoved) ?? false
+        isResolved = try c.decodeIfPresent(Bool.self, forKey: .isResolved) ?? false
     }
 }
 
@@ -81,7 +127,7 @@ struct Workspace: Codable {
     var tags: [String] = []
     var comments: [WorkspaceComment] = []
     var pageEditStates: [PageEditState] = []
-    var schemaVersion: Int = 3
+    var schemaVersion: Int = 4
 
     enum CodingKeys: String, CodingKey {
         case id, title, createdAt, modifiedAt, documents, pageOrder, signatures, tags, comments, pageEditStates, schemaVersion

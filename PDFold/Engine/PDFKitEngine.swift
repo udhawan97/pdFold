@@ -161,6 +161,33 @@ enum DocumentImportConverter {
         )
     }
 
+    static func importedDocumentAsync(from url: URL) async throws -> ImportedDocument {
+        guard url.isFileURL else { throw ConversionError.unsupportedType }
+        let resourceType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
+        let suggestedType = resourceType ?? UTType(filenameExtension: url.pathExtension) ?? .data
+        if let byteCount = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+            try validateByteCount(Int64(byteCount), contentType: suggestedType)
+            if SourceDocumentFormat(contentType: suggestedType) == nil,
+               !suggestedType.conforms(to: .pdf),
+               !suggestedType.conforms(to: .image),
+               Int64(byteCount) > maxUnknownPreSniffBytes {
+                throw ConversionError.fileTypeTooLarge(
+                    typeDescription: "unknown",
+                    actualBytes: Int64(byteCount),
+                    limitBytes: maxUnknownPreSniffBytes
+                )
+            }
+        }
+        let data = try Data(contentsOf: url)
+        let detectedType = detectedContentType(data: data, suggestedContentType: suggestedType, filename: url.lastPathComponent)
+        return try await importedDocumentAsync(
+            from: data,
+            contentType: detectedType,
+            filename: url.lastPathComponent,
+            baseURL: detectedType.conforms(to: .html) ? url.deletingLastPathComponent() : nil
+        )
+    }
+
     static func pdfDocument(from data: Data, contentType: UTType, filename: String, baseURL: URL?) throws -> PDFDocument {
         try importedDocument(from: data, contentType: contentType, filename: filename, baseURL: baseURL).pdfDocument
     }
@@ -183,7 +210,8 @@ enum DocumentImportConverter {
 
         if detectedType.conforms(to: .html) {
             let plainHTML = try decodeText(data)
-            let pdf = try renderHTML(data, title: filename, baseURL: baseURL)
+            let attributedString = try loadAttributedString(from: data, documentType: .html, baseURL: baseURL)
+            let pdf = try renderAttributedString(attributedString, title: filename)
             return ImportedDocument(
                 pdfDocument: pdf,
                 sourcePayload: sourcePayload(
@@ -223,6 +251,33 @@ enum DocumentImportConverter {
                 filename: filename,
                 attributedString: attributedString,
                 plainText: isPlainTextLike(detectedType) || detectedType.conforms(to: .markdown) ? (try? decodeText(data)) : nil,
+                renderedPageCount: pdf.pageCount
+            )
+        )
+    }
+
+    static func importedDocumentAsync(from data: Data, contentType: UTType, filename: String, baseURL: URL?) async throws -> ImportedDocument {
+        let detectedType = detectedContentType(data: data, suggestedContentType: contentType, filename: filename)
+        try validateByteCount(Int64(data.count), contentType: detectedType)
+
+        if data.isEmpty && !detectedType.conforms(to: .plainText) && !detectedType.conforms(to: .text) {
+            throw ConversionError.emptyDocument
+        }
+
+        if !detectedType.conforms(to: .html) {
+            return try importedDocument(from: data, contentType: detectedType, filename: filename, baseURL: baseURL)
+        }
+
+        let plainHTML = try decodeText(data)
+        let pdf = try await renderHTML(data, title: filename, baseURL: baseURL)
+        return ImportedDocument(
+            pdfDocument: pdf,
+            sourcePayload: sourcePayload(
+                for: data,
+                contentType: detectedType,
+                filename: filename,
+                attributedString: NSAttributedString(string: plainHTML),
+                plainText: plainHTML,
                 renderedPageCount: pdf.pageCount
             )
         )
@@ -295,9 +350,9 @@ enum DocumentImportConverter {
         }
     }
 
-    private static func renderHTML(_ data: Data, title: String, baseURL: URL?) throws -> PDFDocument {
+    private static func renderHTML(_ data: Data, title: String, baseURL: URL?) async throws -> PDFDocument {
         let html = try decodeText(data)
-        let pdfData = try HTMLPDFRenderer.render(
+        let pdfData = try await HTMLPDFRenderer.render(
             html: html,
             baseURL: baseURL,
             maxPages: maxRenderedHTMLPages
@@ -633,50 +688,26 @@ private final class TextPDFPageView: NSView {
     }
 }
 
+@MainActor
 private final class HTMLPDFRenderer: NSObject, WKNavigationDelegate {
-    private enum RenderState {
-        case pending
-        case succeeded(Data)
-        case failed(Error)
-    }
-
     private let html: String
     private let baseURL: URL?
     private let timeout: TimeInterval
     private let maxPages: Int
     private let webView: WKWebView
-    private var state = RenderState.pending
+    private var continuation: CheckedContinuation<Data, Error>?
+    private var timeoutTask: Task<Void, Never>?
 
-    fileprivate static let pageSize = CGSize(width: 612, height: 792)
+    nonisolated fileprivate static let pageSize = CGSize(width: 612, height: 792)
 
     static func render(
         html: String,
         baseURL: URL?,
         timeout: TimeInterval = 30,
         maxPages: Int
-    ) throws -> Data {
-        if Thread.isMainThread {
-            return try renderOnMainThread(html: html, baseURL: baseURL, timeout: timeout, maxPages: maxPages)
-        }
-
-        var result: Result<Data, Error>?
-        let semaphore = DispatchSemaphore(value: 0)
-        DispatchQueue.main.async {
-            result = Result {
-                try renderOnMainThread(html: html, baseURL: baseURL, timeout: timeout, maxPages: maxPages)
-            }
-            semaphore.signal()
-        }
-        semaphore.wait()
-        guard let result else {
-            throw DocumentImportConverter.ConversionError.renderingFailed
-        }
-        return try result.get()
-    }
-
-    private static func renderOnMainThread(html: String, baseURL: URL?, timeout: TimeInterval, maxPages: Int) throws -> Data {
+    ) async throws -> Data {
         let renderer = HTMLPDFRenderer(html: html, baseURL: baseURL, timeout: timeout, maxPages: maxPages)
-        return try renderer.render()
+        return try await renderer.render()
     }
 
     private init(html: String, baseURL: URL?, timeout: TimeInterval, maxPages: Int) {
@@ -697,26 +728,32 @@ private final class HTMLPDFRenderer: NSObject, WKNavigationDelegate {
         webView.navigationDelegate = self
     }
 
-    private func render() throws -> Data {
-        webView.loadHTMLString(html, baseURL: baseURL)
-
-        let deadline = Date().addingTimeInterval(timeout)
-        while case .pending = state {
-            if Date() >= deadline {
-                webView.stopLoading()
-                throw DocumentImportConverter.ConversionError.renderTimedOut
+    private func render() async throws -> Data {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                self.continuation = continuation
+                self.timeoutTask = Task { [weak self] in
+                    let nanoseconds = UInt64(max(0, self?.timeout ?? 0) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: nanoseconds)
+                    self?.finish(.failure(DocumentImportConverter.ConversionError.renderTimedOut))
+                }
+                self.webView.loadHTMLString(self.html, baseURL: self.baseURL)
             }
-            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.finish(.failure(CancellationError()))
+            }
         }
+    }
 
-        switch state {
-        case .pending:
-            throw DocumentImportConverter.ConversionError.renderingFailed
-        case .succeeded(let data):
-            return data
-        case .failed(let error):
-            throw error
-        }
+    private func finish(_ result: Result<Data, Error>) {
+        guard let continuation else { return }
+        self.continuation = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        continuation.resume(with: result)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -741,44 +778,48 @@ private final class HTMLPDFRenderer: NSObject, WKNavigationDelegate {
         })()
         """
         webView.evaluateJavaScript(script) { [weak self] result, error in
-            if let error {
-                self?.state = .failed(error)
-                return
-            }
-            guard let self else { return }
+            Task { @MainActor in
+                if let error {
+                    self?.finish(.failure(error))
+                    return
+                }
+                guard let self else { return }
 
-            let height = max((result as? NSNumber)?.doubleValue ?? Double(Self.pageSize.height), Double(Self.pageSize.height))
-            let pageEstimate = Int(ceil(height / Double(Self.pageSize.height)))
-            guard pageEstimate <= self.maxPages else {
-                self.state = .failed(DocumentImportConverter.ConversionError.htmlRenderedTooLarge(
-                    pageEstimate: pageEstimate,
-                    maxPages: self.maxPages
-                ))
-                return
-            }
+                let height = max((result as? NSNumber)?.doubleValue ?? Double(Self.pageSize.height), Double(Self.pageSize.height))
+                let pageEstimate = Int(ceil(height / Double(Self.pageSize.height)))
+                guard pageEstimate <= self.maxPages else {
+                    self.finish(.failure(DocumentImportConverter.ConversionError.htmlRenderedTooLarge(
+                        pageEstimate: pageEstimate,
+                        maxPages: self.maxPages
+                    )))
+                    return
+                }
 
-            webView.frame = CGRect(origin: .zero, size: CGSize(width: Self.pageSize.width, height: height))
+                webView.frame = CGRect(origin: .zero, size: CGSize(width: Self.pageSize.width, height: height))
 
-            let configuration = WKPDFConfiguration()
-            configuration.rect = webView.bounds
-            webView.createPDF(configuration: configuration) { result in
-                switch result {
-                case .success(let data) where !data.isEmpty:
-                    self.state = .succeeded(data)
-                case .success:
-                    self.state = .failed(DocumentImportConverter.ConversionError.renderingFailed)
-                case .failure(let error):
-                    self.state = .failed(error)
+                let configuration = WKPDFConfiguration()
+                configuration.rect = webView.bounds
+                webView.createPDF(configuration: configuration) { result in
+                    Task { @MainActor in
+                        switch result {
+                        case .success(let data) where !data.isEmpty:
+                            self.finish(.success(data))
+                        case .success:
+                            self.finish(.failure(DocumentImportConverter.ConversionError.renderingFailed))
+                        case .failure(let error):
+                            self.finish(.failure(error))
+                        }
+                    }
                 }
             }
         }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        state = .failed(error)
+        finish(.failure(error))
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        state = .failed(error)
+        finish(.failure(error))
     }
 }
