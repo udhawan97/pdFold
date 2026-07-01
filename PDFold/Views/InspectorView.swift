@@ -415,7 +415,7 @@ private struct WorkspaceCommentRow: View {
                         weight: comment.style.isBold ? .semibold : .regular
                     ))
                     .italic(comment.style.isItalic)
-                    .foregroundStyle(color(fromHex: comment.style.colorHex))
+                    .foregroundStyle(displayColor(fromHex: comment.style.colorHex))
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -554,6 +554,12 @@ private struct WorkspaceCommentRow: View {
     private func color(fromHex value: String) -> Color {
         guard let nsColor = nsColor(fromHex: value) else { return Color.dsTextPrimary }
         return Color(nsColor: nsColor)
+    }
+
+    private func displayColor(fromHex value: String) -> Color {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).localizedCaseInsensitiveCompare("#1F2933") == .orderedSame
+            ? Color.dsTextPrimary
+            : color(fromHex: value)
     }
 
     private func nsColor(fromHex value: String) -> NSColor? {

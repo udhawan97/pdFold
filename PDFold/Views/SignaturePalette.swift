@@ -184,7 +184,8 @@ struct SignaturePalette: View {
             metadata: SignatureImageRenderer.Metadata(
                 signedAt: useTimestamp ? Date() : nil,
                 location: optionalTrimmed(location),
-                reason: optionalTrimmed(reason)
+                reason: optionalTrimmed(reason),
+                contactInfo: optionalTrimmed(contactInfo)
             )
         )
     }
@@ -480,6 +481,7 @@ private enum SignatureImageRenderer {
         var signedAt: Date?
         var location: String?
         var reason: String?
+        var contactInfo: String?
     }
 
     static func render(text: String,
@@ -487,7 +489,8 @@ private enum SignatureImageRenderer {
                        metadata: Metadata? = nil) -> Data? {
         guard !text.isEmpty else { return nil }
 
-        let size = CGSize(width: 360, height: 140)
+        let isCryptographic = kind == .cryptographic
+        let size = isCryptographic ? CGSize(width: 360, height: 170) : CGSize(width: 360, height: 140)
         // Draw directly into an NSBitmapImageRep rather than NSImage(size:).lockFocus() +
         // tiffRepresentation: with a transparent (.clear) fill, CGImageDestination can fail
         // to finalize the TIFF ("CGImageDestinationFinalize failed for output type 'public.tiff'"),
@@ -513,12 +516,11 @@ private enum SignatureImageRenderer {
         NSColor.clear.setFill()
         NSRect(origin: .zero, size: size).fill()
 
-        let isCryptographic = kind == .cryptographic
         let fontSize: CGFloat
         if kind == .visualInitials {
             fontSize = 78
         } else if isCryptographic {
-            fontSize = 42
+            fontSize = 38
         } else {
             fontSize = 52
         }
@@ -533,7 +535,7 @@ private enum SignatureImageRenderer {
             .paragraphStyle: paragraph
         ]
         let drawBounds = isCryptographic
-            ? CGRect(x: 18, y: 58, width: size.width - 36, height: 58)
+            ? CGRect(x: 18, y: 92, width: size.width - 36, height: 48)
             : CGRect(x: 18, y: 28, width: size.width - 36, height: size.height - 44)
         NSString(string: text).draw(with: drawBounds, options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attributes)
 
@@ -544,11 +546,11 @@ private enum SignatureImageRenderer {
                 detailParagraph.alignment = .center
                 detailParagraph.lineBreakMode = .byTruncatingTail
                 let detailAttributes: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 11, weight: .regular),
+                    .font: NSFont.systemFont(ofSize: 9.5, weight: .regular),
                     .foregroundColor: NSColor.black.withAlphaComponent(0.72),
                     .paragraphStyle: detailParagraph
                 ]
-                let detailBounds = CGRect(x: 20, y: 20, width: size.width - 40, height: 40)
+                let detailBounds = CGRect(x: 20, y: 24, width: size.width - 40, height: 62)
                 NSString(string: details.joined(separator: "\n")).draw(
                     with: detailBounds,
                     options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine],
@@ -568,11 +570,14 @@ private enum SignatureImageRenderer {
             formatter.timeStyle = .short
             lines.append("Signed: \(formatter.string(from: signedAt))")
         }
+        if let reason = metadata.reason, !reason.isEmpty {
+            lines.append("Reason: \(reason)")
+        }
         if let location = metadata.location, !location.isEmpty {
             lines.append("Location: \(location)")
         }
-        if let reason = metadata.reason, !reason.isEmpty {
-            lines.append("Reason: \(reason)")
+        if let contactInfo = metadata.contactInfo, !contactInfo.isEmpty {
+            lines.append("Contact: \(contactInfo)")
         }
         return lines
     }

@@ -29,6 +29,14 @@ struct ContentView: View {
                 } detail: {
                     HStack(spacing: 0) {
                         ReadingCanvas(viewModel: viewModel)
+                            .overlay(alignment: .topTrailing) {
+                                DocumentCommentsIndicator(count: viewModel.totalCommentCount) {
+                                    inspectorTab = .comments
+                                    showInspector = true
+                                }
+                                .padding(.top, 48)
+                                .padding(.trailing, .dsLG)
+                            }
                         if showInspector {
                             Rectangle().fill(Color.dsSeparator).frame(width: 0.5)
                             InspectorView(viewModel: viewModel, selectedTab: $inspectorTab)
@@ -623,6 +631,36 @@ private func preferredImportExtension(for contentType: UTType, fallback: String)
     if contentType.conforms(to: .image) { return "png" }
     if contentType.conforms(to: .plainText) || contentType.conforms(to: .text) { return "txt" }
     return fallback.isEmpty ? "dat" : fallback
+}
+
+private struct DocumentCommentsIndicator: View {
+    var count: Int
+    var action: () -> Void
+
+    var body: some View {
+        if count > 0 {
+            Button(action: action) {
+                HStack(spacing: .dsXS) {
+                    Image(systemName: "text.bubble.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("\(count)")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(Color.dsTextPrimary)
+                .padding(.horizontal, .dsSM)
+                .frame(height: 30)
+                .background(.regularMaterial, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .strokeBorder(Color.dsAccent.opacity(0.55), lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+            .help(count == 1 ? "View 1 comment" : "View \(count) comments")
+            .accessibilityLabel(count == 1 ? "View 1 comment" : "View \(count) comments")
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        }
+    }
 }
 
 private extension Array where Element == URL {
