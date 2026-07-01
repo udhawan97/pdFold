@@ -135,12 +135,13 @@ Feature range used for the product-change summary: `release-v4..HEAD`
 Summary:
 
 ```text
-10 commits changed 21 files, with 2283 insertions and 312 deletions.
+11 commits changed 22 files, with 2286 insertions and 313 deletions.
 ```
 
 Commits:
 
-- `HEAD` Normalize pdFold install links
+- `HEAD` Extend CodeQL timeout
+- `bc17433` Normalize pdFold install links
 - `97c175b` Add optional Homebrew cask
 - `b92d4f6` Polish release README and CI test
 - `f709d96` Stabilize CI plist validation
@@ -162,6 +163,7 @@ Notable files:
 - `install.sh`
 - `scripts/install-mac.sh`
 - `.github/workflows/ci.yml`
+- `.github/workflows/codeql.yml`
 - `PDFold/Views/ContentView.swift`
 - `PDFold/Views/ReadingCanvas.swift`
 - `PDFold/Pet/PetBuddy.swift`
