@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 struct EmptyStateView: View {
     var viewModel: WorkspaceViewModel
@@ -8,6 +9,7 @@ struct EmptyStateView: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.dsCanvas.ignoresSafeArea()
+            EmptyStateAmbientBackground()
 
             ScrollView {
                 VStack(spacing: .dsXL) {
@@ -137,5 +139,104 @@ private struct EmptyStatePill: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(Color.dsAccentSoft, in: Capsule())
+    }
+}
+
+private struct EmptyStateAmbientBackground: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var shouldReduceMotion: Bool {
+        reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 18.0, paused: shouldReduceMotion)) { timeline in
+            Canvas(opaque: false, rendersAsynchronously: true) { context, size in
+                drawBackground(in: &context, size: size, date: timeline.date)
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func drawBackground(in context: inout GraphicsContext, size: CGSize, date: Date) {
+        guard size.width > 0, size.height > 0 else { return }
+
+        let time = shouldReduceMotion ? 0 : date.timeIntervalSinceReferenceDate
+        let phase = time / 28
+        let accentOpacity = colorScheme == .dark ? 0.10 : 0.075
+        let tertiaryOpacity = colorScheme == .dark ? 0.07 : 0.045
+
+        drawFlowLines(in: &context, size: size, phase: phase, opacity: accentOpacity)
+        drawPageOutlines(in: &context, size: size, phase: phase, opacity: tertiaryOpacity)
+    }
+
+    private func drawFlowLines(
+        in context: inout GraphicsContext,
+        size: CGSize,
+        phase: TimeInterval,
+        opacity: Double
+    ) {
+        let lineCount = 7
+        let startY = size.height * 0.18
+        let spacing = max(size.height * 0.11, 72)
+
+        for index in 0..<lineCount {
+            let offset = sin(phase + Double(index) * 0.8) * 9
+            let y = startY + CGFloat(index) * spacing + offset
+            guard y > -40, y < size.height + 40 else { continue }
+
+            var path = Path()
+            path.move(to: CGPoint(x: -80, y: y))
+            path.addCurve(
+                to: CGPoint(x: size.width + 80, y: y + CGFloat(cos(phase * 0.7 + Double(index))) * 18),
+                control1: CGPoint(x: size.width * 0.28, y: y - 26),
+                control2: CGPoint(x: size.width * 0.68, y: y + 34)
+            )
+
+            let width = index == 2 ? 1.1 : 0.7
+            context.stroke(
+                path,
+                with: .color(Color.dsAccent.opacity(opacity)),
+                style: StrokeStyle(lineWidth: width, lineCap: .round)
+            )
+        }
+    }
+
+    private func drawPageOutlines(
+        in context: inout GraphicsContext,
+        size: CGSize,
+        phase: TimeInterval,
+        opacity: Double
+    ) {
+        let pages: [(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, speed: Double)] = [
+            (0.08, 0.28, 34, 42, 0.10),
+            (0.20, 0.62, 28, 36, 0.08),
+            (0.34, 0.18, 31, 40, 0.12),
+            (0.48, 0.76, 36, 45, 0.07),
+            (0.62, 0.34, 27, 35, 0.09),
+            (0.78, 0.58, 33, 41, 0.11),
+            (0.91, 0.22, 29, 37, 0.08)
+        ]
+
+        for (index, page) in pages.enumerated() {
+            let drift = CGFloat(sin(phase * page.speed * 8 + Double(index))) * 22
+            let x = size.width * page.x + drift
+            let y = size.height * page.y + CGFloat(cos(phase * page.speed * 7 + Double(index))) * 14
+            let rect = CGRect(x: x, y: y, width: page.width, height: page.height)
+
+            var outline = Path(roundedRect: rect, cornerRadius: 4)
+            let foldSize = min(page.width, page.height) * 0.28
+            outline.move(to: CGPoint(x: rect.maxX - foldSize, y: rect.minY))
+            outline.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + foldSize))
+
+            context.stroke(
+                outline,
+                with: .color(Color.dsTextSecondary.opacity(opacity)),
+                style: StrokeStyle(lineWidth: 0.75, lineCap: .round, lineJoin: .round)
+            )
+        }
     }
 }
