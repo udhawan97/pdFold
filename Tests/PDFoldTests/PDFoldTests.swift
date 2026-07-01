@@ -440,6 +440,22 @@ final class PDFTextEditingRedesignTests: XCTestCase {
 }
 
 final class InlineTextEditPlacementTests: XCTestCase {
+    func testInlineEditorResolvesRegularFontFromDetectedBoldFont() throws {
+        let detected: NSFont
+        if let font = NSFont(name: "Helvetica-Bold", size: 12) {
+            detected = font
+        } else {
+            detected = try XCTUnwrap(NSFontManager.shared.font(withFamily: "Helvetica", traits: .boldFontMask, weight: 9, size: 12))
+        }
+        let family = InlineTextEditorOverlay.editingFamilyName(for: detected, fallback: "Helvetica-Bold")
+
+        let regular = InlineTextEditorOverlay.editingFont(family: family, traits: [], size: 12)
+        let bold = InlineTextEditorOverlay.editingFont(family: family, traits: .boldFontMask, size: 12)
+
+        XCTAssertFalse(NSFontManager.shared.traits(of: regular).contains(.boldFontMask))
+        XCTAssertTrue(NSFontManager.shared.traits(of: bold).contains(.boldFontMask))
+    }
+
     /// Regression: the live editor's textView frame, converted PDFView→page, reported the
     /// right size but a wrong (too-high) origin — placing the replacement ~25pt above the
     /// original line and erasing the neighboring line ("ruined formatting"). The stored

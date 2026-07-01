@@ -675,7 +675,7 @@ final class NoteEditorViewController: NSViewController {
     override func viewWillDisappear() {
         super.viewWillDisappear()
         if !didCommit && !didCancel {
-            cancelChanges()
+            finishForDismissal()
         }
     }
 
@@ -743,6 +743,14 @@ final class NoteEditorViewController: NSViewController {
             changeHandler()
         } else {
             originalSnapshot.restore(to: annotation)
+        }
+    }
+
+    private func finishForDismissal() {
+        if commitChanges() {
+            didCommit = true
+        } else {
+            cancelChanges()
         }
     }
 
@@ -982,6 +990,7 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
     private let alignControl = NSSegmentedControl(labels: ["L", "C", "R"], trackingMode: .selectOne, target: nil, action: nil)
     private var editorFontName: String
     private var editorFontSize: CGFloat
+    private var editorFontTraits: NSFontTraitMask
     private var editorTextColor: NSColor
     private var editorAlignment: NSTextAlignment = .left
     private var didFinish = false
@@ -1001,13 +1010,15 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
         self.pageRef = pageRef
         self.block = block
         self.completion = completion
-        editorFontName = block.fontName
         // Preserve the ORIGINAL detected point size so edited text renders at the same size
         // as the surrounding document. A hard `max(8, …)` floor here inflated smaller body
         // text (6–8pt is common in dense resumes/footnotes), which both changed the visible
         // size and — because the box grows downward to fit the taller glyphs — pushed the
         // replacement onto the line below. Only guard against a non-positive/garbage detection.
         editorFontSize = block.fontSize > 0 ? block.fontSize : 12
+        let initialFont = NSFont(name: block.fontName, size: editorFontSize) ?? .systemFont(ofSize: editorFontSize)
+        editorFontName = Self.editingFamilyName(for: initialFont, fallback: block.fontName)
+        editorFontTraits = NSFontManager.shared.traits(of: initialFont).intersection([.boldFontMask, .italicFontMask])
         editorTextColor = block.textColor.nsColor
         super.init(frame: frame)
         setup()
@@ -1089,13 +1100,8 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
 
     private func setupToolbar() {
         let families = ["Helvetica", "Times", "Courier", "Avenir", "Menlo"]
-        // Capture bold/italic from the detected font BEFORE the family list below
-        // collapses e.g. "Times New Roman Bold" down to the generic "Times" entry, so the
-        // toggle buttons (and applyFormatting()) can still reconstruct the right weight.
-        let detectedFont = NSFont(name: editorFontName, size: editorFontSize) ?? .systemFont(ofSize: editorFontSize)
-        let detectedTraits = NSFontManager.shared.traits(of: detectedFont)
         familyPopup.addItems(withTitles: families)
-        if let match = families.first(where: { editorFontName.localizedCaseInsensitiveContains($0) }) {
+        if let match = families.first(where: { editorFontName.localizedCaseInsensitiveCompare($0) == .orderedSame }) {
             familyPopup.selectItem(withTitle: match)
             editorFontName = match
         } else {
@@ -1125,7 +1131,7 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
         boldButton.setButtonType(.toggle)
         boldButton.bezelStyle = .rounded
         boldButton.font = .boldSystemFont(ofSize: 12)
-        boldButton.state = detectedTraits.contains(.boldFontMask) ? .on : .off
+        boldButton.state = editorFontTraits.contains(.boldFontMask) ? .on : .off
         boldButton.frame = CGRect(x: 222, y: 8, width: 32, height: 26)
         toolbar.addSubview(boldButton)
 
@@ -1134,7 +1140,7 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
         italicButton.setButtonType(.toggle)
         italicButton.bezelStyle = .rounded
         italicButton.font = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 12), toHaveTrait: .italicFontMask)
-        italicButton.state = detectedTraits.contains(.italicFontMask) ? .on : .off
+        italicButton.state = editorFontTraits.contains(.italicFontMask) ? .on : .off
         italicButton.frame = CGRect(x: 258, y: 8, width: 32, height: 26)
         toolbar.addSubview(italicButton)
 
@@ -1250,10 +1256,20 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
     }
 
     @objc private func toggleBold() {
+        if boldButton.state == .on {
+            editorFontTraits.insert(.boldFontMask)
+        } else {
+            editorFontTraits.remove(.boldFontMask)
+        }
         applyFormatting()
     }
 
     @objc private func toggleItalic() {
+        if italicButton.state == .on {
+            editorFontTraits.insert(.italicFontMask)
+        } else {
+            editorFontTraits.remove(.italicFontMask)
+        }
         applyFormatting()
     }
 
@@ -1268,17 +1284,72 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
 
     private func applyFormatting() {
         sizeLabel.stringValue = "\(Int(round(editorFontSize)))"
-        var font = NSFont(name: editorFontName, size: editorFontSize) ?? .systemFont(ofSize: editorFontSize)
-        if boldButton.state == .on {
-            font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
-        }
-        if italicButton.state == .on {
-            font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
-        }
+        let font = Self.editingFont(family: editorFontName, traits: editorFontTraits, size: editorFontSize)
         textView.font = font
         textView.textColor = editorTextColor
         textView.alignment = editorAlignment
+        textView.typingAttributes = [
+            .font: font,
+            .foregroundColor: editorTextColor
+        ]
+        if let storage = textView.textStorage {
+            let selectedRange = textView.selectedRange()
+            let fullRange = NSRange(location: 0, length: storage.length)
+            storage.setAttributes([
+                .font: font,
+                .foregroundColor: editorTextColor
+            ], range: fullRange)
+            textView.setAlignment(editorAlignment, range: fullRange)
+            textView.setSelectedRange(selectedRange)
+        }
         resizeTextViewHeight()
+    }
+
+    static func editingFamilyName(for font: NSFont, fallback: String) -> String {
+        if let family = font.familyName, !family.isEmpty {
+            return family
+        }
+
+        let fallbackFont = NSFont(name: fallback, size: font.pointSize)
+        if let family = fallbackFont?.familyName, !family.isEmpty {
+            return family
+        }
+
+        return fallback
+            .replacingOccurrences(of: "-BoldItalic", with: "")
+            .replacingOccurrences(of: "-BoldOblique", with: "")
+            .replacingOccurrences(of: "-Bold", with: "")
+            .replacingOccurrences(of: "-Italic", with: "")
+            .replacingOccurrences(of: "-Oblique", with: "")
+    }
+
+    static func editingFont(family: String, traits: NSFontTraitMask, size: CGFloat) -> NSFont {
+        let manager = NSFontManager.shared
+        if let matched = manager.font(
+            withFamily: family,
+            traits: traits,
+            weight: traits.contains(.boldFontMask) ? 9 : 5,
+            size: size
+        ) {
+            return matched
+        }
+
+        let base = manager.font(withFamily: family, traits: [], weight: 5, size: size)
+            ?? NSFont(name: family, size: size)
+            ?? NSFont.systemFont(ofSize: size)
+
+        var resolved = base
+        if traits.contains(.boldFontMask) {
+            resolved = manager.convert(resolved, toHaveTrait: .boldFontMask)
+        } else {
+            resolved = manager.convert(resolved, toNotHaveTrait: .boldFontMask)
+        }
+        if traits.contains(.italicFontMask) {
+            resolved = manager.convert(resolved, toHaveTrait: .italicFontMask)
+        } else {
+            resolved = manager.convert(resolved, toNotHaveTrait: .italicFontMask)
+        }
+        return resolved
     }
 
     /// Commits the pending edit (same as pressing Done) if there's something worth saving,
