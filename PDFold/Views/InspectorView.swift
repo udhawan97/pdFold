@@ -321,6 +321,7 @@ private struct InspectorTextEditor: View {
                 .foregroundStyle(Color.dsTextPrimary)
                 .tint(Color.dsAccent)
                 .scrollContentBackground(.hidden)
+                .padding(.vertical, 8)
 
             if text.isEmpty {
                 Text(placeholder)
