@@ -4,7 +4,7 @@
 
 Tag: `release-v4`
 
-Target: `6391579` (`Fixing signature input issues`)
+Target: latest commit tagged by `release-v4`
 
 Release title: `pdFold release-v4 - inline editing, digital signatures, and save fidelity`
 
@@ -175,12 +175,12 @@ swift test
 
 ## Git Summary
 
-Feature range used for this release summary: `release-v3..6391579`
+Feature range used for the product-change summary: `release-v3..6391579`
 
 Summary:
 
 ```text
-35 commits changed 58 files, with 9077 insertions and 809 deletions.
+35 product commits changed 58 files, with 9077 insertions and 809 deletions, before the documentation-only release-note cleanup.
 ```
 
 Commits:
