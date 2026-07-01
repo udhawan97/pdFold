@@ -4,9 +4,9 @@
 
 Tag: `release-v4`
 
-Target: commit tagged by `release-v4`
+Target: `6391579` (`Fixing signature input issues`)
 
-Release title: `pdFold release-v4 - bulletproof inline PDF text editing`
+Release title: `pdFold release-v4 - inline editing, digital signatures, and save fidelity`
 
 Asset to upload: `pdFold.zip`
 
@@ -18,7 +18,7 @@ Build the asset with:
 
 ## Release Notes
 
-# Bulletproof Inline PDF Text Editing and PDF Save Metadata
+# Inline PDF Text Editing, Digital Signatures, and PDF Save Metadata
 
 **Release:** Latest release  
 **Release date:** July 1, 2026  
@@ -28,11 +28,11 @@ Build the asset with:
 
 ## ✦ A More Precise Native PDF Editor
 
-pdFold release-v4 focuses on the text-editing path that matters most in dense real-world PDFs: click existing text, edit it in place, and export a PDF that keeps the original page stable.
+pdFold release-v4 focuses on the editing and signing paths that matter most in dense real-world PDFs: click existing text, edit it in place, sign documents, and export a PDF that keeps the original page stable.
 
-The local-first document workspace, installer, automatic update flow, clean uninstall command, PDFium validation, and multi-format export from v3 remain intact. Version 4 hardens inline PDF text editing, PDF save metadata, release automation, and regression coverage so the app behaves more like a serious Mac PDF workflow tool.
+The local-first document workspace, installer, automatic update flow, clean uninstall command, PDFium validation, and multi-format export from v3 remain intact. Version 4 hardens inline PDF text editing, PDF save metadata, authentic PDF signatures, release automation, and regression coverage so the app behaves more like a serious Mac PDF workflow tool.
 
-This is primarily a **PDF editing fidelity, export integrity, and release automation release**.
+This is primarily a **PDF editing fidelity, signature, export integrity, and release automation release**.
 
 ---
 
@@ -89,6 +89,27 @@ Inline PDF text edits now restore both rendered bytes and edit metadata.
 - Redo replays the edited PDF bytes and operation state.
 - Save-as-PDF and `.pdfold` package snapshots continue to export from copied pages, preserving the live page-sharing invariant.
 - App metadata is bumped to `CFBundleShortVersionString` `3.0` and `CFBundleVersion` `4`.
+
+---
+
+### Authentic PDF Signatures
+
+release-v4 adds a native signing path for PDF deliverables.
+
+- Signing contracts, identity providers, CMS signature construction, and timestamp request support are included in the app codebase.
+- Signature appearances render consistently for placed signatures.
+- The signing path has focused regression coverage for CMS packaging, timestamp handling, appearance rendering, and PDF signing behavior.
+- Certificate setup and verification notes are documented for maintainers.
+
+---
+
+### Signature Input and Placement Polish
+
+The latest release target includes the follow-up signature fixes after the original release-v4 tag.
+
+- Signature placement models preserve the data needed for reliable save, reopen, and export.
+- Signature palette and input behavior were tightened after the digital-signature feature landed.
+- The current tag target includes the latest signature input fix on `main`.
 
 ---
 
@@ -154,16 +175,25 @@ swift test
 
 ## Git Summary
 
-Feature range used for this release summary: `release-v3..e467b45`
+Feature range used for this release summary: `release-v3..6391579`
 
 Summary:
 
 ```text
-20 commits changed 36 files, with 2082 insertions and 543 deletions.
+35 commits changed 58 files, with 9077 insertions and 809 deletions.
 ```
 
 Commits:
 
+- `6391579` Fixing signature input issues
+- `feb5c45` Add views
+- `140e510` Merge digital signature feature (PAdES B-T + cursive visual signatures)
+- `87d24c2` Add authentic PDF digital signatures (PAdES B-T) and cursive visual signatures
+- `2e4d4aa` Text editing hardening + other fixes
+- `6694b91` Bunch of fixes on signature
+- `c685d39` Keep inline text edits vertically aligned
+- `7f62f36` Fix inline editor toolbar controls
+- `5605b2a` Prepare release v4
 - `e467b45` Bump app build for PDF save metadata
 - `6847e79` Inline text editing overhaul
 - `0dbbc21` Remove workspace save format from app bundle
@@ -173,15 +203,21 @@ Commits:
 - `551a597` Update README.md
 - `78467cc` Install script UI fix
 - `1697764` Annotation on install script
+- `04f5189` Merge remote-tracking branch 'origin/main'
 - `768d6d9` Split same-baseline columns into separate editable blocks
+- `1e799c3` Merge pull request #3 from udhawan97/friendly-helper-claude/sharp-margulis-d55d19
 - `0fdb103` Fix inline text edit placement and font-size fidelity
+- `1a44aad` Merge branch 'claude/optimistic-gauss-ad6e08'
+- `b7d4f01` Merge remote-tracking branch 'origin/main' into claude/optimistic-gauss-ad6e08
 - `8088ac7` App name changes
 - `9a4ec5b` Fix inline text editing: lost edits on export, misplaced/overlapping replacement text, dropped annotations, and font fidelity
 - `fd596f7` Adding fixes for notes feature
 - `d82cef0` renaming app to pdFold
 - `955fe43` Shell script fixes
 - `d609234` CI fixes
+- `bc5b2e1` Merge branch 'claude/relaxed-tharp-3a55e3'
 - `b43c6c7` Fix text edits not appearing live or after export
+- `7d48355` Merge branch 'claude/relaxed-tharp-3a55e3'
 - `575348a` Fix inline text editing correctness and accumulation bugs
 - `a7a2ee8` Editing feature retry
 

@@ -169,7 +169,7 @@ For reviewers, the interesting part is not just that pdFold works. It is that th
 
 ## Release Status
 
-pdFold release v4 is a release-hardened local-first macOS app for collecting scattered documents, turning them into one editable workspace, marking them up, editing PDF text in place, tracking context, and exporting clean deliverables.
+pdFold release v4 is a release-hardened local-first macOS app for collecting scattered documents, turning them into one editable workspace, marking them up, editing PDF text in place, signing PDFs, tracking context, and exporting clean deliverables.
 
 |  | Detail | Status |
 | --- | --- | --- |
@@ -187,6 +187,8 @@ pdFold release v4 is a release-hardened local-first macOS app for collecting sca
 | ✍️ | Inline PDF text editing | Click detected PDF text, edit in a zoom-correct floating box, and commit with preserved font, size, weight, color, alignment, and page-space geometry |
 | 🧽 | Safer page regeneration | Replacements rebuild from pristine original pages, erase only original text bounds with sampled local background, and preserve annotations |
 | 🔠 | Font and size fidelity | PDFium font-size readings are checked against actual glyph ink, with better handling for scaled content streams and Carlito/Calibri-style documents |
+| 🔏 | Authentic PDF signatures | Add PDF digital signatures with signing identities, CMS packaging, timestamp support, appearance rendering, and regression coverage |
+| 🖊️ | Signature workflow polish | Signature placement, drawn signature handling, and signature input behavior are tightened for the latest release target |
 | ↩️ | Undo/redo reliability | Inline PDF text edits now restore rendered PDF bytes and edit-state metadata in both directions |
 | 💾 | PDF save path | App metadata is bumped to build `4`, with tests guarding PDF save/export metadata behavior |
 | 🚀 | Release automation | `release-v*` tags now trigger the release workflow and publish the tagged build as the latest GitHub release |
@@ -365,6 +367,7 @@ The app uses macOS sandboxing and file access through user-selected documents. I
 Release v4 also includes practical guardrails around failure-prone paths:
 
 - Inline PDF text edits rebuild from pristine source pages, preserve existing annotations, and store undo/redo snapshots for rendered PDF bytes and edit metadata.
+- Digital-signature flows cover signing identity loading, CMS signature construction, timestamp requests, signature appearance rendering, and verification harnesses.
 - A supplemental PDFium processing backend performs a non-blocking validation smoke check before PDFKit proceeds with the normal import path.
 - Files larger than 512 MB are rejected before loading to avoid memory pressure from accidental giant imports.
 - PDF serialization failures preserve existing package data or report an actionable import error instead of writing broken workspace state.
