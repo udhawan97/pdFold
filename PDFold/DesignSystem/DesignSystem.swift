@@ -42,6 +42,31 @@ extension Color {
         light: NSColor(srgbRed: 0.071, green: 0.478, blue: 0.647, alpha: 0.13),
         dark:  NSColor(srgbRed: 0.282, green: 0.757, blue: 0.859, alpha: 0.20))
 
+    /// Distinct service tints for primary toolbar actions.
+    static let dsEditTextAccent = Color(
+        light: NSColor(srgbRed: 0.071, green: 0.478, blue: 0.647, alpha: 1),
+        dark:  NSColor(srgbRed: 0.282, green: 0.757, blue: 0.859, alpha: 1))
+
+    static let dsEditTextSoft = Color(
+        light: NSColor(srgbRed: 0.071, green: 0.478, blue: 0.647, alpha: 0.13),
+        dark:  NSColor(srgbRed: 0.282, green: 0.757, blue: 0.859, alpha: 0.18))
+
+    static let dsEditTextHover = Color(
+        light: NSColor(srgbRed: 0.071, green: 0.478, blue: 0.647, alpha: 0.18),
+        dark:  NSColor(srgbRed: 0.282, green: 0.757, blue: 0.859, alpha: 0.24))
+
+    static let dsSignatureAccent = Color(
+        light: NSColor(srgbRed: 0.749, green: 0.333, blue: 0.439, alpha: 1),
+        dark:  NSColor(srgbRed: 0.984, green: 0.478, blue: 0.576, alpha: 1))
+
+    static let dsSignatureSoft = Color(
+        light: NSColor(srgbRed: 0.749, green: 0.333, blue: 0.439, alpha: 0.12),
+        dark:  NSColor(srgbRed: 0.984, green: 0.478, blue: 0.576, alpha: 0.17))
+
+    static let dsSignatureHover = Color(
+        light: NSColor(srgbRed: 0.749, green: 0.333, blue: 0.439, alpha: 0.17),
+        dark:  NSColor(srgbRed: 0.984, green: 0.478, blue: 0.576, alpha: 0.23))
+
     static let dsTextPrimary = Color(
         light: NSColor(srgbRed: 0.063, green: 0.137, blue: 0.200, alpha: 1),   // #102333
         dark:  NSColor(srgbRed: 0.929, green: 0.965, blue: 0.980, alpha: 1))   // #EDF6FA

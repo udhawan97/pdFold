@@ -227,10 +227,11 @@ private struct AnnotationToolPicker: View {
     @State private var hoveredTool: AnnotationTool?
     @Namespace private var selectionNamespace
 
-    // Keep the highest-frequency creation tools up front, then selection,
-    // text markup (+ eraser), and free-form page content.
+    // Keep the highest-frequency creation tools up front as distinct services,
+    // then selection, text markup (+ eraser), and free-form page content.
     private let toolGroups: [[AnnotationTool]] = [
-        [.editText, .signature],
+        [.editText],
+        [.signature],
         [.none],
         [.highlight, .underline, .strikeout, .eraser],
         [.note, .ink]
@@ -239,7 +240,8 @@ private struct AnnotationToolPicker: View {
     var body: some View {
         HStack(spacing: 9) {
             ForEach(toolGroups.indices, id: \.self) { groupIndex in
-                toolGroup(toolGroups[groupIndex], isPrimary: groupIndex == 0)
+                let tools = toolGroups[groupIndex]
+                toolGroup(tools, style: groupStyle(for: tools))
             }
 
             if viewModel.currentTool.isColorable {
@@ -259,17 +261,21 @@ private struct AnnotationToolPicker: View {
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: viewModel.currentTool)
     }
 
-    private func toolGroup(_ tools: [AnnotationTool], isPrimary: Bool) -> some View {
+    private func toolGroup(_ tools: [AnnotationTool], style: ToolGroupStyle) -> some View {
         HStack(spacing: 4) {
             ForEach(tools) { tool in
                 toolButton(tool)
             }
         }
-        .padding(.horizontal, isPrimary ? 3 : 0)
+        .padding(.horizontal, style.horizontalPadding)
         .background {
-            if isPrimary {
+            if let fill = style.fill {
                 Capsule()
-                    .fill(Color.dsAccentSoft)
+                    .fill(fill)
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(style.stroke, lineWidth: 1)
+                    )
             }
         }
     }
@@ -278,6 +284,8 @@ private struct AnnotationToolPicker: View {
     private func toolButton(_ tool: AnnotationTool) -> some View {
         let isSelected = viewModel.currentTool == tool
         let isHovered = hoveredTool == tool
+        let accent = toolAccent(for: tool)
+        let hoverFill = toolHoverFill(for: tool)
 
         Button {
             select(tool)
@@ -285,7 +293,8 @@ private struct AnnotationToolPicker: View {
             ZStack {
                 if isSelected {
                     Capsule()
-                        .fill(Color.dsAccent)
+                        .fill(accent)
+                        .shadow(color: accent.opacity(tool.isServiceTool ? 0.24 : 0), radius: 6, x: 0, y: 2)
                         .matchedGeometryEffect(id: "selectedTool", in: selectionNamespace)
                 }
 
@@ -296,7 +305,8 @@ private struct AnnotationToolPicker: View {
                         Text(tool.label)
                             .font(.dsCaption().weight(.semibold))
                             .lineLimit(1)
-                            .fixedSize()
+                            .truncationMode(.tail)
+                            .frame(maxWidth: tool.selectedLabelMaxWidth, alignment: .leading)
                             .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .leading)))
                     }
                 }
@@ -306,8 +316,9 @@ private struct AnnotationToolPicker: View {
             .frame(minWidth: 30, minHeight: 32)
             .frame(height: 32)
             .contentShape(Capsule())
+            .scaleEffect(isSelected && tool.isServiceTool ? 1.03 : 1)
         }
-        .buttonStyle(ToolButtonStyle(isHovered: isHovered, isSelected: isSelected))
+        .buttonStyle(ToolButtonStyle(isHovered: isHovered, isSelected: isSelected, hoverFill: hoverFill))
         .onHover { isHovered in
             if isHovered {
                 hoveredTool = tool
@@ -319,9 +330,56 @@ private struct AnnotationToolPicker: View {
         .accessibilityLabel(tool.label)
     }
 
+    private func groupStyle(for tools: [AnnotationTool]) -> ToolGroupStyle {
+        guard tools.count == 1, let tool = tools.first, tool.isServiceTool else {
+            return ToolGroupStyle()
+        }
+
+        return ToolGroupStyle(
+            horizontalPadding: 3,
+            fill: toolServiceFill(for: tool),
+            stroke: toolAccent(for: tool).opacity(0.18)
+        )
+    }
+
+    private func toolAccent(for tool: AnnotationTool) -> Color {
+        switch tool {
+        case .editText:
+            return Color.dsEditTextAccent
+        case .signature:
+            return Color.dsSignatureAccent
+        default:
+            return Color.dsAccent
+        }
+    }
+
+    private func toolServiceFill(for tool: AnnotationTool) -> Color {
+        switch tool {
+        case .editText:
+            return Color.dsEditTextSoft
+        case .signature:
+            return Color.dsSignatureSoft
+        default:
+            return Color.dsAccentSoft
+        }
+    }
+
+    private func toolHoverFill(for tool: AnnotationTool) -> Color {
+        switch tool {
+        case .editText:
+            return Color.dsEditTextHover
+        case .signature:
+            return Color.dsSignatureHover
+        default:
+            return Color.dsAccentSoft
+        }
+    }
+
     private func select(_ tool: AnnotationTool) {
         if tool == .signature {
-            viewModel.isShowingSignaturePalette.toggle()
+            viewModel.isShowingSignaturePalette = true
+        } else {
+            viewModel.isShowingSignaturePalette = false
         }
         viewModel.currentTool = tool
     }
@@ -341,18 +399,39 @@ private struct AnnotationToolPicker: View {
 private struct ToolButtonStyle: ButtonStyle {
     var isHovered: Bool
     var isSelected: Bool = false
+    var hoverFill: Color = Color.dsAccentSoft
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background {
                 if isHovered && !isSelected {
                     Capsule()
-                        .fill(Color.dsAccentSoft)
+                        .fill(hoverFill)
                 }
             }
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
             .animation(.easeOut(duration: 0.12), value: isHovered)
+    }
+}
+
+private struct ToolGroupStyle {
+    var horizontalPadding: CGFloat = 0
+    var fill: Color?
+    var stroke: Color = Color.clear
+}
+
+private extension AnnotationTool {
+    var isServiceTool: Bool {
+        self == .editText || self == .signature
+    }
+
+    var selectedLabelMaxWidth: CGFloat {
+        switch self {
+        case .editText, .signature: return 64
+        case .highlight, .strikeout: return 68
+        default: return 58
+        }
     }
 }
 
