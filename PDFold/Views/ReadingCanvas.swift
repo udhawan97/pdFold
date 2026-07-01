@@ -401,7 +401,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 guard let self else { return }
                 switch result {
                 case .commit(let edit):
-                    // Capture scroll position so the edit appears in place (not jumping to page 1).
+                    // Capture the actual scroll viewport. In continuous mode, PDFKit's
+                    // currentPage can be a different page than the edit target, so page-based
+                    // restoration can visibly jump after the document is regenerated.
+                    let savedViewportOrigin = self.visibleDocumentOrigin(in: pdfView)
                     let savedDestination = pdfView?.currentDestination
                     let savedPageIdx: Int? = {
                         guard let pv = pdfView,
@@ -428,14 +431,16 @@ struct PDFViewRepresentable: NSViewRepresentable {
                         let newDoc = viewModel.combinedPDF
                         // Always assign; SwiftUI may not have fired updateNSView yet.
                         pdfView?.document = newDoc
-                        if let idx = savedPageIdx, let targetPage = newDoc.page(at: idx) {
+                        pdfView?.layoutDocumentView()
+                        if let origin = savedViewportOrigin {
+                            self.restoreVisibleDocumentOrigin(origin, in: pdfView)
+                        } else if let idx = savedPageIdx, let targetPage = newDoc.page(at: idx) {
                             if let dest = savedDestination {
                                 pdfView?.go(to: PDFDestination(page: targetPage, at: dest.point))
                             } else {
                                 pdfView?.go(to: targetPage)
                             }
                         }
-                        pdfView?.layoutDocumentView()
                         pdfView?.needsDisplay = true
                     }
                 case .cancel:
@@ -447,6 +452,29 @@ struct PDFViewRepresentable: NSViewRepresentable {
             inlineEditor = editor
             pdfView.addSubview(editor)
             editor.beginEditing()
+        }
+
+        private func visibleDocumentOrigin(in pdfView: PDFView?) -> CGPoint? {
+            guard let documentView = pdfView?.documentView,
+                  let clipView = documentView.enclosingScrollView?.contentView else { return nil }
+            return clipView.bounds.origin
+        }
+
+        private func restoreVisibleDocumentOrigin(_ origin: CGPoint, in pdfView: PDFView?) {
+            guard let documentView = pdfView?.documentView,
+                  let scrollView = documentView.enclosingScrollView else { return }
+            let clipView = scrollView.contentView
+            let documentBounds = documentView.bounds
+            let maxOrigin = CGPoint(
+                x: max(0, documentBounds.maxX - clipView.bounds.width),
+                y: max(0, documentBounds.maxY - clipView.bounds.height)
+            )
+            let restoredOrigin = CGPoint(
+                x: min(max(0, origin.x), maxOrigin.x),
+                y: min(max(0, origin.y), maxOrigin.y)
+            )
+            clipView.scroll(to: restoredOrigin)
+            scrollView.reflectScrolledClipView(clipView)
         }
 
         @objc func jumpToSelection(_ notification: Notification) {
