@@ -140,5 +140,4 @@ extension Notification.Name {
     static let pdfoldZoomIn          = Notification.Name("pdfoldZoomIn")
     static let pdfoldZoomOut         = Notification.Name("pdfoldZoomOut")
     static let pdfoldZoomFit         = Notification.Name("pdfoldZoomFit")
-    static let pdfoldSaveAsPDF       = Notification.Name("pdfoldSaveAsPDF")
 }

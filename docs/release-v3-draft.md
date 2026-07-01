@@ -26,7 +26,7 @@ pdFold v3.0 keeps the local-first document workspace from v2, adds a supplementa
 - Clean uninstall command: installs now create `Uninstall pdFold.command` on the Desktop.
 - Local PDF processing backend: PDF imports now flow through an injectable `PDFProcessingEngine`, with PDFium-backed validation and a PDFKit fallback path.
 - Uninstaller script: `scripts/uninstall-mac.sh` removes `~/Applications/pdFold.app`, generated Desktop commands, the `~/.pdfold` installer cache, pdFold app support data, preferences, caches, saved state, and sandbox container data.
-- User files are preserved: saved `.pdfoldproj` workspace documents are not removed by uninstall.
+- User files are preserved: files created outside pdFold's app support directories are not removed by uninstall.
 - Legacy cleanup: install/update/uninstall flows remove the old `Update PDFold.command` artifact.
 - Release metadata bumped to `CFBundleShortVersionString` `3.0` and `CFBundleVersion` `3`.
 - README setup, update, uninstall, quality, and troubleshooting sections now match the v3 flow.

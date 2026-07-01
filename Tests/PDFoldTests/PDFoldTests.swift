@@ -401,7 +401,7 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         annotation.contents = "Cloud stuff to check"
         annotation.setValue(false, forAnnotationKey: WorkspaceViewModel.draftTextAnnotationKey)
         viewModel.markAnnotationsModified()
-        let snapshot = try document.snapshot(contentType: .pdfoldproj)
+        let snapshot = try document.snapshot(contentType: .pdf)
         let savedData = try XCTUnwrap(snapshot.memberPDFData[fixture.member.id])
         let savedPDF = try XCTUnwrap(PDFDocument(data: savedData))
         let savedPage = try XCTUnwrap(savedPDF.page(at: 0))
@@ -702,7 +702,7 @@ final class WorkspaceDocumentTests: XCTestCase {
         document.memberPDFData[memberID] = stalePDFData
         document.currentPDFDataProvider = { [memberID: expectedPDFData] }
 
-        let snapshot = try document.snapshot(contentType: .pdfoldproj)
+        let snapshot = try document.snapshot(contentType: .pdf)
 
         XCTAssertEqual(snapshot.memberPDFData[memberID], expectedPDFData)
         XCTAssertNotEqual(snapshot.memberPDFData[memberID], stalePDFData)

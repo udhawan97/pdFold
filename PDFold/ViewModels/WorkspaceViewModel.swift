@@ -242,7 +242,7 @@ final class WorkspaceViewModel {
                 } else if let existingData = self.document.memberPDFData[member.id] {
                     // Surface a blocking, actionable error — do not silently drop edits.
                     self.exportError = ExportError(
-                        message: "pdFold couldn\u{2019}t serialize \u{201C}\(member.displayName)\u{201D}; your edits to it weren\u{2019}t saved. Use \u{201C}Save as PDF\u{2026}\u{201D} (\u{2318}\u{21E7}S) to preserve your work."
+                        message: "pdFold couldn\u{2019}t serialize \u{201C}\(member.displayName)\u{201D}; your edits to it weren\u{2019}t saved. Export a PDF to preserve your work."
                     )
                     result[member.id] = existingData
                 }
@@ -1153,7 +1153,7 @@ final class WorkspaceViewModel {
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.pdf]
             panel.nameFieldStringValue = defaultName
-            panel.title = "Save as PDF"
+            panel.title = "Export PDF"
             guard panel.runModal() == .OK, let chosenURL = panel.url else { return }
             targetURL = chosenURL
         }

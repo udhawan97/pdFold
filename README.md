@@ -110,7 +110,7 @@ Everything happens on your Mac. No account, no upload queue, and no mystery clou
 | 📖 | Read | Native PDF canvas, generated section banners, table of contents, sidebar navigation, inspector views, and workspace search |
 | ✍️ | Mark up | Highlight, note, editable text overlay, ink, underline, strikeout, and drawn signature placement |
 | 🏷️ | Track | Workspace tags, workspace comments, document metadata, and an inspector list for reviewing annotations |
-| 💾 | Save | Persistent `.pdfoldproj` workspaces with metadata, comments, tags, signatures, page order, and source PDF data |
+| 💾 | Save | Standard PDF output through the normal macOS save flow |
 | 📤 | Export | PDF, Word `.docx`, Markdown `.md`, plain text, HTML, PNG pages, JPEG pages, or print-ready output |
 | 🔑 | Unlock | Password-protected PDF prompt using native PDFKit behavior |
 | 🛡️ | Protect | Local-first design with sandboxed file access, local PDF validation, and no document upload pipeline |
@@ -249,7 +249,7 @@ If pdFold is already installed, the updater closes the running app if needed, re
 
 Double-click **Uninstall pdFold.command** on the Desktop to remove the installed app, generated Desktop commands, installer cache, and pdFold app data.
 
-Saved `.pdfoldproj` workspace files are not removed. To keep app support, preferences, caches, and sandbox data too, run:
+To keep app support, preferences, caches, and sandbox data, run:
 
 ```zsh
 curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/scripts/uninstall-mac.sh | zsh -s -- --keep-user-data

@@ -3,7 +3,6 @@ import PDFKit
 import UniformTypeIdentifiers
 
 extension UTType {
-    static let pdfoldproj = UTType(exportedAs: "com.ud.PDFold.pdfoldproj")
     static let pdfoldPageRef = UTType(exportedAs: "com.ud.PDFold.page-ref")
     static let docx = UTType(filenameExtension: "docx") ?? UTType(importedAs: "org.openxmlformats.wordprocessingml.document")
     static let wordDoc = UTType(filenameExtension: "doc") ?? UTType(importedAs: "com.microsoft.word.doc")
@@ -36,10 +35,8 @@ final class WorkspaceDocument: ReferenceFileDocument {
         .image
     ]
 
-    static var readableContentTypes: [UTType] { [.pdfoldproj] + importableContentTypes }
-    // .pdf is listed first so macOS defaults Save/Save As to a flat PDF.
-    // .pdfoldproj remains available when the user explicitly wants a workspace package.
-    static var writableContentTypes: [UTType] { [.pdf, .pdfoldproj] }
+    static var readableContentTypes: [UTType] { importableContentTypes }
+    static var writableContentTypes: [UTType] { [.pdf] }
 
     // @Published so SwiftUI's DocumentGroup (which observes objectWillChange to know when
     // to mark the window edited / trigger autosave) actually sees mutations made by
@@ -72,32 +69,7 @@ final class WorkspaceDocument: ReferenceFileDocument {
             return
         }
 
-        guard let wrappers = configuration.file.fileWrappers else {
-            workspace = Workspace()
-            return
-        }
-        if let wsWrapper = wrappers["workspace.json"],
-           let data = wsWrapper.regularFileContents {
-            do {
-                workspace = try JSONDecoder().decode(Workspace.self, from: data)
-            } catch {
-                // workspace.json exists but is unreadable — refuse to open rather than
-                // silently substituting an empty workspace and overwriting the user's data.
-                throw CocoaError(.fileReadCorruptFile)
-            }
-        } else {
-            workspace = Workspace()
-        }
-        if let pdfsDir = wrappers["pdfs"],
-           let pdfWrappers = pdfsDir.fileWrappers {
-            for (filename, wrapper) in pdfWrappers {
-                guard let data = wrapper.regularFileContents else { continue }
-                let stem = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
-                if let uuid = UUID(uuidString: stem) {
-                    memberPDFData[uuid] = data
-                }
-            }
-        }
+        workspace = Workspace()
     }
 
     private func importFileData(_ data: Data, filename: String, contentType: UTType) throws {
@@ -151,31 +123,10 @@ final class WorkspaceDocument: ReferenceFileDocument {
     }
 
     func fileWrapper(snapshot: WorkspacePackage, configuration: WriteConfiguration) throws -> FileWrapper {
-        // When macOS autosaves an imported PDF document it uses .pdf as the content type.
-        // Return a flat PDF file wrapper so the autosave succeeds without errors.
-        if configuration.contentType.conforms(to: .pdf) {
-            guard let pdfData = exportedPDFData(from: snapshot) else {
-                throw CocoaError(.fileWriteUnknown)
-            }
-            return FileWrapper(regularFileWithContents: pdfData)
+        guard configuration.contentType.conforms(to: .pdf),
+              let pdfData = exportedPDFData(from: snapshot) else {
+            throw CocoaError(.fileWriteUnknown)
         }
-
-        // Standard .pdfoldproj bundle
-        let wsData = try JSONEncoder().encode(snapshot.workspace)
-        let wsWrapper = FileWrapper(regularFileWithContents: wsData)
-        wsWrapper.preferredFilename = "workspace.json"
-
-        let pdfsWrapper = FileWrapper(directoryWithFileWrappers: [:])
-        pdfsWrapper.preferredFilename = "pdfs"
-        for (id, data) in snapshot.memberPDFData {
-            let w = FileWrapper(regularFileWithContents: data)
-            w.preferredFilename = "\(id.uuidString).pdf"
-            pdfsWrapper.addFileWrapper(w)
-        }
-
-        return FileWrapper(directoryWithFileWrappers: [
-            "workspace.json": wsWrapper,
-            "pdfs": pdfsWrapper
-        ])
+        return FileWrapper(regularFileWithContents: pdfData)
     }
 }

@@ -34,7 +34,7 @@ Options:
   --keep-user-data  Keep pdFold app support, preferences, caches, and sandbox data.
   --help            Show this help.
 
-Saved .pdfoldproj workspace files are not removed.
+Files created outside pdFold's app support directories are not removed.
 USAGE
 }
 
@@ -152,7 +152,7 @@ if [[ ${#REMOVE_ERRORS[@]} -gt 0 ]]; then
     for path in "${REMOVE_ERRORS[@]}"; do
         printf "  %s\n" "$path" >&2
     done
-    printf "\nSaved .pdfoldproj workspace files were not removed.\n" >&2
+    printf "\nFiles created outside pdFold's app support directories were not removed.\n" >&2
     printf "Remove those paths from Finder, or grant Terminal Full Disk Access and run this uninstaller again.\n" >&2
     exit 1
 fi
@@ -161,5 +161,5 @@ cat <<MESSAGE
 
 $APP_NAME has been uninstalled.
 
-Saved .pdfoldproj workspace files were not removed.
+Files created outside pdFold's app support directories were not removed.
 MESSAGE

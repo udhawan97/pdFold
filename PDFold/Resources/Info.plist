@@ -11,20 +11,6 @@
 		<dict>
 			<key>CFBundleTypeExtensions</key>
 			<array>
-				<string>pdfoldproj</string>
-			</array>
-			<key>CFBundleTypeName</key>
-			<string>pdFold Workspace</string>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.ud.PDFold.pdfoldproj</string>
-			</array>
-		</dict>
-		<dict>
-			<key>CFBundleTypeExtensions</key>
-			<array>
 				<string>pdf</string>
 			</array>
 			<key>CFBundleTypeName</key>
@@ -172,25 +158,5 @@
 	<string>Copyright © 2026. MIT License.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>UTExportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>com.apple.package</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>pdFold Workspace</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.ud.PDFold.pdfoldproj</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>pdfoldproj</string>
-				</array>
-			</dict>
-		</dict>
-	</array>
 </dict>
 </plist>

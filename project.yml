@@ -44,10 +44,6 @@ targets:
         CFBundleIconFile: AppIcon
         CFBundleIconName: AppIcon
         CFBundleDocumentTypes:
-          - CFBundleTypeExtensions: [pdfoldproj]
-            CFBundleTypeName: pdFold Workspace
-            CFBundleTypeRole: Editor
-            LSItemContentTypes: [com.ud.PDFold.pdfoldproj]
           - CFBundleTypeExtensions: [pdf]
             CFBundleTypeName: PDF Document
             CFBundleTypeRole: Editor
@@ -78,12 +74,6 @@ targets:
             CFBundleTypeRole: Editor
             LSHandlerRank: Alternate
             LSItemContentTypes: [public.image, public.png, public.jpeg, com.compuserve.gif, public.tiff, public.heic, com.microsoft.bmp, org.webmproject.webp]
-        UTExportedTypeDeclarations:
-          - UTTypeConformsTo: [com.apple.package]
-            UTTypeDescription: pdFold Workspace
-            UTTypeIdentifier: com.ud.PDFold.pdfoldproj
-            UTTypeTagSpecification:
-              public.filename-extension: [pdfoldproj]
     entitlements:
       path: PDFold/Resources/PDFold.entitlements
       properties:

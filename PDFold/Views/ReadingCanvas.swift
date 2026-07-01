@@ -220,10 +220,6 @@ struct PDFViewRepresentable: NSViewRepresentable {
             context.coordinator,
             selector: #selector(Coordinator.pageChanged(_:)),
             name: .PDFViewPageChanged, object: view)
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.saveAsPDF(_:)),
-            name: .pdfoldSaveAsPDF, object: nil)
 
         context.coordinator.pdfView = view
         context.coordinator.setupInkOverlay()
@@ -287,6 +283,9 @@ struct PDFViewRepresentable: NSViewRepresentable {
         @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
             guard let pdfView else { return }
             let viewPoint = gesture.location(in: pdfView)
+            if inlineEditor?.containsInteractivePoint(viewPoint) == true {
+                return
+            }
             guard let page = pdfView.page(for: viewPoint, nearest: true),
                   !(page is BoundaryPage) else { return }
             let pagePoint = pdfView.convert(viewPoint, to: page)
@@ -468,10 +467,6 @@ struct PDFViewRepresentable: NSViewRepresentable {
             guard let pdfView, let doc = pdfView.document,
                   let page = pdfView.currentPage else { return }
             viewModel.currentPageNumber = viewModel.workspacePageNumber(for: page, in: doc)
-        }
-
-        @objc func saveAsPDF(_ notification: Notification) {
-            viewModel.saveFlattenedPDF()
         }
 
         func setupInkOverlay() {
@@ -996,6 +991,12 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
     private var didFinish = false
     private var editorTopY: CGFloat = 0
     private var didManuallyResizeWidth = false
+    private var didChangeStyle = false
+    private let originalText: String
+    private let originalFontName: String
+    private let originalFontSize: CGFloat
+    private let originalFontTraits: NSFontTraitMask
+    private let originalAlignment: NSTextAlignment
 
     init(
         frame: CGRect,
@@ -1020,6 +1021,11 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
         editorFontName = Self.editingFamilyName(for: initialFont, fallback: block.fontName)
         editorFontTraits = NSFontManager.shared.traits(of: initialFont).intersection([.boldFontMask, .italicFontMask])
         editorTextColor = block.textColor.nsColor
+        originalText = block.text
+        originalFontName = editorFontName
+        originalFontSize = editorFontSize
+        originalFontTraits = editorFontTraits
+        originalAlignment = editorAlignment
         super.init(frame: frame)
         setup()
         layoutEditor()
@@ -1041,6 +1047,13 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
         didFinish = true
         removeFromSuperview()
         completion(.cancel)
+    }
+
+    func containsInteractivePoint(_ pdfViewPoint: CGPoint) -> Bool {
+        let point = convert(pdfViewPoint, from: pdfView)
+        return textView.frame.insetBy(dx: -6, dy: -6).contains(point) ||
+            toolbar.frame.insetBy(dx: -4, dy: -4).contains(point) ||
+            resizeHandle.frame.insetBy(dx: -6, dy: -6).contains(point)
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
@@ -1166,7 +1179,7 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
     private func layoutEditor() {
         guard let pdfView, let page else { return }
         let sourceRect = pdfView.convert(block.bounds, from: page)
-        let minWidth: CGFloat = 48
+        let minWidth: CGFloat = block.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 180 : 156
         let editorRect = CGRect(
             x: sourceRect.minX,
             y: sourceRect.minY,
@@ -1212,17 +1225,12 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
         guard !didManuallyResizeWidth, let pdfView, let page else { return }
         let font = textView.font ?? NSFont(name: editorFontName, size: editorFontSize) ?? .systemFont(ofSize: editorFontSize)
         let text = textView.string.isEmpty ? " " : textView.string
-        let unwrapped = (text as NSString).boundingRect(
-            with: CGSize(width: .greatestFiniteMagnitude, height: font.pointSize * 2),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: font]
-        )
-        let desired = ceil(unwrapped.width) + textView.textContainerInset.width * 2 + 6
+        let desired = fittingTextViewWidth(for: text, font: font, minimumWidth: visualMinimumEditorWidth)
 
         let pageViewBounds = pdfView.convert(page.bounds(for: .cropBox), from: page).standardized
         let maxAvailable = max(120, pageViewBounds.maxX - textView.frame.minX - 12)
         let maxWidth = min(620, maxAvailable)
-        let minWidth: CGFloat = 48
+        let minWidth = visualMinimumEditorWidth
         let newWidth = min(max(minWidth, desired), maxWidth)
 
         guard abs(newWidth - textView.frame.width) > 0.5 else { return }
@@ -1230,6 +1238,23 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
         frame.size.width = newWidth
         textView.frame = frame
         textView.textContainer?.containerSize = NSSize(width: newWidth - textView.textContainerInset.width * 2, height: .infinity)
+    }
+
+    private var visualMinimumEditorWidth: CGFloat {
+        block.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 180 : 156
+    }
+
+    private var committedMinimumEditorWidth: CGFloat {
+        block.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 120 : 24
+    }
+
+    private func fittingTextViewWidth(for text: String, font: NSFont, minimumWidth: CGFloat) -> CGFloat {
+        let unwrapped = ((text.isEmpty ? " " : text) as NSString).boundingRect(
+            with: CGSize(width: .greatestFiniteMagnitude, height: font.pointSize * 2),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font]
+        )
+        return max(minimumWidth, ceil(unwrapped.width) + textView.textContainerInset.width * 2 + 6)
     }
 
     private func resizeEditor(by deltaX: CGFloat) {
@@ -1247,39 +1272,56 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
 
     @objc private func changeFamily(_ sender: NSPopUpButton) {
         editorFontName = sender.titleOfSelectedItem ?? editorFontName
+        didChangeStyle = true
         applyFormatting()
+        refocusEditor()
     }
 
     @objc private func changeSize(_ sender: NSStepper) {
         editorFontSize = CGFloat(sender.integerValue)
+        didChangeStyle = true
         applyFormatting()
+        refocusEditor()
     }
 
     @objc private func toggleBold() {
+        didChangeStyle = true
         if boldButton.state == .on {
             editorFontTraits.insert(.boldFontMask)
         } else {
             editorFontTraits.remove(.boldFontMask)
         }
         applyFormatting()
+        refocusEditor()
     }
 
     @objc private func toggleItalic() {
+        didChangeStyle = true
         if italicButton.state == .on {
             editorFontTraits.insert(.italicFontMask)
         } else {
             editorFontTraits.remove(.italicFontMask)
         }
         applyFormatting()
+        refocusEditor()
     }
 
     @objc private func changeAlignment(_ sender: NSSegmentedControl) {
+        didChangeStyle = true
         switch sender.selectedSegment {
         case 1: editorAlignment = .center
         case 2: editorAlignment = .right
         default: editorAlignment = .left
         }
         applyFormatting()
+        refocusEditor()
+    }
+
+    private func refocusEditor() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.didFinish else { return }
+            self.window?.makeFirstResponder(self.textView)
+        }
     }
 
     private func applyFormatting() {
@@ -1359,7 +1401,7 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
     /// not like an implicit "undo everything I just typed."
     func finishForHandoff() {
         guard !didFinish else { return }
-        if textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if shouldCancelWithoutCommit {
             cancel()
         } else {
             commitButton()
@@ -1368,6 +1410,10 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
 
     @objc fileprivate func commitButton() {
         guard !didFinish, let pdfView, let page else { return }
+        if shouldCancelWithoutCommit {
+            cancel()
+            return
+        }
         didFinish = true
         // Use the live editor box's own position AND size, converted to page space —
         // not just its size merged onto the original (pre-edit) block position. The box
@@ -1375,7 +1421,17 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
         // stale origin here placed the replacement text somewhere the user never saw it.
         // Two-step conversion (overlay-local → pdfView space → PDF page space) avoids
         // relying on the overlay's frame origin always being (0,0).
-        let viewFrame = convert(textView.frame, to: pdfView)
+        var commitFrame = textView.frame
+        if !didManuallyResizeWidth {
+            let font = textView.font ?? Self.editingFont(family: editorFontName, traits: editorFontTraits, size: editorFontSize)
+            let fittingWidth = fittingTextViewWidth(
+                for: textView.string,
+                font: font,
+                minimumWidth: committedMinimumEditorWidth
+            )
+            commitFrame.size.width = min(textView.frame.width, fittingWidth)
+        }
+        let viewFrame = convert(commitFrame, to: pdfView)
         var pageBounds = pdfView.convert(viewFrame, to: page).standardized
         pageBounds.size.width = max(24, pageBounds.width)
         pageBounds.size.height = max(24, pageBounds.height)
@@ -1391,6 +1447,17 @@ final class InlineTextEditorOverlay: NSView, NSTextViewDelegate {
         )
         removeFromSuperview()
         completion(.commit(result))
+    }
+
+    private var shouldCancelWithoutCommit: Bool {
+        let trimmed = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+        return textView.string == originalText &&
+            editorFontName == originalFontName &&
+            abs(editorFontSize - originalFontSize) < 0.01 &&
+            editorFontTraits == originalFontTraits &&
+            editorAlignment == originalAlignment &&
+            !didChangeStyle
     }
 
     @objc private func cancelButton() {
