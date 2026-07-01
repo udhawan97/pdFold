@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   workflow_dispatch:
@@ -47,9 +49,23 @@ jobs:
           path: ${{ runner.temp }}/pdFold.zip
           if-no-files-found: error
 
-      - name: Publish GitHub release
+      - name: Publish tagged GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ runner.temp }}/pdFold.zip
           generate_release_notes: true
+
+      - name: Publish rolling prebuilt release
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pdFold-latest
+          name: pdFold Latest
+          body: |
+            Automatically built from `${{ github.sha }}`.
+
+            This release exists so the one-line installer can install pdFold without requiring Xcode or Apple's Command Line Tools.
+          files: ${{ runner.temp }}/pdFold.zip
+          overwrite_files: true
+          make_latest: true

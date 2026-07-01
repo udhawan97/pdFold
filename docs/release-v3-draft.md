@@ -37,7 +37,7 @@ pdFold v3.0 keeps the local-first document workspace from v2, adds a supplementa
 curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | zsh
 ```
 
-The installer downloads the latest `pdFold.zip`, installs `pdFold.app` to `~/Applications`, creates Desktop commands for launch/update and uninstall, clears quarantine metadata, and opens pdFold.
+The installer downloads the latest `pdFold.zip`, installs `pdFold.app` to `~/Applications`, creates Desktop commands for launch/update and uninstall, clears quarantine metadata, and opens pdFold. The release workflow also publishes a rolling `pdFold Latest` release from `main` so the one-line installer does not require Xcode or Apple's Command Line Tools.
 
 ### Update
 
@@ -74,5 +74,5 @@ swift build
 - Confirm `PDFold/Resources/Info.plist` is `3.0` / `3`.
 - Confirm `project.yml` is `3.0` / `3`.
 - Run the verification commands above.
-- Upload `/tmp/pdFold.zip` as `pdFold.zip`.
-- Publish the release with tag `v3.0`.
+- Confirm the rolling `pdFold Latest` release contains `pdFold.zip`.
+- Publish the versioned release with tag `v3.0`; the workflow uploads `pdFold.zip`.

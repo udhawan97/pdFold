@@ -250,48 +250,91 @@ final class PDFTextAnalysisEngine {
             }
         }
 
-        return lines.compactMap { rawLine in
+        return lines.flatMap { rawLine -> [EditableTextBlock] in
             let sorted = rawLine.sorted {
                 ($0.bounds?.minX ?? .greatestFiniteMagnitude) < ($1.bounds?.minX ?? .greatestFiniteMagnitude)
             }
-            let rawText = String(String.UnicodeScalarView(sorted.map(\.scalar)))
-                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !rawText.isEmpty,
-                  let bounds = unionBounds(sorted.compactMap(\.bounds)),
-                  bounds.width > 2,
-                  bounds.height > 2 else { return nil }
-            let text = Self.reconcileLigatures(rawText, bounds: bounds, sourcePage: sourcePage)
-
-            let fontSize = resolveLineFontSize(sorted, lineBounds: bounds)
-            let color = sorted.first(where: { $0.scalar.value != 32 })?.color ?? .documentText
-            let rawFontName = sorted.first(where: { $0.scalar.value != 32 })?.rawFontName
-            let fontName = rawFontName.map(Self.resolveFontPostScriptName) ?? "Helvetica"
-            let run = PDFTextRun(
-                text: text,
-                bounds: bounds,
-                fontName: fontName,
-                fontSize: fontSize,
-                textColor: color,
-                rotation: 0,
-                baseline: bounds.minY,
-                confidence: confidence
-            )
-            let line = PDFTextLine(text: text, bounds: bounds, runs: [run], confidence: confidence)
-            return EditableTextBlock(
-                pageRefID: pageRefID,
-                text: text,
-                bounds: bounds.insetBy(dx: -2, dy: -2),
-                lines: [line],
-                fontName: fontName,
-                fontSize: fontSize,
-                textColor: color,
-                rotation: 0,
-                baseline: bounds.minY,
-                confidence: confidence
-            )
+            // Glyphs are grouped into a "line" by vertical position only, so visually
+            // separate columns that share a baseline (e.g. a row of metric numbers, or a
+            // heading and its right-aligned date) collapse into one line. Split on large
+            // horizontal gaps so each column becomes its own editable block — otherwise
+            // editing one cell reflows the whole row left-aligned and destroys the spacing.
+            return splitIntoColumns(sorted).compactMap { segment in
+                buildBlock(from: segment, pageRefID: pageRefID, confidence: confidence, sourcePage: sourcePage)
+            }
         }
         .sorted { $0.bounds.minY > $1.bounds.minY }
+    }
+
+    /// Splits a single vertically-grouped line into separate column segments wherever the
+    /// horizontal gap between consecutive glyphs is far wider than a normal inter-word
+    /// space. Normal prose (word gaps ≈ 0.2–0.4× the text height) stays intact; real
+    /// column gutters (several × the text height) break into their own segments.
+    private func splitIntoColumns(_ sortedLine: [CharacterSample]) -> [[CharacterSample]] {
+        let heights = sortedLine.compactMap { $0.bounds?.height }.sorted()
+        guard heights.count > 1 else { return [sortedLine] }
+        let medianHeight = heights[heights.count / 2]
+        let gapThreshold = max(medianHeight * 1.5, 6)
+        var segments: [[CharacterSample]] = []
+        var current: [CharacterSample] = []
+        var prevMaxX: CGFloat?
+        for sample in sortedLine {
+            if let bounds = sample.bounds {
+                if let prev = prevMaxX, bounds.minX - prev > gapThreshold, !current.isEmpty {
+                    segments.append(current)
+                    current = []
+                }
+                current.append(sample)
+                prevMaxX = max(prevMaxX ?? bounds.maxX, bounds.maxX)
+            } else {
+                // Whitespace/no-bounds glyph: keep it with the current segment.
+                current.append(sample)
+            }
+        }
+        if !current.isEmpty { segments.append(current) }
+        return segments
+    }
+
+    private func buildBlock(from segment: [CharacterSample], pageRefID: UUID?, confidence: PDFTextEditConfidence, sourcePage: PDFPage?) -> EditableTextBlock? {
+        let sorted = segment.sorted {
+            ($0.bounds?.minX ?? .greatestFiniteMagnitude) < ($1.bounds?.minX ?? .greatestFiniteMagnitude)
+        }
+        let rawText = String(String.UnicodeScalarView(sorted.map(\.scalar)))
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawText.isEmpty,
+              let bounds = unionBounds(sorted.compactMap(\.bounds)),
+              bounds.width > 2,
+              bounds.height > 2 else { return nil }
+        let text = Self.reconcileLigatures(rawText, bounds: bounds, sourcePage: sourcePage)
+
+        let fontSize = resolveLineFontSize(sorted, lineBounds: bounds)
+        let color = sorted.first(where: { $0.scalar.value != 32 })?.color ?? .documentText
+        let rawFontName = sorted.first(where: { $0.scalar.value != 32 })?.rawFontName
+        let fontName = rawFontName.map(Self.resolveFontPostScriptName) ?? "Helvetica"
+        let run = PDFTextRun(
+            text: text,
+            bounds: bounds,
+            fontName: fontName,
+            fontSize: fontSize,
+            textColor: color,
+            rotation: 0,
+            baseline: bounds.minY,
+            confidence: confidence
+        )
+        let line = PDFTextLine(text: text, bounds: bounds, runs: [run], confidence: confidence)
+        return EditableTextBlock(
+            pageRefID: pageRefID,
+            text: text,
+            bounds: bounds.insetBy(dx: -2, dy: -2),
+            lines: [line],
+            fontName: fontName,
+            fontSize: fontSize,
+            textColor: color,
+            rotation: 0,
+            baseline: bounds.minY,
+            confidence: confidence
+        )
     }
 
     private func analyzeWithPDFKit(page: PDFPage?, pageRefID: UUID?) -> PDFTextPageAnalysis {

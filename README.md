@@ -176,7 +176,7 @@ pdFold v3 is a release-hardened local-first macOS app for collecting scattered d
 | ⚡ | Install path | One-line installer downloads the latest prebuilt GitHub release |
 | 🧪 | Smoke test | `./scripts/install-mac.sh --no-open` |
 | 🔐 | Signing | Local ad-hoc signing for source and release packaging |
-| 📦 | Distribution style | Prebuilt release zip, with source build fallback for developers |
+| 📦 | Distribution style | Prebuilt release zip for users, with opt-in source builds for developers |
 
 ### What Changed In v3
 
@@ -215,7 +215,7 @@ The installer downloads the latest prebuilt `pdFold.zip` from GitHub Releases, i
 
 The normal path does not require Xcode, Apple's Command Line Tools, a package manager, or a GitHub account. The installer is intentionally uneventful, which is exactly how installers should behave.
 
-Important release note: the zero-compile installer depends on a published GitHub release containing `pdFold.zip`. If no prebuilt release is available, the installer falls back to a source build and macOS may ask for Apple's free Command Line Tools.
+Important release note: the zero-compile installer depends on a published GitHub release containing `pdFold.zip`. The release workflow publishes that prebuilt asset automatically from `main`, so normal users do not need Apple's developer tools.
 
 For detailed install diagnostics, run the same command with verbose logging enabled:
 
@@ -281,12 +281,12 @@ The local script can install a release build, package a release zip, or build fr
 | --- | --- | --- |
 | 🍎 | macOS | 14 Sonoma or newer |
 | 📦 | Normal install | Published `pdFold.zip` release |
-| 🧰 | Source build fallback | Apple Command Line Tools with Swift 5.9+ |
+| 🧰 | Developer source build | Opt in with `PDFOLD_ALLOW_SOURCE_BUILD=1`; requires Apple Command Line Tools with Swift 5.9+ |
 
 <details>
 <summary>Why might Command Line Tools appear?</summary>
 
-The normal installer downloads a prebuilt `.app`. If no release artifact is available, pdFold falls back to a source build with SwiftPM, which requires Apple's free Command Line Tools. Full Xcode is not required.
+The normal installer downloads a prebuilt `.app` and does not need Command Line Tools. They only appear if you explicitly opt into a developer source build with `PDFOLD_ALLOW_SOURCE_BUILD=1`.
 </details>
 
 ## Daily Workflow
@@ -455,11 +455,15 @@ Then double-click `Install or Update pdFold.app` again from Finder.
 </details>
 
 <details>
-<summary>The installer says Command Line Tools are needed</summary>
+<summary>The installer says no prebuilt release is available</summary>
 
-The normal installer uses a prebuilt app and does not need developer tools. This message means a prebuilt release was not available, so the installer fell back to a source build.
+The normal installer uses a prebuilt app and does not need developer tools. This message means the GitHub release asset `pdFold.zip` has not been published yet or could not be downloaded.
 
-Install Apple's free Command Line Tools from the macOS prompt, then run the installer again. Full Xcode is not required.
+Wait for the release workflow to publish `pdFold.zip`, then run the installer again. Developer source builds can opt in with:
+
+```zsh
+curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | PDFOLD_ALLOW_SOURCE_BUILD=1 zsh
+```
 </details>
 
 <details>

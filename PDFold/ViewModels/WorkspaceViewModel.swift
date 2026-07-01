@@ -889,15 +889,53 @@ final class WorkspaceViewModel {
     func addInkStroke(path: NSBezierPath, on page: PDFPage) {
         guard path.elementCount > 1, !path.bounds.isEmpty else { return }
         let bounds = path.bounds.insetBy(dx: -2, dy: -2)
+        let localPath = inkPath(path, offsetBy: CGSize(width: -bounds.minX, height: -bounds.minY))
         let ann = PDFAnnotation(bounds: bounds, forType: .ink, withProperties: nil)
         ann.color = inkColor
         ann.border = PDFBorder()
         ann.border?.lineWidth = 2
-        ann.add(path)
+        ann.add(localPath)
         page.addAnnotation(ann)
         markAnnotationsModified()
         undoManager?.registerUndo(withTarget: self) { _ in page.removeAnnotation(ann) }
         undoManager?.setActionName("Ink Stroke")
+    }
+
+    private func inkPath(_ path: NSBezierPath, offsetBy offset: CGSize) -> NSBezierPath {
+        let translated = NSBezierPath()
+        translated.lineWidth = path.lineWidth
+        translated.lineCapStyle = path.lineCapStyle
+        translated.lineJoinStyle = path.lineJoinStyle
+        translated.miterLimit = path.miterLimit
+        translated.flatness = path.flatness
+
+        var pts = [NSPoint](repeating: .zero, count: 3)
+        func shifted(_ point: NSPoint) -> NSPoint {
+            NSPoint(x: point.x + offset.width, y: point.y + offset.height)
+        }
+
+        for index in 0..<path.elementCount {
+            let element = path.element(at: index, associatedPoints: &pts)
+            switch element {
+            case .moveTo:
+                translated.move(to: shifted(pts[0]))
+            case .lineTo:
+                translated.line(to: shifted(pts[0]))
+            case .curveTo, .cubicCurveTo:
+                translated.curve(to: shifted(pts[2]),
+                                 controlPoint1: shifted(pts[0]),
+                                 controlPoint2: shifted(pts[1]))
+            case .quadraticCurveTo:
+                translated.curve(to: shifted(pts[1]),
+                                 controlPoint1: shifted(pts[0]),
+                                 controlPoint2: shifted(pts[0]))
+            case .closePath:
+                translated.close()
+            @unknown default:
+                break
+            }
+        }
+        return translated
     }
 
     func deleteSelectedAnnotation() {

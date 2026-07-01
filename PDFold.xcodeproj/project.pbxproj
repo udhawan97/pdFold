@@ -423,6 +423,7 @@
 				INFOPLIST_FILE = PDFold/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_MODULE_NAME = PDFold;
 				PRODUCT_NAME = pdFold;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.9;
@@ -520,6 +521,7 @@
 				INFOPLIST_FILE = PDFold/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_MODULE_NAME = PDFold;
 				PRODUCT_NAME = pdFold;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.9;

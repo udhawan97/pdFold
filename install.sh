@@ -10,6 +10,7 @@ WORK_DIR="$HOME/.pdfold"
 SRC_DIR="$WORK_DIR/src"
 INSTALLER="$SRC_DIR/scripts/install-mac.sh"
 VERBOSE="${PDFOLD_INSTALL_VERBOSE:-0}"
+ALLOW_SOURCE_BUILD="${PDFOLD_ALLOW_SOURCE_BUILD:-0}"
 
 print_step() {
     printf "\n==> %s\n" "$1"
@@ -35,7 +36,7 @@ fail() {
 
 print_step "Installing or updating $APP_NAME"
 print_note "Trying the prebuilt app first. No Xcode or Command Line Tools needed."
-print_debug "Set PDFOLD_INSTALL_VERBOSE=1 before the README command for detailed console output."
+print_debug "Set PDFOLD_ALLOW_SOURCE_BUILD=1 to permit a developer source build fallback."
 
 REMOTE_INSTALLER="$WORK_DIR/install-mac.sh"
 PREBUILT_LOG="$WORK_DIR/prebuilt-install.log"
@@ -47,14 +48,20 @@ if /usr/bin/curl -fsSL "$RAW_BASE/scripts/install-mac.sh" -o "$REMOTE_INSTALLER"
         cat "$PREBUILT_LOG"
         exit 0
     fi
-    print_note "The v3 prebuilt release was not available yet. Falling back to a local source build."
+    print_note "The prebuilt app was not available."
     print_note "Prebuilt attempt log: $PREBUILT_LOG"
     if [[ "$VERBOSE" == "1" ]]; then
         tail -n 60 "$PREBUILT_LOG" 2>/dev/null || true
     fi
 else
-    print_note "Could not download the remote installer. Falling back to a local source build."
+    print_note "Could not download the remote installer."
 fi
+
+if [[ "$ALLOW_SOURCE_BUILD" != "1" ]]; then
+    fail "No prebuilt pdFold release could be installed. The maintainer needs to publish a GitHub release asset named pdFold.zip. Developer source builds can opt in with PDFOLD_ALLOW_SOURCE_BUILD=1."
+fi
+
+print_note "Developer source build fallback enabled."
 
 if ! command -v swift >/dev/null 2>&1; then
     print_step "Apple Command Line Tools are needed for the fallback build"

@@ -409,6 +409,34 @@ final class PDFTextEditingRedesignTests: XCTestCase {
 
         XCTAssertEqual(savedNote.contents, "Cloud stuff to check")
     }
+
+    func testInkStrokeStoresPathRelativeToAnnotationBounds() throws {
+        let fixture = try makeMemberWithPDF(name: "Ink", pageTexts: ["Ink target"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(
+            document: document,
+            processingEngine: PDFKitProcessingEngineFallback()
+        )
+        let page = try XCTUnwrap(viewModel.combinedPDF.page(at: 1))
+        let path = NSBezierPath()
+        path.lineWidth = 2
+        path.move(to: CGPoint(x: 100, y: 120))
+        path.line(to: CGPoint(x: 130, y: 150))
+
+        viewModel.addInkStroke(path: path, on: page)
+
+        let annotation = try XCTUnwrap(page.annotations.first(where: { $0.type == "Ink" }))
+        XCTAssertEqual(annotation.bounds.minX, 98, accuracy: 0.01)
+        XCTAssertEqual(annotation.bounds.minY, 118, accuracy: 0.01)
+        let inkListKey = PDFAnnotationKey(rawValue: "/InkList")
+        let paths = try XCTUnwrap(annotation.value(forAnnotationKey: inkListKey) as? [NSBezierPath])
+        let storedPath = try XCTUnwrap(paths.first)
+        XCTAssertLessThan(storedPath.bounds.maxX, annotation.bounds.width)
+        XCTAssertLessThan(storedPath.bounds.maxY, annotation.bounds.height)
+    }
 }
 
 final class InlineTextEditPlacementTests: XCTestCase {

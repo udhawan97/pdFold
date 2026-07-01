@@ -26,6 +26,7 @@ struct EmptyStateView: View {
                             .foregroundStyle(Color.dsTextSecondary)
                             .multilineTextAlignment(.center)
                             .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     HStack(spacing: .dsSM) {
@@ -76,7 +77,7 @@ struct EmptyStateView: View {
                 .dsElevation()
             }
             .padding(.dsXXL)
-            .frame(maxWidth: 480)
+            .frame(maxWidth: 640)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
 
             GuideButton(autoShow: true)
