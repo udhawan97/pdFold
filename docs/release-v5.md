@@ -122,12 +122,13 @@ Feature range used for the product-change summary: `release-v4..HEAD`
 Summary:
 
 ```text
-7 commits changed 18 files, with 2141 insertions and 251 deletions.
+8 commits changed 18 files, with 2169 insertions and 294 deletions.
 ```
 
 Commits:
 
-- `HEAD` Stabilize CI plist validation
+- `HEAD` Polish release README and CI test
+- `f709d96` Stabilize CI plist validation
 - `25ee541` Prepare release v5
 - `ad00fd9` Inline coverage +
 - `cf28ee5` Cleaning up bugs on export

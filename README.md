@@ -17,25 +17,25 @@
 <p align="center">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">
   &nbsp;&nbsp;
-  <img alt="Release v5" src="https://img.shields.io/badge/release-v5-2563EB?style=for-the-badge">
+  <img alt="Release v5" src="https://img.shields.io/badge/release-v5-2563EB?style=for-the-badge&logo=github&logoColor=white">
   &nbsp;&nbsp;
-  <img alt="Zero compile installer" src="https://img.shields.io/badge/install-zero%20compile-10B981?style=for-the-badge">
+  <img alt="Zero compile installer" src="https://img.shields.io/badge/install-zero%20compile-10B981?style=for-the-badge&logo=homebrew&logoColor=white">
 </p>
 
 <p align="center">
-  <img alt="SwiftUI" src="https://img.shields.io/badge/interface-SwiftUI-0A84FF?style=for-the-badge">
+  <img alt="SwiftUI" src="https://img.shields.io/badge/interface-SwiftUI-0A84FF?style=for-the-badge&logo=swift&logoColor=white">
   &nbsp;&nbsp;
-  <img alt="PDFKit plus PDFium" src="https://img.shields.io/badge/engine-PDFKit%20%2B%20PDFium-10B981?style=for-the-badge">
+  <img alt="PDFKit plus PDFium" src="https://img.shields.io/badge/engine-PDFKit%20%2B%20PDFium-10B981?style=for-the-badge&logo=googlechrome&logoColor=white">
   &nbsp;&nbsp;
-  <img alt="One line setup" src="https://img.shields.io/badge/setup-one%20line-7C3AED?style=for-the-badge">
+  <img alt="One line setup" src="https://img.shields.io/badge/setup-one%20line-7C3AED?style=for-the-badge&logo=powershell&logoColor=white">
 </p>
 
 <p align="center">
-  <img alt="Release hardened" src="https://img.shields.io/badge/quality-release%20hardened-10B981?style=for-the-badge">
+  <img alt="Release hardened" src="https://img.shields.io/badge/quality-release%20hardened-10B981?style=for-the-badge&logo=githubactions&logoColor=white">
   &nbsp;&nbsp;
-  <img alt="Multi-format export" src="https://img.shields.io/badge/export-PDF%20%7C%20DOCX%20%7C%20MD%20%7C%20TXT%20%7C%20HTML-0EA5E9?style=for-the-badge">
+  <img alt="Multi-format export" src="https://img.shields.io/badge/export-PDF%20%7C%20DOCX%20%7C%20MD%20%7C%20TXT%20%7C%20HTML-0EA5E9?style=for-the-badge&logo=adobeacrobatreader&logoColor=white">
   &nbsp;&nbsp;
-  <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
+  <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge&logo=opensourceinitiative&logoColor=white">
 </p>
 
 <p align="center">
@@ -180,44 +180,18 @@ pdFold release v5 is a release-hardened local-first macOS app for collecting sca
 | 🔐 | Signing | Local ad-hoc signing for source and release packaging |
 | 📦 | Distribution style | Prebuilt release zip for users, with opt-in source builds for developers |
 
-### What Changed In v5
+### Highlights From v3 To v5
 
-|  | Area | Release Update |
+|  | What You Can Do | Why It Helps |
 | --- | --- | --- |
-| 💾 | Normal Save path | Standard macOS Save/Save As writes PDF by default while keeping the Share/Export choices intact |
-| 📤 | Source-aware export | Same-format exports preserve original source bytes where safe, add `.doc`, `.odt`, and `.rtf`, and fail clearly instead of silently rewriting lossy files |
-| ✍️ | Inline edit polish | No-op font-size changes no longer dirty edits, and real edits preserve at least the original text bounds |
-| 🧪 | Round-trip coverage | New tests cover text, Markdown, HTML, RTF, DOCX, legacy DOC, ODT, PDF reopen metadata, and adversarial export cases |
-| 🧭 | Toolbar polish | Search, contents, signature, edit, annotation, export, and inspector actions are grouped for faster document work |
-| 💬 | Optional helper | Foldy, the pdFold buddy, gives lightweight feedback and can be hidden from the app menu or its popover |
-
-### Carried Forward From v4
-
-|  | Area | Release Hardening |
-| --- | --- | --- |
-| ✍️ | Inline PDF text editing | Click detected PDF text, edit in a zoom-correct floating box, and commit with preserved font, size, weight, color, alignment, and page-space geometry |
-| 🧽 | Safer page regeneration | Replacements rebuild from pristine original pages, erase only original text bounds with sampled local background, and preserve annotations |
-| 🔏 | Authentic PDF signatures | Add PDF digital signatures with signing identities, CMS packaging, timestamp support, appearance rendering, and regression coverage |
-| ↩️ | Undo/redo reliability | Inline PDF text edits restore rendered PDF bytes and edit-state metadata in both directions |
-| 🚀 | Release automation | `release-v*` tags trigger the release workflow and publish the tagged build as the latest GitHub release |
-
-### Carried Forward From v3
-
-|  | Area | Release Hardening |
-| --- | --- | --- |
-| 🔄 | Automatic updates | The Desktop **pdFold.command** launcher checks the latest GitHub release every time it opens the app |
-| 🧹 | Clean uninstall | The installer creates **Uninstall pdFold.command** for removing the app, generated commands, installer cache, and pdFold app data |
-| 🧪 | PDF processing backend | PDF imports pass through an injectable `PDFProcessingEngine`, with PDFium validation and a PDFKit fallback path |
-| 🏷️ | Workspace context | Tags and workspace comments persist with saved projects and appear in dedicated inspector tabs |
-| ✍️ | Text editing | The text tool can create clean free-text boxes or convert selected PDF text into editable overlays |
-| 📝 | Markdown export | Workspaces export `.md` files with a summary, comments, document sections, and extracted PDF text |
-| 🖊️ | Ink stability | Ink annotations use PDFKit-native paths, with malformed legacy ink data sanitized before display |
-| 🛡️ | Import safety | Import failures show actionable messages, oversized files are rejected early, and selected files use security-scoped access |
-| 🔐 | Protected PDFs | Password-protected documents unlock from the already-loaded PDF instance for safer sandbox behavior |
-| ↩️ | Undo reliability | Page deletion and reordering undo restore serialized PDF state, not just sidebar metadata |
-| 🗂️ | Page order | Reordered pages rebuild the workspace page map so navigation, export, signatures, and saved projects stay aligned |
-| 📤 | Export reliability | PDF and multi-format exports report write failures instead of failing quietly |
-| 🧯 | Crash hardening | Reordering, page operations, PDF serialization, HTML rendering, image export, and signature storage guard failure cases |
+| 📥 | Bring scattered files together | Import PDFs, Word files, images, text, Markdown, HTML, and structured files into one local workspace |
+| 🗂️ | Build one clean PDF | Reorder documents and pages, rotate or remove pages, add section breaks, and keep navigation in sync |
+| ✍️ | Mark up and edit in place | Highlight, draw, add notes, place text boxes, and edit detected PDF text without leaving the document |
+| 🔏 | Sign documents locally | Add signatures and create signed PDF output from the same Mac-first workflow |
+| 💾 | Save like a normal Mac app | Save and Save As now default to regular PDFs, while export still keeps the extra formats available |
+| 📤 | Export what people need | Send out PDF, DOCX, Markdown, text, HTML, image pages, or print-ready output with clearer failure messages |
+| 🔄 | Install, update, and uninstall simply | One Terminal command installs the app, the Desktop launcher checks for updates, and the uninstaller cleans up when needed |
+| 🛡️ | Keep work private and safer | Files stay on the Mac, PDF imports are validated locally, protected PDFs can unlock safely, and risky edge cases are covered by release tests |
 
 ## Simplest Local Setup
 

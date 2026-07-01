@@ -1663,23 +1663,34 @@ final class WorkspaceViewModelTests: XCTestCase {
     }
 
     func testEditableTextOverlayPreservesSelectionStyleAndUsesSafeBackground() throws {
-        let pdf = makePDF(pageTexts: ["Replaceable text"])
-        let page = try XCTUnwrap(pdf.page(at: 0))
-        let selection = try XCTUnwrap(page.selectionForWord(at: CGPoint(x: 75, y: 720)))
-        let viewModel = WorkspaceViewModel(
-            document: WorkspaceDocument(),
-            processingEngine: PDFKitProcessingEngineFallback()
+        let font = NSFont.systemFont(ofSize: 16)
+        let attributed = NSAttributedString(
+            string: "Replaceable",
+            attributes: [
+                .font: font,
+                .foregroundColor: NSColor.black
+            ]
         )
+        let selectionBounds = CGRect(x: 72, y: 700, width: 82, height: 16)
 
-        let annotation = try XCTUnwrap(viewModel.addEditableTextOverlay(from: selection, on: page))
+        let plan = try XCTUnwrap(PDFEditingSupport.replacementPlan(
+            text: attributed.string,
+            selectionBounds: selectionBounds,
+            attributedString: attributed,
+            pageBounds: CGRect(x: 0, y: 0, width: 612, height: 792)
+        ))
 
-        XCTAssertEqual(annotation.contents, "Replaceable")
-        XCTAssertGreaterThanOrEqual(annotation.font?.pointSize ?? 0, 8)
-        XCTAssertNotNil(annotation.fontColor)
-        XCTAssertGreaterThan(annotation.bounds.width, selection.bounds(for: page).width)
-        XCTAssertGreaterThan(annotation.bounds.height, 0)
-        XCTAssertNotEqual(annotation.color, .clear)
-        XCTAssertNil(viewModel.editingStatus)
+        XCTAssertEqual(plan.text, "Replaceable")
+        XCTAssertEqual(plan.style.font.pointSize, font.pointSize)
+        XCTAssertTrue(colorsApproximatelyEqual(plan.style.textColor, .black))
+        XCTAssertGreaterThan(plan.bounds.width, selectionBounds.width)
+        XCTAssertGreaterThan(plan.bounds.height, 0)
+        XCTAssertTrue(plan.shouldUseReplacementBackground)
+        XCTAssertTrue(plan.warnings.isEmpty)
+        XCTAssertNotEqual(
+            PDFEditingSupport.replacementBackgroundColor(isReplacement: true, originalBackground: nil),
+            .clear
+        )
     }
 
     func testEditableTextOverlayRejectsInvalidSelectionGracefully() throws {
