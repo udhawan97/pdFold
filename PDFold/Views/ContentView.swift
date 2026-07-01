@@ -263,7 +263,7 @@ private struct AnnotationToolPicker: View {
                     .onHover { isHovered in
                         updatePopoverHover(isHovered, for: tool)
                     }
-                    .help(tool.label)
+                    .help(tool.helpText)
                 }
             }
 
@@ -297,25 +297,45 @@ private struct AnnotationToolPicker: View {
                     .fill(isSelected ? Color.dsAccent : Color.clear)
                 toolIcon(tool, isSelected: isSelected)
             }
-            .frame(width: tool == .editText ? 50 : 36, height: 32)
+            .frame(width: toolButtonWidth(for: tool), height: 32)
             .contentShape(RoundedRectangle(cornerRadius: .dsRadiusMd, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(tool.label)
     }
 
     @ViewBuilder
     private func toolIcon(_ tool: AnnotationTool, isSelected: Bool) -> some View {
         let foreground = isSelected ? Color.white : Color.dsTextSecondary
 
-        if tool == .editText {
-            Text("Aa")
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .foregroundStyle(foreground)
+        if tool == .highlight || tool == .editText {
+            HStack(spacing: 5) {
+                if tool == .highlight {
+                    HighlightGlyph(isSelected: isSelected)
+                } else {
+                    Image(systemName: tool.iconName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .symbolRenderingMode(.monochrome)
+                }
+
+                Text(tool == .highlight ? "Highlight" : "Edit")
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(foreground)
         } else {
             Image(systemName: tool.iconName)
                 .font(.system(size: tool == .none ? 15 : 17, weight: .semibold))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(foreground)
+        }
+    }
+
+    private func toolButtonWidth(for tool: AnnotationTool) -> CGFloat {
+        switch tool {
+        case .highlight: return 84
+        case .editText: return 62
+        default: return 36
         }
     }
 
@@ -347,6 +367,24 @@ private struct AnnotationToolPicker: View {
             hoveredTool = nil
             popoverTool = nil
         }
+    }
+}
+
+private struct HighlightGlyph: View {
+    var isSelected: Bool
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Image(systemName: "highlighter")
+                .font(.system(size: 15, weight: .semibold))
+                .symbolRenderingMode(.monochrome)
+
+            Capsule()
+                .fill(isSelected ? Color.white.opacity(0.65) : Color.dsHighlightYellow)
+                .frame(width: 17, height: 3)
+                .offset(y: 3)
+        }
+        .frame(width: 19, height: 18)
     }
 }
 

@@ -236,16 +236,14 @@ private struct InspectorWorkspaceCommentsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: .dsMD) {
-            TextEditor(text: $draftComment)
-                .font(.dsBody())
-                .frame(minHeight: 96)
-                .scrollContentBackground(.hidden)
-                .background(Color.dsCard)
-                .clipShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
-                        .strokeBorder(Color.dsSeparator, lineWidth: 1)
-                }
+            InspectorTextEditor(
+                text: $draftComment,
+                placeholder: "Write a comment...",
+                minHeight: 96,
+                background: Color.dsCard,
+                font: .dsBody()
+            )
+            .accessibilityLabel("Comment")
 
             Button {
                 viewModel.addComment(draftComment)
@@ -309,6 +307,40 @@ private struct InspectorSectionHeader: View {
     }
 }
 
+private struct InspectorTextEditor: View {
+    @Binding var text: String
+    var placeholder: String
+    var minHeight: CGFloat
+    var background: Color
+    var font: Font
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: $text)
+                .font(font)
+                .foregroundStyle(Color.dsTextPrimary)
+                .tint(Color.dsAccent)
+                .scrollContentBackground(.hidden)
+
+            if text.isEmpty {
+                Text(placeholder)
+                    .font(font)
+                    .foregroundStyle(Color.dsTextTertiary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 8)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(minHeight: minHeight)
+        .background(background)
+        .clipShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
+                .strokeBorder(Color.dsSeparator, lineWidth: 1)
+        }
+    }
+}
+
 private struct WorkspaceCommentRow: View {
     @Bindable var viewModel: WorkspaceViewModel
     var comment: WorkspaceComment
@@ -358,16 +390,14 @@ private struct WorkspaceCommentRow: View {
             }
 
             if isEditing {
-                TextEditor(text: $draftBody)
-                    .font(.system(size: commentFontSize(for: comment.style.textSize)))
-                    .frame(minHeight: 76)
-                    .scrollContentBackground(.hidden)
-                    .background(Color.dsSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
-                            .strokeBorder(Color.dsSeparator, lineWidth: 1)
-                    }
+                InspectorTextEditor(
+                    text: $draftBody,
+                    placeholder: "Edit comment...",
+                    minHeight: 76,
+                    background: Color.dsSurface,
+                    font: .system(size: commentFontSize(for: comment.style.textSize))
+                )
+                .accessibilityLabel("Edit comment")
                 Button {
                     viewModel.updateCommentBody(comment, body: draftBody)
                     isEditing = false
