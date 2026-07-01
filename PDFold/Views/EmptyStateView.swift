@@ -9,76 +9,82 @@ struct EmptyStateView: View {
         ZStack(alignment: .topTrailing) {
             Color.dsCanvas.ignoresSafeArea()
 
-            VStack(spacing: .dsXL) {
-                // Wordmark block
-                VStack(spacing: .dsLG) {
-                    AppIconMark(size: 80)
+            ScrollView {
+                VStack(spacing: .dsXL) {
+                    // Wordmark block
+                    VStack(spacing: .dsLG) {
+                        AppIconMark(size: 80)
 
-                    VStack(spacing: 6) {
-                        Text("pdFold")
-                            .font(.dsDisplay(size: 36))
-                            .foregroundStyle(Color.dsTextPrimary)
-                        Text("Fold scattered pages into one polished PDF.")
-                            .font(.dsHeadline())
-                            .foregroundStyle(Color.dsTextPrimary)
-                        Text("Combine, arrange, annotate, and export documents in one calm workspace.")
-                            .font(.dsBody())
-                            .foregroundStyle(Color.dsTextSecondary)
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(spacing: 6) {
+                            Text("pdFold")
+                                .font(.dsDisplay(size: 36))
+                                .foregroundStyle(Color.dsTextPrimary)
+                            Text("Fold scattered pages into one polished PDF.")
+                                .font(.dsHeadline())
+                                .foregroundStyle(Color.dsTextPrimary)
+                            Text("Combine, arrange, annotate, and export documents in one calm workspace.")
+                                .font(.dsBody())
+                                .foregroundStyle(Color.dsTextSecondary)
+                                .multilineTextAlignment(.center)
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        HStack(spacing: .dsSM) {
+                            EmptyStatePill(icon: "square.stack.3d.down.right", title: "Assemble")
+                            EmptyStatePill(icon: "highlighter", title: "Mark up")
+                            EmptyStatePill(icon: "square.and.arrow.up", title: "Export")
+                        }
                     }
 
-                    HStack(spacing: .dsSM) {
-                        EmptyStatePill(icon: "square.stack.3d.down.right", title: "Assemble")
-                        EmptyStatePill(icon: "highlighter", title: "Mark up")
-                        EmptyStatePill(icon: "square.and.arrow.up", title: "Export")
-                    }
-                }
+                    // Drop zone card
+                    VStack(spacing: .dsLG) {
+                        Image(systemName: isDropTargeted ? "tray.and.arrow.down.fill" : "doc.badge.plus")
+                            .font(.system(size: 28, weight: .light))
+                            .foregroundStyle(Color.dsAccent)
+                            .symbolRenderingMode(.hierarchical)
+                            .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
 
-                // Drop zone card
-                VStack(spacing: .dsLG) {
-                    Image(systemName: isDropTargeted ? "tray.and.arrow.down.fill" : "doc.badge.plus")
-                        .font(.system(size: 28, weight: .light))
-                        .foregroundStyle(Color.dsAccent)
-                        .symbolRenderingMode(.hierarchical)
-                        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+                        VStack(spacing: 5) {
+                            Text(isDropTargeted ? "Release to import" : "Drop files to begin")
+                                .font(.dsHeadline())
+                                .foregroundStyle(Color.dsTextPrimary)
+                            Text("PDF, Word, HTML, text, and images")
+                                .font(.dsCaption())
+                                .foregroundStyle(Color.dsTextTertiary)
+                        }
 
-                    VStack(spacing: 5) {
-                        Text(isDropTargeted ? "Release to import" : "Drop files to begin")
-                            .font(.dsHeadline())
-                            .foregroundStyle(Color.dsTextPrimary)
-                        Text("PDF, Word, HTML, text, and images")
-                            .font(.dsCaption())
-                            .foregroundStyle(Color.dsTextTertiary)
+                        Button {
+                            openFiles()
+                        } label: {
+                            Label("Choose Files", systemImage: "folder.badge.plus")
+                                .frame(minWidth: 140)
+                        }
+                        .controlSize(.large)
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color.dsAccent)
                     }
-
-                    Button {
-                        openFiles()
-                    } label: {
-                        Label("Choose Files", systemImage: "folder.badge.plus")
-                            .frame(minWidth: 140)
+                    .padding(.horizontal, .dsXXL)
+                    .padding(.vertical, .dsXXL)
+                    .background(Color.dsCard, in: RoundedRectangle(cornerRadius: .dsRadiusLg, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: .dsRadiusLg, style: .continuous)
+                            .strokeBorder(
+                                isDropTargeted ? Color.dsAccent : Color.dsSeparator,
+                                lineWidth: isDropTargeted ? 1.5 : 1
+                            )
+                            .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
                     }
-                    .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color.dsAccent)
+                    .dsElevation()
                 }
                 .padding(.horizontal, .dsXXL)
-                .padding(.vertical, .dsXXL)
-                .background(Color.dsCard, in: RoundedRectangle(cornerRadius: .dsRadiusLg, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: .dsRadiusLg, style: .continuous)
-                        .strokeBorder(
-                            isDropTargeted ? Color.dsAccent : Color.dsSeparator,
-                            lineWidth: isDropTargeted ? 1.5 : 1
-                        )
-                        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
-                }
-                .dsElevation()
+                .padding(.top, 96)
+                .padding(.bottom, .dsXXL)
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.dsXXL)
-            .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .scrollIndicators(.hidden)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
             GuideButton(autoShow: true)
                 .buttonStyle(.borderless)
