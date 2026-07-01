@@ -934,15 +934,20 @@ final class InlineTextEditPlacementTests: XCTestCase {
         let textView = try XCTUnwrap(findSubview(in: fixture.overlay) { (_: NSTextView) in true })
         let moveHandle = try XCTUnwrap(findSubview(in: fixture.overlay) { (_: InlineMoveHandle) in true })
         let resizeHandle = try XCTUnwrap(findSubview(in: fixture.overlay) { (_: InlineResizeHandle) in true })
+        let redColorButton = try XCTUnwrap(findSubview(in: fixture.overlay) { (button: NSButton) in
+            button.toolTip == "Text color: Red"
+        })
 
         let donePoint = doneButton.convert(NSPoint(x: doneButton.bounds.midX, y: doneButton.bounds.midY), to: fixture.overlay)
         let sizePoint = sizeField.convert(NSPoint(x: sizeField.bounds.midX, y: sizeField.bounds.midY), to: fixture.overlay)
         let textPoint = textView.convert(NSPoint(x: textView.bounds.midX, y: textView.bounds.minY + 6), to: fixture.overlay)
         let movePoint = moveHandle.convert(NSPoint(x: moveHandle.bounds.midX, y: moveHandle.bounds.midY), to: fixture.overlay)
         let resizePoint = resizeHandle.convert(NSPoint(x: resizeHandle.bounds.midX, y: resizeHandle.bounds.midY), to: fixture.overlay)
+        let redPoint = redColorButton.convert(NSPoint(x: redColorButton.bounds.midX, y: redColorButton.bounds.midY), to: fixture.overlay)
 
         XCTAssertTrue(fixture.overlay.hitTest(donePoint) is NSButton)
         XCTAssertTrue(fixture.overlay.hitTest(sizePoint) is NSTextField)
+        XCTAssertTrue(fixture.overlay.hitTest(redPoint) is NSButton)
         let textHit = fixture.overlay.hitTest(textPoint)
         XCTAssertTrue(textHit is NSTextView, "Expected text view hit, got \(String(describing: textHit))")
         XCTAssertTrue(fixture.overlay.hitTest(movePoint) is InlineMoveHandle)
@@ -964,6 +969,36 @@ final class InlineTextEditPlacementTests: XCTestCase {
 
         let edit = try XCTUnwrap(fixture.committedEdit())
         XCTAssertEqual(edit.fontSize, 14, accuracy: 0.01)
+    }
+
+    func testInlineEditorCommitsSelectedTextColorWhenDoneIsPressed() throws {
+        let fixture = try makeInlineEditorFixture()
+        let redColorButton = try XCTUnwrap(findSubview(in: fixture.overlay) { (button: NSButton) in
+            button.toolTip == "Text color: Red"
+        })
+        let doneButton = try XCTUnwrap(findSubview(in: fixture.overlay) { (button: NSButton) in
+            button.title == "Done"
+        })
+
+        redColorButton.performClick(nil)
+        doneButton.performClick(nil)
+
+        let edit = try XCTUnwrap(fixture.committedEdit())
+        XCTAssertTrue(colorsApproximatelyEqual(edit.textColor, .systemRed, tolerance: 0.025))
+    }
+
+    func testInlineEditorDefaultsBlankInsertedTextToVisibleColor() throws {
+        let fixture = try makeInlineEditorFixture(text: "", textColor: CodableColor(nsColor: .white))
+        let textView = try XCTUnwrap(findSubview(in: fixture.overlay) { (_: NSTextView) in true })
+        let doneButton = try XCTUnwrap(findSubview(in: fixture.overlay) { (button: NSButton) in
+            button.title == "Done"
+        })
+
+        textView.string = "Inserted text"
+        doneButton.performClick(nil)
+
+        let edit = try XCTUnwrap(fixture.committedEdit())
+        XCTAssertTrue(colorsApproximatelyEqual(edit.textColor, .dsTextPrimaryNS, tolerance: 0.025))
     }
 
     func testInlineEditorCommitsTextContentTopEdge() throws {
@@ -1613,8 +1648,11 @@ private struct InlineEditorFixture {
     let committedEdit: () -> InlineTextEditorOverlay.EditResult?
 }
 
-private func makeInlineEditorFixture() throws -> InlineEditorFixture {
-    let pdf = makePDF(pageTexts: ["Original text"])
+private func makeInlineEditorFixture(
+    text: String = "Original text",
+    textColor: CodableColor = .documentText
+) throws -> InlineEditorFixture {
+    let pdf = makePDF(pageTexts: [text.isEmpty ? " " : text])
     let pdfView = PDFoldPDFView(frame: CGRect(x: 0, y: 0, width: 900, height: 1000))
     pdfView.document = pdf
     pdfView.autoScales = false
@@ -1625,12 +1663,12 @@ private func makeInlineEditorFixture() throws -> InlineEditorFixture {
     let pageRef = PageRef(memberDocId: UUID(), sourcePageIndex: 0)
     let block = EditableTextBlock(
         pageRefID: pageRef.id,
-        text: "Original text",
+        text: text,
         bounds: CGRect(x: 72, y: 650, width: 160, height: 16),
         lines: [],
         fontName: "Helvetica",
         fontSize: 8,
-        textColor: .documentText,
+        textColor: textColor,
         rotation: 0,
         baseline: 650,
         confidence: .high

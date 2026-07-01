@@ -343,6 +343,9 @@ struct PDFViewRepresentable: NSViewRepresentable {
         func gestureRecognizerShouldBegin(_ gestureRecognizer: NSGestureRecognizer) -> Bool {
             guard let pdfView else { return true }
             let viewPoint = gestureRecognizer.location(in: pdfView)
+            if signatureOverlay.containsInteractivePoint(viewPoint) {
+                return false
+            }
             return inlineEditor?.containsInteractivePoint(viewPoint) != true
         }
 
@@ -655,6 +658,12 @@ final class SignatureSelectionOverlayView: NSView {
         initialPageBounds = nil
         isHidden = true
         needsDisplay = true
+    }
+
+    func containsInteractivePoint(_ pdfViewPoint: CGPoint) -> Bool {
+        guard !isHidden else { return false }
+        let point = convert(pdfViewPoint, from: pdfView)
+        return interactionFrame()?.contains(point) == true
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -1342,6 +1351,7 @@ final class NoteEditorViewController: NSViewController {
     private let boldButton = NSButton(title: "B", target: nil, action: nil)
     private let italicButton = NSButton(title: "I", target: nil, action: nil)
     private let alignControl = NSSegmentedControl(labels: ["L", "C", "R"], trackingMode: .selectOne, target: nil, action: nil)
+    private var colorButtons: [NSButton] = []
     private var editorFontFamily: String
     private var documentFontSize: CGFloat
     private var editorFontTraits: NSFontTraitMask
@@ -1361,6 +1371,13 @@ final class NoteEditorViewController: NSViewController {
     private let originalFontSize: CGFloat
     private let originalFontTraits: NSFontTraitMask
     private let originalAlignment: NSTextAlignment
+    private static let defaultInsertedTextColor = NSColor.dsTextPrimaryNS
+    private static let textColorChoices: [(name: String, color: NSColor)] = [
+        ("Dark", .dsTextPrimaryNS),
+        ("Blue", .systemBlue),
+        ("Red", .systemRed),
+        ("White", .white)
+    ]
 
     init(
         frame: CGRect,
@@ -1386,7 +1403,7 @@ final class NoteEditorViewController: NSViewController {
         let initialFont = NSFont(name: block.fontName, size: documentFontSize) ?? .systemFont(ofSize: documentFontSize)
         editorFontFamily = Self.editingFamilyName(for: initialFont, fallback: block.fontName)
         editorFontTraits = NSFontManager.shared.traits(of: initialFont).intersection([.boldFontMask, .italicFontMask])
-        editorTextColor = block.textColor.nsColor
+        editorTextColor = Self.initialTextColor(for: block)
         editorAlignment = block.alignment?.nsTextAlignment ?? .left
         originalText = block.text
         originalFontFamily = editorFontFamily
@@ -1584,25 +1601,40 @@ final class NoteEditorViewController: NSViewController {
         alignControl.frame = CGRect(x: 314, y: 8, width: 82, height: 26)
         toolbar.addSubview(alignControl)
 
+        colorButtons = Self.textColorChoices.enumerated().map { index, choice in
+            let button = NSButton(title: "", target: self, action: #selector(changeTextColor(_:)))
+            button.tag = index
+            button.toolTip = "Text color: \(choice.name)"
+            button.bezelStyle = .shadowlessSquare
+            button.isBordered = false
+            button.wantsLayer = true
+            button.layer?.backgroundColor = choice.color.cgColor
+            button.layer?.cornerRadius = 4
+            button.frame = CGRect(x: 410 + CGFloat(index) * 26, y: 10, width: 20, height: 20)
+            toolbar.addSubview(button)
+            return button
+        }
+
         let signature = NSButton(title: "", target: self, action: #selector(addSignatureBox))
         signature.image = NSImage(systemSymbolName: "signature", accessibilityDescription: "Signature")
         signature.imagePosition = .imageOnly
         signature.bezelStyle = .rounded
         signature.toolTip = "Add signature box"
-        signature.frame = CGRect(x: 410, y: 8, width: 34, height: 26)
+        signature.frame = CGRect(x: 522, y: 8, width: 34, height: 26)
         toolbar.addSubview(signature)
 
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelButton))
         cancel.bezelStyle = .rounded
-        cancel.frame = CGRect(x: 454, y: 8, width: 68, height: 26)
+        cancel.frame = CGRect(x: 566, y: 8, width: 68, height: 26)
         toolbar.addSubview(cancel)
 
         let done = NSButton(title: "Done", target: self, action: #selector(commitButton))
         done.bezelStyle = .rounded
         done.contentTintColor = .dsAccentNS
         done.keyEquivalent = "\r"
-        done.frame = CGRect(x: 528, y: 8, width: 62, height: 26)
+        done.frame = CGRect(x: 640, y: 8, width: 62, height: 26)
         toolbar.addSubview(done)
+        refreshColorButtons()
         refreshSizeControls()
     }
 
@@ -1653,7 +1685,7 @@ final class NoteEditorViewController: NSViewController {
     }
 
     private func toolbarFrame(near editorRect: CGRect) -> CGRect {
-        let size = CGSize(width: 598, height: 42)
+        let size = CGSize(width: 710, height: 42)
         let x = min(max(editorRect.midX - size.width / 2, 8), max(8, bounds.width - size.width - 8))
         let aboveY = editorRect.maxY + 8
         let y = aboveY + size.height < bounds.height ? aboveY : max(8, editorRect.minY - size.height - 8)
@@ -1852,6 +1884,14 @@ final class NoteEditorViewController: NSViewController {
         refocusEditor()
     }
 
+    @objc private func changeTextColor(_ sender: NSButton) {
+        guard Self.textColorChoices.indices.contains(sender.tag) else { return }
+        editorTextColor = Self.textColorChoices[sender.tag].color
+        didChangeStyle = true
+        applyFormatting()
+        refocusEditor()
+    }
+
     private func refocusEditor() {
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.didFinish else { return }
@@ -1861,6 +1901,7 @@ final class NoteEditorViewController: NSViewController {
 
     private func applyFormatting() {
         refreshSizeControls()
+        refreshColorButtons()
         let font = displayFont()
         textView.font = font
         textView.textColor = editorTextColor
@@ -1885,6 +1926,16 @@ final class NoteEditorViewController: NSViewController {
     private func refreshSizeControls() {
         sizeField.stringValue = formattedFontSize(documentFontSize)
         sizeStepper.integerValue = Int(round(documentFontSize))
+    }
+
+    private func refreshColorButtons() {
+        for (index, button) in colorButtons.enumerated() {
+            let choice = Self.textColorChoices[index]
+            let selected = Self.colorsApproximatelyEqual(editorTextColor, choice.color, tolerance: 0.025)
+            button.layer?.backgroundColor = choice.color.cgColor
+            button.layer?.borderWidth = selected ? 2.5 : 1
+            button.layer?.borderColor = (selected ? NSColor.dsAccentNS : NSColor.black.withAlphaComponent(0.24)).cgColor
+        }
     }
 
     private func parsedFontSize(from value: String) -> CGFloat? {
@@ -1936,6 +1987,34 @@ final class NoteEditorViewController: NSViewController {
         case .right: return 2
         default: return 0
         }
+    }
+
+    private static func initialTextColor(for block: EditableTextBlock) -> NSColor {
+        if block.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return defaultInsertedTextColor
+        }
+        return block.textColor.nsColor
+    }
+
+    private static func colorsApproximatelyEqual(_ lhs: NSColor, _ rhs: NSColor, tolerance: CGFloat) -> Bool {
+        guard let left = lhs.usingColorSpace(.sRGB),
+              let right = rhs.usingColorSpace(.sRGB) else {
+            return false
+        }
+        var leftRed: CGFloat = 0
+        var leftGreen: CGFloat = 0
+        var leftBlue: CGFloat = 0
+        var leftAlpha: CGFloat = 0
+        var rightRed: CGFloat = 0
+        var rightGreen: CGFloat = 0
+        var rightBlue: CGFloat = 0
+        var rightAlpha: CGFloat = 0
+        left.getRed(&leftRed, green: &leftGreen, blue: &leftBlue, alpha: &leftAlpha)
+        right.getRed(&rightRed, green: &rightGreen, blue: &rightBlue, alpha: &rightAlpha)
+        return abs(leftRed - rightRed) <= tolerance &&
+            abs(leftGreen - rightGreen) <= tolerance &&
+            abs(leftBlue - rightBlue) <= tolerance &&
+            abs(leftAlpha - rightAlpha) <= tolerance
     }
 
     static func editingFamilyName(for font: NSFont, fallback: String) -> String {
