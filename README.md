@@ -17,7 +17,7 @@
 <p align="center">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">
   &nbsp;&nbsp;
-  <img alt="Release v4" src="https://img.shields.io/badge/release-v4-2563EB?style=for-the-badge">
+  <img alt="Release v5" src="https://img.shields.io/badge/release-v5-2563EB?style=for-the-badge">
   &nbsp;&nbsp;
   <img alt="Zero compile installer" src="https://img.shields.io/badge/install-zero%20compile-10B981?style=for-the-badge">
 </p>
@@ -169,30 +169,37 @@ For reviewers, the interesting part is not just that pdFold works. It is that th
 
 ## Release Status
 
-pdFold release v4 is a release-hardened local-first macOS app for collecting scattered documents, turning them into one editable workspace, marking them up, editing PDF text in place, signing PDFs, tracking context, and exporting clean deliverables.
+pdFold release v5 is a release-hardened local-first macOS app for collecting scattered documents, turning them into one editable workspace, marking them up, editing PDF text in place, signing PDFs, tracking context, saving normal PDFs, and exporting clean deliverables.
 
 |  | Detail | Status |
 | --- | --- | --- |
-| 🚢 | Release tag | [`release-v4`](https://github.com/udhawan97/PDFold/releases/tag/release-v4) |
-| 🧾 | App metadata | `CFBundleShortVersionString` `3.0`, `CFBundleVersion` `4` |
+| 🚢 | Release tag | [`release-v5`](https://github.com/udhawan97/PDFold/releases/tag/release-v5) |
+| 🧾 | App metadata | `CFBundleShortVersionString` `3.0`, `CFBundleVersion` `5` |
 | ⚡ | Install path | One-line installer downloads [`pdFold.zip`](https://github.com/udhawan97/PDFold/releases/latest/download/pdFold.zip) from the latest GitHub release |
 | 🧪 | Smoke test | `./scripts/install-mac.sh --no-open` |
 | 🔐 | Signing | Local ad-hoc signing for source and release packaging |
 | 📦 | Distribution style | Prebuilt release zip for users, with opt-in source builds for developers |
 
-### What Changed In v4
+### What Changed In v5
 
 |  | Area | Release Update |
 | --- | --- | --- |
+| 💾 | Normal Save path | Standard macOS Save/Save As writes PDF by default while keeping the Share/Export choices intact |
+| 📤 | Source-aware export | Same-format exports preserve original source bytes where safe, add `.doc`, `.odt`, and `.rtf`, and fail clearly instead of silently rewriting lossy files |
+| ✍️ | Inline edit polish | No-op font-size changes no longer dirty edits, and real edits preserve at least the original text bounds |
+| 🧪 | Round-trip coverage | New tests cover text, Markdown, HTML, RTF, DOCX, legacy DOC, ODT, PDF reopen metadata, and adversarial export cases |
+| 🧭 | Toolbar polish | Search, contents, signature, edit, annotation, export, and inspector actions are grouped for faster document work |
+| 💬 | Optional helper | Foldy, the pdFold buddy, gives lightweight feedback and can be hidden from the app menu or its popover |
+
+### Carried Forward From v4
+
+|  | Area | Release Hardening |
+| --- | --- | --- |
 | ✍️ | Inline PDF text editing | Click detected PDF text, edit in a zoom-correct floating box, and commit with preserved font, size, weight, color, alignment, and page-space geometry |
 | 🧽 | Safer page regeneration | Replacements rebuild from pristine original pages, erase only original text bounds with sampled local background, and preserve annotations |
-| 🔠 | Font and size fidelity | PDFium font-size readings are checked against actual glyph ink, with better handling for scaled content streams and Carlito/Calibri-style documents |
 | 🔏 | Authentic PDF signatures | Add PDF digital signatures with signing identities, CMS packaging, timestamp support, appearance rendering, and regression coverage |
-| 🖊️ | Signature workflow polish | Signature placement, drawn signature handling, certificate guide loading, and signature input behavior are tightened for the latest release target |
-| ↩️ | Undo/redo reliability | Inline PDF text edits now restore rendered PDF bytes and edit-state metadata in both directions |
-| 💾 | PDF save path | Standard saves write flat PDF output, clear stale hidden comment metadata, and keep export formats available |
-| 🧰 | Xcode project parity | The checked-in Xcode project now includes signing sources, Swift package products, shared test scheme metadata, and bundled release resources |
-| 🚀 | Release automation | `release-v*` tags now trigger the release workflow and publish the tagged build as the latest GitHub release |
+| ↩️ | Undo/redo reliability | Inline PDF text edits restore rendered PDF bytes and edit-state metadata in both directions |
+| 🚀 | Release automation | `release-v*` tags trigger the release workflow and publish the tagged build as the latest GitHub release |
 
 ### Carried Forward From v3
 
@@ -338,6 +345,9 @@ docs/signing/
 
 ## Developer Notes
 
+<details>
+<summary>Build, test, package, and source-install commands</summary>
+
 Open the project in Xcode:
 
 ```zsh
@@ -369,13 +379,15 @@ Install from the current source checkout without opening the app:
 ./scripts/install-mac.sh --no-open
 ```
 
+</details>
+
 ## Privacy & Security
 
 pdFold is local-first by design. Documents are opened, edited, saved, and exported on your machine.
 
 The app uses macOS sandboxing and file access through user-selected documents. Its new PDF processing backend runs locally for import validation; it is not a remote upload service. In plain English: pdFold works with the files you hand it, not your entire digital attic.
 
-Release v4 also includes practical guardrails around failure-prone paths:
+Release v5 also includes practical guardrails around failure-prone paths:
 
 - Inline PDF text edits rebuild from pristine source pages, preserve existing annotations, and store undo/redo snapshots for rendered PDF bytes and edit metadata.
 - Digital-signature flows cover signing identity loading, CMS signature construction, timestamp requests, signature appearance rendering, and verification harnesses.
@@ -421,7 +433,8 @@ Before shipping a build, verify both the developer path and the human-with-docum
 | 🚀 | Launch/update | Desktop launcher updates and opens the installed app |
 | 🧹 | Uninstall | `./scripts/uninstall-mac.sh --help` prints usage and the Desktop uninstaller removes install artifacts |
 
-For v4 release preparation, the local verification pass should include:
+<details>
+<summary>v5 release verification commands</summary>
 
 ```zsh
 plutil -lint PDFold/Resources/Info.plist
@@ -439,6 +452,8 @@ xcodebuild build -quiet -project PDFold.xcodeproj -scheme PDFold -destination 'g
 xcodebuild test -quiet -project PDFold.xcodeproj -scheme PDFold -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
 ./scripts/install-mac.sh --package-only --package /tmp/pdFold.zip
 ```
+
+</details>
 
 ## Roadmap
 

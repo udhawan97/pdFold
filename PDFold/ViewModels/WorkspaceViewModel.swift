@@ -1922,6 +1922,10 @@ final class WorkspaceViewModel {
             return nil
         }
 
+        guard sourcePayloadCanRepresentCurrentPDF(member: member, payload: payload) else {
+            throw ExportBuildError.pdfOnlyEditsCannotMap(memberName: member.displayName)
+        }
+
         if hasPDFOnlyEdits(for: member) {
             throw ExportBuildError.pdfOnlyEditsCannotMap(memberName: member.displayName)
         }
@@ -1977,6 +1981,37 @@ final class WorkspaceViewModel {
             .filter { pageRefIDs.contains($0.pageRefID) }
             .flatMap(\.operations)
             .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    private func sourcePayloadCanRepresentCurrentPDF(member: MemberDocument, payload: SourceDocumentPayload) -> Bool {
+        guard document.workspace.documents.count == 1,
+              document.workspace.signatures.isEmpty,
+              document.workspace.pageOrder.map(\.id) == member.pageRefs else {
+            return false
+        }
+
+        if let renderedPageCount = payload.renderedPageCount,
+           renderedPageCount != member.pageRefs.count {
+            return false
+        }
+
+        for (expectedSourcePageIndex, pageRefID) in member.pageRefs.enumerated() {
+            guard let pageRef = document.workspace.pageOrder.first(where: { $0.id == pageRefID }),
+                  pageRef.memberDocId == member.id,
+                  pageRef.sourcePageIndex == expectedSourcePageIndex else {
+                return false
+            }
+        }
+
+        guard let loaded = loadedPDFs.first(where: { $0.0.id == member.id }) else {
+            return false
+        }
+
+        for pageIndex in 0..<loaded.1.pageCount {
+            guard let page = loaded.1.page(at: pageIndex) else { return false }
+            if page.rotation != 0 { return false }
+        }
+        return true
     }
 
     private func hasPDFOnlyEdits(for member: MemberDocument) -> Bool {
@@ -2086,7 +2121,7 @@ final class WorkspaceViewModel {
             let detail = preview.isEmpty ? "." : ": \"\(preview)\"."
             return "pdFold found more than one matching source text in \"\(memberName)\"\(detail) Export as PDF to preserve the visual edit."
         case ExportBuildError.pdfOnlyEditsCannotMap(let memberName):
-            return "pdFold found PDF-only annotations or text boxes in \"\(memberName)\". Export as PDF to preserve those visual edits."
+            return "pdFold found PDF-only annotations, signatures, or page changes in \"\(memberName)\". Export as PDF to preserve those visual edits."
         case ExportBuildError.editedPackageFormatRequiresPDF(let formatName):
             return "pdFold can preserve the original \(formatName) bytes when unchanged, but edited package exports are not faithful enough yet. Export as PDF to preserve the edit."
         case ExportBuildError.cannotEncode(let formatName):

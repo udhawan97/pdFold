@@ -122,7 +122,9 @@ final class WorkspaceDocument: ReferenceFileDocument {
         memberPDFData[member.id] = pdfData
         if let sourcePayload {
             sourcePayloads[member.id] = sourcePayload
-        } else if let savedPayload = metadata.sourcePayloads[member.id] ?? metadata.sourcePayloads.values.first {
+        } else if metadata.sourcePayloads.count == 1,
+                  let savedPayload = metadata.sourcePayloads.values.first,
+                  savedPayload.renderedPageCount.map({ $0 == pageCount }) ?? true {
             sourcePayloads[member.id] = savedPayload
         }
     }

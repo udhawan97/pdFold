@@ -74,6 +74,7 @@ struct SourceDocumentPayload: Codable, Equatable {
     var originalData: Data
     var richTextRTFData: Data?
     var plainText: String?
+    var renderedPageCount: Int?
 
     var originalString: String? {
         plainText ?? String(data: originalData, encoding: .utf8)

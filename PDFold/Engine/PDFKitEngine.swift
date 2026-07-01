@@ -191,7 +191,8 @@ enum DocumentImportConverter {
                     contentType: detectedType,
                     filename: filename,
                     attributedString: NSAttributedString(string: plainHTML),
-                    plainText: plainHTML
+                    plainText: plainHTML,
+                    renderedPageCount: pdf.pageCount
                 )
             )
         }
@@ -221,7 +222,8 @@ enum DocumentImportConverter {
                 contentType: detectedType,
                 filename: filename,
                 attributedString: attributedString,
-                plainText: isPlainTextLike(detectedType) || detectedType.conforms(to: .markdown) ? (try? decodeText(data)) : nil
+                plainText: isPlainTextLike(detectedType) || detectedType.conforms(to: .markdown) ? (try? decodeText(data)) : nil,
+                renderedPageCount: pdf.pageCount
             )
         )
     }
@@ -251,7 +253,8 @@ enum DocumentImportConverter {
         contentType: UTType,
         filename: String,
         attributedString: NSAttributedString,
-        plainText: String?
+        plainText: String?,
+        renderedPageCount: Int
     ) -> SourceDocumentPayload? {
         guard let format = SourceDocumentFormat(contentType: contentType) else { return nil }
         return SourceDocumentPayload(
@@ -260,7 +263,8 @@ enum DocumentImportConverter {
             originalContentTypeIdentifier: contentType.identifier,
             originalData: data,
             richTextRTFData: SourceDocumentPayload.richTextRTFData(from: attributedString),
-            plainText: plainText
+            plainText: plainText,
+            renderedPageCount: renderedPageCount
         )
     }
 

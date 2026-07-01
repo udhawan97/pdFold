@@ -299,6 +299,24 @@ final class SourceDocumentRoundTripTests: XCTestCase {
         }
     }
 
+    func testPageLevelChangesFailSourceExportCleanly() throws {
+        let viewModel = try makeViewModel(
+            data: Data("# Heading\n\nBody".utf8),
+            contentType: .markdown,
+            filename: "notes.md"
+        )
+        let pageRef = try XCTUnwrap(viewModel.document.workspace.pageOrder.first)
+
+        viewModel.rotatePage(pageRef, by: 90)
+
+        XCTAssertThrowsError(try viewModel.dataForWorkspaceExport(as: .markdown)) { error in
+            guard case WorkspaceViewModel.ExportBuildError.pdfOnlyEditsCannotMap(let memberName) = error else {
+                return XCTFail("Expected pdfOnlyEditsCannotMap, got \(error)")
+            }
+            XCTAssertEqual(memberName, "notes")
+        }
+    }
+
     func testSavedPDFMetadataRestoresSourcePayloadForReopen() throws {
         let markdown = Data("# Heading\n\n- **Bold item**\n".utf8)
         let viewModel = try makeViewModel(data: markdown, contentType: .markdown, filename: "notes.md")
@@ -310,6 +328,29 @@ final class SourceDocumentRoundTripTests: XCTestCase {
 
         XCTAssertEqual(reopened.sourcePayloads.values.first?.format, .markdown)
         XCTAssertEqual(reopened.sourcePayloads.values.first?.originalData, markdown)
+    }
+
+    func testReopenedMultiSourcePDFDoesNotAttachArbitrarySourcePayload() throws {
+        let document = WorkspaceDocument()
+        try addImportedDocument(
+            to: document,
+            data: Data("# First\n\nAlpha".utf8),
+            contentType: .markdown,
+            filename: "first.md"
+        )
+        try addImportedDocument(
+            to: document,
+            data: Data("# Second\n\nBeta".utf8),
+            contentType: .markdown,
+            filename: "second.md"
+        )
+        let saved = try XCTUnwrap(document.exportedPDFData(from: try document.snapshot(contentType: .pdf)))
+        let reopenedPDF = try XCTUnwrap(PDFDocument(data: saved))
+
+        let reopened = WorkspaceDocument()
+        try reopened.importPDFDocumentForTesting(reopenedPDF, filename: "combined.pdf")
+
+        XCTAssertTrue(reopened.sourcePayloads.isEmpty)
     }
 
     func testMarkdownMarkersBeatPlainTextSuggestion() throws {
@@ -423,5 +464,31 @@ final class SourceDocumentRoundTripTests: XCTestCase {
             document.sourcePayloads[member.id] = payload
         }
         return WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+    }
+
+    private func addImportedDocument(to document: WorkspaceDocument, data: Data, contentType: UTType, filename: String) throws {
+        let imported = try DocumentImportConverter.importedDocument(
+            from: data,
+            contentType: contentType,
+            filename: filename,
+            baseURL: nil
+        )
+        let pdfData = try XCTUnwrap(PDFSerializer.data(from: imported.pdfDocument))
+        var member = MemberDocument(
+            displayName: URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent,
+            sourcePDFRef: filename
+        )
+        let refs = (0..<imported.pdfDocument.pageCount).map { PageRef(memberDocId: member.id, sourcePageIndex: $0) }
+        member.pageRefs = refs.map(\.id)
+
+        if document.workspace.documents.isEmpty {
+            document.workspace.title = member.displayName
+        }
+        document.workspace.documents.append(member)
+        document.workspace.pageOrder.append(contentsOf: refs)
+        document.memberPDFData[member.id] = pdfData
+        if let payload = imported.sourcePayload {
+            document.sourcePayloads[member.id] = payload
+        }
     }
 }
