@@ -17,7 +17,7 @@
 <p align="center">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">
   &nbsp;&nbsp;
-  <img alt="Version 3.0" src="https://img.shields.io/badge/version-betav3-2563EB?style=for-the-badge">
+  <img alt="Release v4" src="https://img.shields.io/badge/release-v4-2563EB?style=for-the-badge">
   &nbsp;&nbsp;
   <img alt="Zero compile installer" src="https://img.shields.io/badge/install-zero%20compile-10B981?style=for-the-badge">
 </p>
@@ -63,6 +63,8 @@ curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | 
 ```
 
 The installer downloads the latest prebuilt app, places it in `~/Applications/pdFold.app`, and adds Desktop commands for launching/updating and clean uninstall.
+
+Direct download: [`pdFold.zip`](https://github.com/udhawan97/PDFold/releases/latest/download/pdFold.zip) from the latest GitHub release.
 
 No Xcode. No GitHub account. No compile step. Just paste, install, and get back to the documents.
 
@@ -167,31 +169,35 @@ For reviewers, the interesting part is not just that pdFold works. It is that th
 
 ## Release Status
 
-pdFold v3 is a release-hardened local-first macOS app for collecting scattered documents, turning them into one editable workspace, marking them up, tracking context, and exporting clean deliverables.
+pdFold release v4 is a release-hardened local-first macOS app for collecting scattered documents, turning them into one editable workspace, marking them up, editing PDF text in place, tracking context, and exporting clean deliverables.
 
 |  | Detail | Status |
 | --- | --- | --- |
-| 🚢 | Version | `3.0` |
-| 🧾 | App metadata | `CFBundleShortVersionString` `3.0`, `CFBundleVersion` `3` |
-| ⚡ | Install path | One-line installer downloads the latest prebuilt GitHub release |
+| 🚢 | Release tag | [`release-v4`](https://github.com/udhawan97/PDFold/releases/tag/release-v4) |
+| 🧾 | App metadata | `CFBundleShortVersionString` `3.0`, `CFBundleVersion` `4` |
+| ⚡ | Install path | One-line installer downloads [`pdFold.zip`](https://github.com/udhawan97/PDFold/releases/latest/download/pdFold.zip) from the latest GitHub release |
 | 🧪 | Smoke test | `./scripts/install-mac.sh --no-open` |
 | 🔐 | Signing | Local ad-hoc signing for source and release packaging |
 | 📦 | Distribution style | Prebuilt release zip for users, with opt-in source builds for developers |
 
-### What Changed In v3
+### What Changed In v4
 
 |  | Area | Release Update |
 | --- | --- | --- |
-| 🔄 | Automatic updates | The Desktop **pdFold.command** launcher checks the latest GitHub release every time it opens the app |
-| 🧹 | Clean uninstall | The installer now creates **Uninstall pdFold.command** for removing the app, generated commands, installer cache, and pdFold app data |
-| 🧪 | PDF processing backend | PDF imports pass through an injectable `PDFProcessingEngine`, with PDFium validation and a PDFKit fallback path |
-| 🧭 | Simpler setup | The old separate update command is treated as a legacy artifact and cleaned up by install/update/uninstall scripts |
-| 📝 | Release docs | README setup, update, uninstall, quality, and troubleshooting guidance now match the v3 install flow |
+| ✍️ | Inline PDF text editing | Click detected PDF text, edit in a zoom-correct floating box, and commit with preserved font, size, weight, color, alignment, and page-space geometry |
+| 🧽 | Safer page regeneration | Replacements rebuild from pristine original pages, erase only original text bounds with sampled local background, and preserve annotations |
+| 🔠 | Font and size fidelity | PDFium font-size readings are checked against actual glyph ink, with better handling for scaled content streams and Carlito/Calibri-style documents |
+| ↩️ | Undo/redo reliability | Inline PDF text edits now restore rendered PDF bytes and edit-state metadata in both directions |
+| 💾 | PDF save path | App metadata is bumped to build `4`, with tests guarding PDF save/export metadata behavior |
+| 🚀 | Release automation | `release-v*` tags now trigger the release workflow and publish the tagged build as the latest GitHub release |
 
-### Carried Forward From v2
+### Carried Forward From v3
 
 |  | Area | Release Hardening |
 | --- | --- | --- |
+| 🔄 | Automatic updates | The Desktop **pdFold.command** launcher checks the latest GitHub release every time it opens the app |
+| 🧹 | Clean uninstall | The installer creates **Uninstall pdFold.command** for removing the app, generated commands, installer cache, and pdFold app data |
+| 🧪 | PDF processing backend | PDF imports pass through an injectable `PDFProcessingEngine`, with PDFium validation and a PDFKit fallback path |
 | 🏷️ | Workspace context | Tags and workspace comments persist with saved projects and appear in dedicated inspector tabs |
 | ✍️ | Text editing | The text tool can create clean free-text boxes or convert selected PDF text into editable overlays |
 | 📝 | Markdown export | Workspaces export `.md` files with a summary, comments, document sections, and extracted PDF text |
@@ -211,11 +217,11 @@ Paste one command into Terminal:
 curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | zsh
 ```
 
-The installer downloads the latest prebuilt `pdFold.zip` from GitHub Releases, installs `pdFold.app` to `~/Applications`, creates self-updating launch and uninstall Desktop commands, removes download quarantine metadata, and opens the app.
+The installer downloads the latest prebuilt [`pdFold.zip`](https://github.com/udhawan97/PDFold/releases/latest/download/pdFold.zip) from GitHub Releases, installs `pdFold.app` to `~/Applications`, creates self-updating launch and uninstall Desktop commands, removes download quarantine metadata, and opens the app.
 
 The normal path does not require Xcode, Apple's Command Line Tools, a package manager, or a GitHub account. The installer is intentionally uneventful, which is exactly how installers should behave.
 
-Important release note: the zero-compile installer depends on a published GitHub release containing `pdFold.zip`. The release workflow publishes that prebuilt asset automatically from `main`, so normal users do not need Apple's developer tools.
+Important release note: the zero-compile installer depends on a published GitHub latest release containing `pdFold.zip`. The release workflow publishes that prebuilt asset from `release-v*` tags, so normal users do not need Apple's developer tools.
 
 For detailed install diagnostics, run the same command with verbose logging enabled:
 
@@ -356,8 +362,9 @@ pdFold is local-first by design. Documents are opened, edited, saved, and export
 
 The app uses macOS sandboxing and file access through user-selected documents. Its new PDF processing backend runs locally for import validation; it is not a remote upload service. In plain English: pdFold works with the files you hand it, not your entire digital attic.
 
-Release v3 also includes practical guardrails around failure-prone paths:
+Release v4 also includes practical guardrails around failure-prone paths:
 
+- Inline PDF text edits rebuild from pristine source pages, preserve existing annotations, and store undo/redo snapshots for rendered PDF bytes and edit metadata.
 - A supplemental PDFium processing backend performs a non-blocking validation smoke check before PDFKit proceeds with the normal import path.
 - Files larger than 512 MB are rejected before loading to avoid memory pressure from accidental giant imports.
 - PDF serialization failures preserve existing package data or report an actionable import error instead of writing broken workspace state.
@@ -398,7 +405,7 @@ Before shipping a build, verify both the developer path and the human-with-docum
 | 🚀 | Launch/update | Desktop launcher updates and opens the installed app |
 | 🧹 | Uninstall | `./scripts/uninstall-mac.sh --help` prints usage and the Desktop uninstaller removes install artifacts |
 
-For v3 release preparation, the local verification pass should include:
+For v4 release preparation, the local verification pass should include:
 
 ```zsh
 plutil -lint PDFold/Resources/Info.plist
@@ -411,6 +418,7 @@ zsh -n "Install or Update pdFold.command"
 zsh -n "Uninstall pdFold.command"
 plutil -lint "Install or Update pdFold.app/Contents/Info.plist"
 swift build
+swift test
 ./scripts/install-mac.sh --package-only --package /tmp/pdFold.zip
 ```
 
