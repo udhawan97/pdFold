@@ -3370,7 +3370,12 @@ final class WorkspaceViewModel {
         switch targetFormat {
         case .markdown, .html, .plainText:
             guard let original = payload.originalString else { return nil }
-            let edited = try applyTextEdits(edits, to: original, memberName: member.displayName)
+            let edited = try applyTextEdits(
+                edits,
+                to: original,
+                memberName: member.displayName,
+                replacementTransform: replacementTransform(for: targetFormat)
+            )
             guard let data = edited.data(using: .utf8) else {
                 throw ExportBuildError.cannotEncode(formatName: format.menuTitle)
             }
@@ -3477,11 +3482,17 @@ final class WorkspaceViewModel {
         return false
     }
 
-    private func applyTextEdits(_ edits: [PDFTextEditOperation], to original: String, memberName: String) throws -> String {
+    private func applyTextEdits(
+        _ edits: [PDFTextEditOperation],
+        to original: String,
+        memberName: String,
+        replacementTransform: (String) -> String = { $0 }
+    ) throws -> String {
         var output = original
         for edit in edits where !edit.replacementText.isEmpty || !edit.sourceText.isEmpty {
+            let replacement = replacementTransform(edit.replacementText)
             if edit.sourceText.isEmpty {
-                output += output.hasSuffix("\n") ? edit.replacementText : "\n\(edit.replacementText)"
+                output += output.hasSuffix("\n") ? replacement : "\n\(replacement)"
                 continue
             }
             let ranges = ranges(of: edit.sourceText, in: output)
@@ -3494,7 +3505,7 @@ final class WorkspaceViewModel {
             guard let range = ranges.first else {
                 throw ExportBuildError.cannotMapEdit(memberName: memberName, sourceText: edit.sourceText)
             }
-            output.replaceSubrange(range, with: edit.replacementText)
+            output.replaceSubrange(range, with: replacement)
         }
         return output
     }
@@ -3516,8 +3527,45 @@ final class WorkspaceViewModel {
             guard let range = ranges.first else {
                 throw ExportBuildError.cannotMapEdit(memberName: memberName, sourceText: edit.sourceText)
             }
-            attributed.replaceCharacters(in: range, with: NSAttributedString(string: edit.replacementText, attributes: attributes(for: edit)))
+            attributed.replaceCharacters(
+                in: range,
+                with: NSAttributedString(
+                    string: edit.replacementText,
+                    attributes: attributedReplacementAttributes(in: attributed, range: range, edit: edit)
+                )
+            )
         }
+    }
+
+    private func replacementTransform(for format: SourceDocumentFormat) -> (String) -> String {
+        switch format {
+        case .html:
+            return escapeHTMLText
+        case .markdown:
+            return escapeMarkdownText
+        case .plainText, .rtf, .docx, .wordDoc, .odt:
+            return { $0 }
+        }
+    }
+
+    private func escapeHTMLText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    private func escapeMarkdownText(_ text: String) -> String {
+        let escapable = Set("\\`*_{}[]()#+-.!|>")
+        var escaped = ""
+        escaped.reserveCapacity(text.count)
+        for character in text {
+            if escapable.contains(character) {
+                escaped.append("\\")
+            }
+            escaped.append(character)
+        }
+        return escaped
     }
 
     private func ranges(of needle: String, in haystack: String) -> [Range<String.Index>] {
@@ -3544,6 +3592,24 @@ final class WorkspaceViewModel {
             .foregroundColor: edit.textColor.nsColor,
             .paragraphStyle: paragraph
         ]
+    }
+
+    private func attributedReplacementAttributes(
+        in attributed: NSAttributedString,
+        range: NSRange,
+        edit: PDFTextEditOperation
+    ) -> [NSAttributedString.Key: Any] {
+        guard attributed.length > 0, range.location < attributed.length else {
+            return attributes(for: edit)
+        }
+        var attributes = attributed.attributes(at: range.location, effectiveRange: nil)
+        if attributes[.font] == nil {
+            attributes[.font] = NSFont(name: edit.fontName, size: edit.fontSize) ?? NSFont.systemFont(ofSize: edit.fontSize)
+        }
+        if attributes[.foregroundColor] == nil {
+            attributes[.foregroundColor] = edit.textColor.nsColor
+        }
+        return attributes
     }
 
     private func userMessage(for error: Error, exporting format: WorkspaceExportFormat) -> String {
