@@ -351,7 +351,7 @@ final class SourceDocumentRoundTripTests: XCTestCase {
     func testSavedPDFMetadataRestoresSourcePayloadForReopen() throws {
         let markdown = Data("# Heading\n\n- **Bold item**\n".utf8)
         let viewModel = try makeViewModel(data: markdown, contentType: .markdown, filename: "notes.md")
-        let saved = try XCTUnwrap(viewModel.document.exportedPDFData(from: try viewModel.document.snapshot(contentType: .pdf)))
+        let saved = try viewModel.document.exportedPDFDataThrowing(from: try viewModel.document.snapshot(contentType: .pdf))
         let reopenedPDF = try XCTUnwrap(PDFDocument(data: saved))
 
         let reopened = WorkspaceDocument()
@@ -432,7 +432,7 @@ final class SourceDocumentRoundTripTests: XCTestCase {
             contentType: .markdown,
             filename: "second.md"
         )
-        let saved = try XCTUnwrap(document.exportedPDFData(from: try document.snapshot(contentType: .pdf)))
+        let saved = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
         let reopenedPDF = try XCTUnwrap(PDFDocument(data: saved))
 
         let reopened = WorkspaceDocument()

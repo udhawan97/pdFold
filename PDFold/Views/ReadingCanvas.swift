@@ -5,6 +5,11 @@ import PDFKit
 
 struct ReadingCanvas: View {
     @Bindable var viewModel: WorkspaceViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var shouldReduceMotion: Bool {
+        reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,7 +31,7 @@ struct ReadingCanvas: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: viewModel.editingStatus?.id)
+        .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.18), value: viewModel.editingStatus?.id)
     }
 }
 
@@ -37,7 +42,7 @@ private struct EditingStatusBanner: View {
     var body: some View {
         HStack(spacing: .dsSM) {
             Image(systemName: status.isError ? "exclamationmark.triangle.fill" : "info.circle.fill")
-                .foregroundStyle(status.isError ? Color.orange : Color.dsAccent)
+                .foregroundStyle(status.isError ? Color.dsAnnotationCoral : Color.dsAccent)
             Text(status.message)
                 .font(.dsCaption())
                 .foregroundStyle(Color.dsTextPrimary)
@@ -168,11 +173,13 @@ struct PDFViewRepresentable: NSViewRepresentable {
         view.autoScales = true
         view.displaysPageBreaks = false
         view.backgroundColor = .dsCanvasNS
+        view.pageOverlayViewProvider = context.coordinator
 
         // Wire up delete key handler
         view.onDeleteKey = { [weak coordinator = context.coordinator] in
             coordinator?.viewModel.deleteSelectedAnnotation()
             coordinator?.refreshSignatureOverlay()
+            coordinator?.refreshDecorationOverlays()
         }
         view.onSelectionCommitted = { [weak coordinator = context.coordinator] in
             coordinator?.commitCurrentMarkupSelection()
@@ -261,6 +268,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
         context.coordinator.inkOverlay.isHidden = (viewModel.currentTool != .ink)
         context.coordinator.inkOverlay.inkColor = viewModel.inkColor
         context.coordinator.refreshSignatureOverlay()
+        context.coordinator.refreshDecorationOverlays()
         context.coordinator.refreshCommentOverlays()
         // Switching to a different tool (e.g. clicking Highlight) without clicking Done
         // first must not silently drop whatever text is still being edited.
@@ -271,7 +279,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, NSPopoverDelegate, NSGestureRecognizerDelegate {
+    final class Coordinator: NSObject, NSPopoverDelegate, NSGestureRecognizerDelegate, PDFPageOverlayViewProvider {
         var viewModel: WorkspaceViewModel
         weak var pdfView: PDFoldPDFView?
         let inkOverlay = InkOverlayView()
@@ -280,6 +288,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
         let commentRegionOverlay = CommentRegionOverlayView()
         private weak var inlineEditor: InlineTextEditorOverlay?
         private var notePopover: NSPopover?
+        private let decorationOverlays = NSHashTable<PageDecorationOverlayView>.weakObjects()
 
         init(viewModel: WorkspaceViewModel) {
             self.viewModel = viewModel
@@ -363,14 +372,32 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 } else {
                     viewModel.isShowingSignaturePalette = true
                 }
+            case .stamp:
+                if viewModel.pendingStampOptions != nil {
+                    viewModel.placeStamp(at: pagePoint, on: page)
+                    refreshSignatureOverlay()
+                    refreshDecorationOverlays()
+                } else {
+                    viewModel.isShowingStampPalette = true
+                }
             case .eraser:
                 viewModel.eraseMarkupAnnotation(at: pagePoint, on: page)
             case .none:
                 // Track clicked annotation for Delete-key deletion
-                viewModel.selectedAnnotation = page.annotation(at: pagePoint)
+                if let stamp = viewModel.stampDecoration(at: pagePoint, on: page, in: pdfView.document) {
+                    viewModel.selectedAnnotation = nil
+                    viewModel.selectedStampDecorationID = stamp.id
+                } else if let annotation = page.annotation(at: pagePoint) {
+                    viewModel.selectedAnnotation = annotation
+                    viewModel.selectedStampDecorationID = nil
+                } else {
+                    viewModel.selectedAnnotation = nil
+                    viewModel.selectedStampDecorationID = nil
+                }
                 refreshSignatureOverlay()
             default:
                 viewModel.selectedAnnotation = nil
+                viewModel.selectedStampDecorationID = nil
                 refreshSignatureOverlay()
             }
         }
@@ -588,21 +615,44 @@ struct PDFViewRepresentable: NSViewRepresentable {
         }
 
         func setupSignatureOverlay() {
-            signatureOverlay.onBoundsChanged = { [weak self] annotation, proposedBounds, oldBounds in
+            signatureOverlay.onBoundsChanged = { [weak self] target, proposedBounds, oldBounds in
                 guard let self else { return proposedBounds }
-                let applied = self.viewModel.updateSignaturePlacement(
-                    for: annotation,
-                    to: proposedBounds,
-                    registerUndoFrom: oldBounds
-                )
+                let applied: CGRect
+                if let annotation = target.annotation,
+                   self.viewModel.signaturePlacementID(for: annotation) != nil {
+                    applied = self.viewModel.updateSignaturePlacement(
+                        for: annotation,
+                        to: proposedBounds,
+                        registerUndoFrom: oldBounds
+                    )
+                } else if let stampID = target.stampDecorationID,
+                          let page = target.page {
+                    applied = self.viewModel.updateStampDecoration(
+                        id: stampID,
+                        on: page,
+                        to: proposedBounds,
+                        registerUndoFrom: oldBounds
+                    )
+                } else {
+                    applied = proposedBounds
+                }
                 self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
+                self.refreshDecorationOverlays()
                 return applied
             }
-            signatureOverlay.onDelete = { [weak self] annotation in
+            signatureOverlay.onDelete = { [weak self] target in
                 guard let self else { return }
-                self.viewModel.selectedAnnotation = annotation
-                self.viewModel.deleteSelectedAnnotation()
+                if let annotation = target.annotation {
+                    self.viewModel.selectedAnnotation = annotation
+                    self.viewModel.selectedStampDecorationID = nil
+                    self.viewModel.deleteSelectedAnnotation()
+                } else if let stampID = target.stampDecorationID {
+                    self.viewModel.selectedAnnotation = nil
+                    self.viewModel.selectedStampDecorationID = stampID
+                    self.viewModel.deleteSelectedStampDecoration()
+                }
                 self.refreshSignatureOverlay()
+                self.refreshDecorationOverlays()
                 self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
             }
         }
@@ -622,9 +672,38 @@ struct PDFViewRepresentable: NSViewRepresentable {
             if let annotation = viewModel.selectedAnnotation,
                viewModel.signaturePlacementID(for: annotation) != nil {
                 signatureOverlay.select(annotation)
+            } else if let stampID = viewModel.selectedStampDecorationID,
+                      let decoration = viewModel.stampDecoration(id: stampID),
+                      let page = page(for: decoration, in: pdfView),
+                      let rect = decoration.rect {
+                signatureOverlay.selectStamp(id: stampID, page: page, bounds: rect)
             } else {
                 signatureOverlay.clearSelection()
             }
+        }
+
+        private func page(for decoration: PageDecoration, in pdfView: PDFView) -> PDFPage? {
+            guard let pageRefID = decoration.pageRefID,
+                  let ref = viewModel.document.workspace.pageOrder.first(where: { $0.id == pageRefID }),
+                  let pageIndex = viewModel.combinedPageIndex(for: ref) else {
+                return nil
+            }
+            return pdfView.document?.page(at: pageIndex)
+        }
+
+        func refreshDecorationOverlays() {
+            for overlay in decorationOverlays.allObjects {
+                overlay.viewModel = viewModel
+                overlay.needsDisplay = true
+            }
+        }
+
+        func pdfView(_ view: PDFView, overlayViewFor page: PDFPage) -> NSView? {
+            let overlay = PageDecorationOverlayView(page: page)
+            overlay.viewModel = viewModel
+            overlay.pdfView = view
+            decorationOverlays.add(overlay)
+            return overlay
         }
 
         func refreshCommentOverlays() {
@@ -851,12 +930,187 @@ final class CommentRegionOverlayView: NSView {
     }
 }
 
+final class PageDecorationOverlayView: NSView {
+    weak var viewModel: WorkspaceViewModel?
+    weak var pdfView: PDFView?
+    private weak var page: PDFPage?
+
+    init(page: PDFPage) {
+        self.page = page
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override var isOpaque: Bool { false }
+    override var isFlipped: Bool { false }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let page,
+              let viewModel,
+              let document = page.document,
+              let pageRef = viewModel.pageRef(for: page, in: document),
+              let pageIndex = viewModel.document.workspace.pageOrder.firstIndex(where: { $0.id == pageRef.id }) else {
+            return
+        }
+        let decorations = viewModel.document.workspace.decorations.filter(\.isEnabled)
+        guard !decorations.isEmpty else { return }
+        let pageCount = viewModel.document.workspace.pageOrder.count
+        for decoration in decorations {
+            switch decoration.kind {
+            case .watermark:
+                drawWatermark(decoration, pageIndex: pageIndex, pageCount: pageCount)
+            case .pageNumber:
+                drawFooterText(
+                    PDFDecorationExportBaker.text(for: decoration, pageIndex: pageIndex, pageCount: pageCount),
+                    decoration: decoration,
+                    alignment: .center
+                )
+            case .bates:
+                drawFooterText(
+                    PDFDecorationExportBaker.text(for: decoration, pageIndex: pageIndex, pageCount: pageCount),
+                    decoration: decoration,
+                    alignment: .left
+                )
+            case .stamp:
+                guard decoration.pageRefID == pageRef.id else { continue }
+                drawStamp(decoration, pageIndex: pageIndex, pageCount: pageCount)
+            }
+        }
+    }
+
+    private func drawWatermark(_ decoration: PageDecoration, pageIndex: Int, pageCount: Int) {
+        let text = PDFDecorationExportBaker.text(for: decoration, pageIndex: pageIndex, pageCount: pageCount)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let font = NSFont.boldSystemFont(ofSize: min(decoration.fontSize, max(24, bounds.width * 0.13)))
+        let attributes = textAttributes(for: decoration, font: font)
+        let size = NSString(string: text).size(withAttributes: attributes)
+        NSGraphicsContext.current?.cgContext.saveGState()
+        let transform = NSAffineTransform()
+        transform.translateX(by: bounds.midX, yBy: bounds.midY)
+        transform.rotate(byRadians: -.pi / 5)
+        transform.concat()
+        NSString(string: text).draw(
+            in: CGRect(x: -size.width / 2, y: -size.height / 2, width: size.width + 2, height: size.height + 2),
+            withAttributes: attributes
+        )
+        NSGraphicsContext.current?.cgContext.restoreGState()
+    }
+
+    private func drawFooterText(_ text: String, decoration: PageDecoration, alignment: NSTextAlignment) {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let font = alignment == .left
+            ? NSFont.monospacedDigitSystemFont(ofSize: decoration.fontSize, weight: .regular)
+            : NSFont.systemFont(ofSize: decoration.fontSize)
+        let attributes = textAttributes(for: decoration, font: font)
+        let size = NSString(string: text).size(withAttributes: attributes)
+        let x = alignment == .left ? bounds.minX + 28 : bounds.midX - size.width / 2
+        NSString(string: text).draw(
+            in: CGRect(x: x, y: bounds.minY + 18, width: size.width + 2, height: size.height + 2),
+            withAttributes: attributes
+        )
+    }
+
+    private func drawStamp(_ decoration: PageDecoration, pageIndex: Int, pageCount: Int) {
+        guard let pageRect = decoration.rect,
+              let rect = pageRectToOverlayRect(pageRect)?.standardized,
+              rect.width > 4,
+              rect.height > 4 else { return }
+        let text = PDFDecorationExportBaker.text(for: decoration, pageIndex: pageIndex, pageCount: pageCount)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let color = decoration.swatch.overlayColor.withAlphaComponent(CGFloat(decoration.opacity))
+        color.setStroke()
+        let path = NSBezierPath(rect: rect)
+        path.lineWidth = 2
+        path.stroke()
+
+        let font = NSFont.boldSystemFont(ofSize: min(decoration.fontSize, max(10, rect.height * 0.34)))
+        let attributes = textAttributes(for: decoration, font: font)
+        let size = NSString(string: text).size(withAttributes: attributes)
+        NSString(string: text).draw(
+            in: CGRect(
+                x: rect.midX - size.width / 2,
+                y: rect.midY - size.height / 2,
+                width: size.width + 2,
+                height: size.height + 2
+            ),
+            withAttributes: attributes
+        )
+    }
+
+    private func pageRectToOverlayRect(_ rect: CGRect) -> CGRect? {
+        guard let page, let pdfView else { return nil }
+        let pdfViewRect = pdfView.convert(rect, from: page)
+        return convert(pdfViewRect, from: pdfView).standardized
+    }
+
+    private func textAttributes(for decoration: PageDecoration, font: NSFont) -> [NSAttributedString.Key: Any] {
+        [
+            .font: font,
+            .foregroundColor: decoration.swatch.overlayColor.withAlphaComponent(CGFloat(decoration.opacity))
+        ]
+    }
+}
+
+private extension PageDecorationSwatch {
+    var overlayColor: NSColor {
+        switch self {
+        case .accent: return .dsAccentNS
+        case .sage: return .dsAnnotationSageNS
+        case .coral: return .dsAnnotationCoralNS
+        case .tertiary: return .dsTextTertiaryNS
+        case .lavender: return .dsAnnotationLavNS
+        }
+    }
+}
+
+final class PageObjectSelectionTarget {
+    weak var annotation: PDFAnnotation?
+    weak var stampPage: PDFPage?
+    var stampDecorationID: UUID?
+    private var storedBounds: CGRect
+
+    var page: PDFPage? {
+        annotation?.page ?? stampPage
+    }
+
+    var bounds: CGRect {
+        get { annotation?.bounds ?? storedBounds }
+        set {
+            storedBounds = newValue
+            annotation?.bounds = newValue
+        }
+    }
+
+    init(annotation: PDFAnnotation) {
+        self.annotation = annotation
+        self.storedBounds = annotation.bounds
+    }
+
+    init(stampDecorationID: UUID, page: PDFPage, bounds: CGRect) {
+        self.stampDecorationID = stampDecorationID
+        self.stampPage = page
+        self.storedBounds = bounds
+    }
+}
+
 final class SignatureSelectionOverlayView: NSView {
     weak var pdfView: PDFView?
-    var onBoundsChanged: ((PDFAnnotation, CGRect, CGRect?) -> CGRect)?
-    var onDelete: ((PDFAnnotation) -> Void)?
+    var onBoundsChanged: ((PageObjectSelectionTarget, CGRect, CGRect?) -> CGRect)?
+    var onDelete: ((PageObjectSelectionTarget) -> Void)?
 
-    private weak var annotation: PDFAnnotation?
+    private var selectionTarget: PageObjectSelectionTarget?
     private var dragMode: DragMode?
     private var initialMousePoint: CGPoint = .zero
     private var initialFrame: CGRect = .zero
@@ -868,13 +1122,19 @@ final class SignatureSelectionOverlayView: NSView {
     override var isOpaque: Bool { false }
 
     func select(_ annotation: PDFAnnotation) {
-        self.annotation = annotation
+        selectionTarget = PageObjectSelectionTarget(annotation: annotation)
+        isHidden = false
+        needsDisplay = true
+    }
+
+    func selectStamp(id: UUID, page: PDFPage, bounds: CGRect) {
+        selectionTarget = PageObjectSelectionTarget(stampDecorationID: id, page: page, bounds: bounds)
         isHidden = false
         needsDisplay = true
     }
 
     func clearSelection() {
-        annotation = nil
+        selectionTarget = nil
         dragMode = nil
         initialPageBounds = nil
         isHidden = true
@@ -943,15 +1203,15 @@ final class SignatureSelectionOverlayView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard let frame = selectionFrame(),
-              let annotation else { return }
+              let selectionTarget else { return }
         let point = convert(event.locationInWindow, from: nil)
         if deleteButtonRect(for: frame).insetBy(dx: -3, dy: -3).contains(point) {
-            onDelete?(annotation)
+            onDelete?(selectionTarget)
             return
         }
         initialMousePoint = point
         initialFrame = frame
-        initialPageBounds = annotation.bounds
+        initialPageBounds = selectionTarget.bounds
         if let handle = handle(at: point, in: frame) {
             dragMode = .resize(handle)
             handle.cursor.set()
@@ -963,9 +1223,9 @@ final class SignatureSelectionOverlayView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         guard let dragMode,
-              let annotation,
+              let selectionTarget,
               let pdfView,
-              let page = annotation.page else { return }
+              let page = selectionTarget.page else { return }
         let point = convert(event.locationInWindow, from: nil)
         let delta = CGPoint(x: point.x - initialMousePoint.x, y: point.y - initialMousePoint.y)
         let proposedFrame: CGRect
@@ -976,23 +1236,22 @@ final class SignatureSelectionOverlayView: NSView {
             proposedFrame = resizedFrame(initialFrame, handle: handle, delta: delta)
         }
         let proposedPageBounds = pdfView.convert(proposedFrame.standardized, to: page).standardized
-        _ = onBoundsChanged?(annotation, proposedPageBounds, nil)
+        let applied = onBoundsChanged?(selectionTarget, proposedPageBounds, nil) ?? proposedPageBounds
+        selectionTarget.bounds = applied
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard let annotation,
-              let pdfView,
-              let page = annotation.page,
+        guard let selectionTarget,
               let oldBounds = initialPageBounds else {
             dragMode = nil
             initialPageBounds = nil
             NSCursor.arrow.set()
             return
         }
-        let currentFrame = pdfView.convert(annotation.bounds, from: page).standardized
-        let currentPageBounds = pdfView.convert(currentFrame, to: page).standardized
-        _ = onBoundsChanged?(annotation, currentPageBounds, oldBounds)
+        let currentPageBounds = selectionTarget.bounds.standardized
+        let applied = onBoundsChanged?(selectionTarget, currentPageBounds, oldBounds) ?? currentPageBounds
+        selectionTarget.bounds = applied
         dragMode = nil
         initialPageBounds = nil
         NSCursor.arrow.set()
@@ -1000,10 +1259,10 @@ final class SignatureSelectionOverlayView: NSView {
     }
 
     private func selectionFrame() -> CGRect? {
-        guard let annotation,
-              let page = annotation.page,
+        guard let selectionTarget,
+              let page = selectionTarget.page,
               let pdfView else { return nil }
-        return pdfView.convert(annotation.bounds, from: page).standardized
+        return pdfView.convert(selectionTarget.bounds, from: page).standardized
     }
 
     private func interactionFrame() -> CGRect? {

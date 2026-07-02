@@ -94,8 +94,8 @@ final class WorkspaceModelTests: XCTestCase {
         XCTAssertFalse(workspace.comments.first?.isResolved ?? true)
     }
 
-    func testNewWorkspaceDefaultsToSchemaVersionFour() {
-        XCTAssertEqual(Workspace().schemaVersion, 4)
+    func testNewWorkspaceDefaultsToSchemaVersionFive() {
+        XCTAssertEqual(Workspace().schemaVersion, 5)
     }
 
     func testRectBackedModelsRoundTripThroughCodable() throws {
@@ -760,7 +760,7 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         ]
 
         let snapshot = try document.snapshot(contentType: .pdf)
-        let exportedData = try XCTUnwrap(document.exportedPDFData(from: snapshot))
+        let exportedData = try document.exportedPDFDataThrowing(from: snapshot)
         let exportedPDF = try XCTUnwrap(PDFDocument(data: exportedData))
         let metadataAnnotation = try XCTUnwrap(exportedPDF.page(at: 0)?.annotations.first {
             $0.value(forAnnotationKey: PDFAnnotationKey(rawValue: "/PDFoldWorkspaceComments")) != nil
@@ -1593,13 +1593,13 @@ final class WorkspaceDocumentTests: XCTestCase {
         document.memberPDFData[fixture.member.id] = fixture.pdfData
         document.workspace.comments = [WorkspaceComment(body: "Remove me")]
 
-        let commentedData = try XCTUnwrap(document.exportedPDFData(from: try document.snapshot(contentType: .pdf)))
+        let commentedData = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
         XCTAssertEqual(try workspaceCommentMetadataValues(in: commentedData).count, 1)
 
         document.memberPDFData[fixture.member.id] = commentedData
         document.workspace.comments = []
 
-        let clearedData = try XCTUnwrap(document.exportedPDFData(from: try document.snapshot(contentType: .pdf)))
+        let clearedData = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
         XCTAssertTrue(try workspaceCommentMetadataValues(in: clearedData).isEmpty)
     }
 
@@ -1622,7 +1622,7 @@ final class WorkspaceDocumentTests: XCTestCase {
             )
         ]
 
-        let data = try XCTUnwrap(document.exportedPDFData(from: try document.snapshot(contentType: .pdf)))
+        let data = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
         let pdf = try XCTUnwrap(PDFDocument(data: data))
 
         XCTAssertEqual(pdf.pageCount, 2)
@@ -1661,7 +1661,7 @@ final class WorkspaceDocumentTests: XCTestCase {
             )
         ]
 
-        let data = try XCTUnwrap(document.exportedPDFData(from: try document.snapshot(contentType: .pdf)))
+        let data = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
         let pdf = try XCTUnwrap(PDFDocument(data: data))
 
         XCTAssertEqual(pdf.pageCount, 1)
@@ -1687,7 +1687,7 @@ final class WorkspaceDocumentTests: XCTestCase {
             )
         ]
 
-        let exportedData = try XCTUnwrap(document.exportedPDFData(from: try document.snapshot(contentType: .pdf)))
+        let exportedData = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
         let reopened = try WorkspaceDocument(
             testingFile: FileWrapper(regularFileWithContents: exportedData),
             contentType: .pdf,
@@ -2429,6 +2429,234 @@ final class PDFEncryptionExportTests: XCTestCase {
         XCTAssertFalse(didSave)
         XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
         XCTAssertEqual(viewModel.exportError?.message, PDFEncryptionError.digitalSignatureConflict.userMessage)
+    }
+}
+
+final class PageDecorationExportTests: XCTestCase {
+    func testLegacyWorkspaceDecodesWithEmptyDecorations() throws {
+        let json = """
+        {
+          "title": "Legacy",
+          "schemaVersion": 4,
+          "documents": [],
+          "pageOrder": []
+        }
+        """
+
+        let workspace = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
+
+        XCTAssertTrue(workspace.decorations.isEmpty)
+        XCTAssertEqual(workspace.schemaVersion, 4)
+    }
+
+    func testPageNumberExportIsExtractableOnCurrentPage() throws {
+        let fixture = try makeMemberWithPDF(name: "Decorated", pageTexts: ["one", "two", "three", "four", "five"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.workspace.decorations = [.pageNumber()]
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+
+        let exported = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
+        let pdf = try XCTUnwrap(PDFDocument(data: exported))
+
+        XCTAssertTrue(pdf.page(at: 2)?.string?.contains("Page 3 of 5") ?? false)
+    }
+
+    func testBatesExportSequencesFromCurrentPageOrder() throws {
+        let fixture = try makeMemberWithPDF(name: "Bates", pageTexts: ["one", "two", "three", "four", "five"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.workspace.decorations = [
+            PageDecoration(kind: .bates, prefix: "DEF", startNumber: 100, fontSize: 10, swatch: .tertiary)
+        ]
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+
+        let exported = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
+        let pdf = try XCTUnwrap(PDFDocument(data: exported))
+
+        XCTAssertTrue(pdf.stringValue.contains("DEF-000100"))
+        XCTAssertTrue(pdf.stringValue.contains("DEF-000104"))
+    }
+
+    func testPageNumberExportFollowsReorderedPages() throws {
+        let fixture = try makeMemberWithPDF(name: "Reordered", pageTexts: ["first original", "second original", "third original"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.workspace.decorations = [.pageNumber()]
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+
+        XCTAssertTrue(viewModel.movePage(fixture.refs[2], toIndex: 0))
+        let exported = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
+        let pdf = try XCTUnwrap(PDFDocument(data: exported))
+
+        XCTAssertTrue(pdf.page(at: 0)?.string?.contains("Page 1 of 3") ?? false)
+        XCTAssertTrue(pdf.page(at: 0)?.string?.contains("third original") ?? false)
+    }
+
+    func testWatermarkedPageStillExtractsOriginalBodyText() throws {
+        let fixture = try makeMemberWithPDF(name: "Watermark", pageTexts: ["Original body text"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.workspace.decorations = [PageDecoration.watermark()]
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+
+        let exported = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
+        let pdf = try XCTUnwrap(PDFDocument(data: exported))
+
+        XCTAssertTrue(pdf.stringValue.contains("Original body text"))
+    }
+
+    func testDecorationExportPreservesExistingPDFAnnotations() throws {
+        let fixture = try makeMemberWithPDF(name: "Annotated", pageTexts: ["Annotated body"])
+        let sourcePDF = try XCTUnwrap(PDFDocument(data: fixture.pdfData))
+        let sourcePage = try XCTUnwrap(sourcePDF.page(at: 0))
+        let highlight = PDFAnnotation(
+            bounds: CGRect(x: 72, y: 650, width: 140, height: 18),
+            forType: .highlight,
+            withProperties: nil
+        )
+        highlight.color = .dsAnnotationSageNS
+        sourcePage.addAnnotation(highlight)
+        let note = PDFAnnotation(bounds: CGRect(x: 40, y: 520, width: 24, height: 24), forType: .text, withProperties: nil)
+        note.contents = "Keep this note"
+        sourcePage.addAnnotation(note)
+
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.workspace.decorations = [.pageNumber()]
+        document.memberPDFData[fixture.member.id] = try XCTUnwrap(sourcePDF.dataRepresentation())
+
+        let exported = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
+        let pdf = try XCTUnwrap(PDFDocument(data: exported))
+        let annotations = try XCTUnwrap(pdf.page(at: 0)?.annotations)
+
+        XCTAssertTrue(pdf.stringValue.contains("Page 1 of 1"))
+        XCTAssertTrue(annotations.contains { $0.type == "Highlight" })
+        XCTAssertTrue(annotations.contains { $0.type == "Text" && $0.contents == "Keep this note" })
+    }
+
+    func testDecorationBakerRejectsBlankActiveWatermark() throws {
+        let fixture = try makeMemberWithPDF(name: "Blank", pageTexts: ["one"])
+        var watermark = PageDecoration.watermark()
+        watermark.text = "   "
+
+        XCTAssertThrowsError(try PDFDecorationExportBaker.bake(
+            decorations: [watermark],
+            pageOrder: fixture.refs,
+            into: fixture.pdfData
+        )) { error in
+            XCTAssertEqual(error as? PDFDecorationExportBaker.BakeError, .invalidDecoration)
+        }
+    }
+
+    func testDisablingGlobalDecorationRemovesPersistedState() {
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument(), processingEngine: PDFKitProcessingEngineFallback())
+
+        viewModel.setDecoration(.watermark, enabled: true)
+        XCTAssertTrue(viewModel.document.workspace.hasActiveDecorations)
+
+        viewModel.setDecoration(.watermark, enabled: false)
+
+        XCTAssertFalse(viewModel.document.workspace.hasActiveDecorations)
+        XCTAssertFalse(viewModel.document.workspace.decorations.contains { $0.kind == .watermark })
+    }
+
+    func testDecorationBakerRejectsInvalidPDFData() {
+        XCTAssertThrowsError(try PDFDecorationExportBaker.bake(
+            decorations: [.pageNumber()],
+            pageOrder: [],
+            into: Data("not a pdf".utf8)
+        )) { error in
+            XCTAssertTrue(error is PDFDecorationExportBaker.BakeError)
+        }
+    }
+
+    func testDecorationBakerRejectsMismatchedPageOrder() throws {
+        let pdfData = try XCTUnwrap(makePDF(pageTexts: ["one"]).dataRepresentation())
+
+        XCTAssertThrowsError(try PDFDecorationExportBaker.bake(
+            decorations: [.pageNumber()],
+            pageOrder: [],
+            into: pdfData
+        )) { error in
+            XCTAssertEqual(error as? PDFDecorationExportBaker.BakeError, .pageOrderMismatch)
+        }
+    }
+
+    func testThrowingExportPropagatesDecorationPageOrderMismatch() throws {
+        let fixture = try makeMemberWithPDF(name: "Mismatch", pageTexts: ["one"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = []
+        document.workspace.decorations = [.pageNumber()]
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+
+        XCTAssertThrowsError(try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))) { error in
+            XCTAssertEqual(error as? PDFDecorationExportBaker.BakeError, .pageOrderMismatch)
+        }
+    }
+
+    func testDecorationBakerRejectsStampMissingCurrentPageRef() throws {
+        let fixture = try makeMemberWithPDF(name: "Stamp", pageTexts: ["one"])
+        let stamp = PageDecoration.stamp(
+            text: "Approved",
+            swatch: .sage,
+            pageRefID: UUID(),
+            rect: CGRect(x: 40, y: 40, width: 120, height: 40)
+        )
+
+        XCTAssertThrowsError(try PDFDecorationExportBaker.bake(
+            decorations: [stamp],
+            pageOrder: fixture.refs,
+            into: fixture.pdfData
+        )) { error in
+            XCTAssertEqual(error as? PDFDecorationExportBaker.BakeError, .invalidStampDecoration)
+        }
+    }
+
+    func testDecorationBakerRejectsStampMissingRect() throws {
+        let fixture = try makeMemberWithPDF(name: "Stamp", pageTexts: ["one"])
+        let stamp = PageDecoration(
+            kind: .stamp,
+            text: "Approved",
+            pageRefID: fixture.refs[0].id,
+            rect: nil,
+            fontSize: 22,
+            opacity: 0.88,
+            swatch: .sage
+        )
+
+        XCTAssertThrowsError(try PDFDecorationExportBaker.bake(
+            decorations: [stamp],
+            pageOrder: fixture.refs,
+            into: fixture.pdfData
+        )) { error in
+            XCTAssertEqual(error as? PDFDecorationExportBaker.BakeError, .invalidStampDecoration)
+        }
+    }
+
+    func testStampPlacementDoesNotAddPDFAnnotationBeforeExport() throws {
+        let fixture = try makeMemberWithPDF(name: "Stamp", pageTexts: ["Stamp body"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+        let page = try XCTUnwrap(viewModel.combinedPDF.page(at: 1))
+        let annotationCount = page.annotations.count
+
+        viewModel.beginStampPlacement(text: "Approved", swatch: .sage)
+        let stamp = viewModel.placeStamp(at: CGPoint(x: 120, y: 120), on: page)
+
+        XCTAssertNotNil(stamp)
+        XCTAssertEqual(page.annotations.count, annotationCount)
+        XCTAssertEqual(document.workspace.decorations.filter { $0.kind == .stamp }.count, 1)
     }
 }
 

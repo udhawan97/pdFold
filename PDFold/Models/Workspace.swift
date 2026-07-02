@@ -124,13 +124,14 @@ struct Workspace: Codable {
     var documents: [MemberDocument] = []
     var pageOrder: [PageRef] = []
     var signatures: [SignaturePlacement] = []
+    var decorations: [PageDecoration] = []
     var tags: [String] = []
     var comments: [WorkspaceComment] = []
     var pageEditStates: [PageEditState] = []
-    var schemaVersion: Int = 4
+    var schemaVersion: Int = 5
 
     enum CodingKeys: String, CodingKey {
-        case id, title, createdAt, modifiedAt, documents, pageOrder, signatures, tags, comments, pageEditStates, schemaVersion
+        case id, title, createdAt, modifiedAt, documents, pageOrder, signatures, decorations, tags, comments, pageEditStates, schemaVersion
     }
 
     init() {}
@@ -144,9 +145,16 @@ struct Workspace: Codable {
         documents = try c.decodeIfPresent([MemberDocument].self, forKey: .documents) ?? []
         pageOrder = try c.decodeIfPresent([PageRef].self, forKey: .pageOrder) ?? []
         signatures = try c.decodeIfPresent([SignaturePlacement].self, forKey: .signatures) ?? []
+        decorations = try c.decodeIfPresent([PageDecoration].self, forKey: .decorations) ?? []
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         comments = try c.decodeIfPresent([WorkspaceComment].self, forKey: .comments) ?? []
         pageEditStates = try c.decodeIfPresent([PageEditState].self, forKey: .pageEditStates) ?? []
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+    }
+}
+
+extension Workspace {
+    var hasActiveDecorations: Bool {
+        decorations.contains(where: \.isEnabled)
     }
 }

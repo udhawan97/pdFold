@@ -83,6 +83,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
     case underline = "underline"
     case strikeout = "strikethrough"
     case signature = "signature"
+    case stamp     = "seal"
 
     var id: String { rawValue }
     var label: String {
@@ -98,6 +99,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .underline: return "Underline"
         case .strikeout: return "Strikeout"
         case .signature: return "Signature"
+        case .stamp:     return "Stamp"
         }
     }
 
@@ -114,6 +116,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .underline: return "underline"
         case .strikeout: return "strikethrough"
         case .signature: return "signature"
+        case .stamp:     return "seal"
         }
     }
 
@@ -130,13 +133,14 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .underline: return "Select PDF text to underline it."
         case .strikeout: return "Select PDF text to strike it out."
         case .signature: return "Place a saved signature on the page."
+        case .stamp:     return "Place a stamp on the page."
         }
     }
 
     var isColorable: Bool {
         switch self {
         case .highlight, .note, .editText, .ink, .underline, .strikeout: return true
-        case .none, .comment, .commentRegion, .eraser, .signature: return false
+        case .none, .comment, .commentRegion, .eraser, .signature, .stamp: return false
         }
     }
 
@@ -158,15 +162,23 @@ final class WorkspaceViewModel {
     var pendingPasswordPDF: PDFDocument? = nil
     var isShowingPasswordPrompt = false
     var currentTool: AnnotationTool = .none {
-        didSet { if oldValue != currentTool { selectedAnnotation = nil } }
+        didSet {
+            if oldValue != currentTool {
+                selectedAnnotation = nil
+                selectedStampDecorationID = nil
+            }
+        }
     }
     var isShowingSearch = false
     var isShowingSignaturePalette = false
+    var isShowingStampPalette = false
     var searchQuery = ""
     var searchResults: [PDFSelection] = []
     var searchResultIndex: Int = -1
     var pendingSignatureData: Data? = nil
     var pendingSignatureOptions: PendingSignaturePlacementOptions? = nil
+    var pendingStampOptions: PendingStampPlacementOptions? = nil
+    var selectedStampDecorationID: UUID? = nil
     var selectedPageRefID: UUID? = nil
     var draggedPageRefID: UUID? = nil
     var selectedCommentID: UUID? = nil
@@ -267,6 +279,11 @@ final class WorkspaceViewModel {
                 timestampRequested: false
             )
         }
+    }
+
+    struct PendingStampPlacementOptions: Equatable {
+        var text: String
+        var swatch: PageDecorationSwatch
     }
 
     struct PDFNoteComment: Identifiable {
@@ -639,6 +656,7 @@ final class WorkspaceViewModel {
         document.workspace.pageEditStates.removeAll { removedPageRefIDs.contains($0.pageRefID) }
         clearCommentAnchors(forRemovedPageRefIDs: removedPageRefIDs)
         removeSignaturePlacements(forRemovedPageRefIDs: removedPageRefIDs)
+        removeDecorations(forRemovedPageRefIDs: removedPageRefIDs)
         removedIds.forEach { document.memberPDFData.removeValue(forKey: $0) }
         removedIds.forEach { document.sourcePayloads.removeValue(forKey: $0) }
         loadedPDFs.removeAll { removedIds.contains($0.0.id) }
@@ -652,6 +670,7 @@ final class WorkspaceViewModel {
         var pageOrder: [PageRef]
         var comments: [WorkspaceComment]
         var signatures: [SignaturePlacement]
+        var decorations: [PageDecoration]
         var signatureIdentities: [UUID: any SigningIdentity]
         var pageRotations: [UUID: Int]
         var pdfData: [UUID: Data]
@@ -670,6 +689,7 @@ final class WorkspaceViewModel {
             pageOrder: document.workspace.pageOrder,
             comments: document.workspace.comments,
             signatures: document.workspace.signatures,
+            decorations: document.workspace.decorations,
             signatureIdentities: signingIdentitiesByPlacementID,
             pageRotations: currentPageRotations(),
             pdfData: currentPDFData(),
@@ -682,6 +702,7 @@ final class WorkspaceViewModel {
         document.workspace.pageOrder = snapshot.pageOrder
         document.workspace.comments = snapshot.comments
         document.workspace.signatures = snapshot.signatures
+        document.workspace.decorations = snapshot.decorations
         signingIdentitiesByPlacementID = snapshot.signatureIdentities
         document.memberPDFData = snapshot.pdfData
         document.sourcePayloads = snapshot.sourcePayloads
@@ -1059,6 +1080,14 @@ final class WorkspaceViewModel {
         }
     }
 
+    private func removeDecorations(forRemovedPageRefIDs removedPageRefIDs: Set<UUID>) {
+        guard !removedPageRefIDs.isEmpty else { return }
+        document.workspace.decorations.removeAll { decoration in
+            guard let pageRefID = decoration.pageRefID else { return false }
+            return removedPageRefIDs.contains(pageRefID)
+        }
+    }
+
     func jumpToNoteComment(_ note: PDFNoteComment) {
         selectedAnnotation = note.annotation
         selectPage(note.pageRef)
@@ -1106,6 +1135,118 @@ final class WorkspaceViewModel {
         markWorkspaceModified()
         if warnAboutSignatureInvalidation {
             warnIfEditingWouldInvalidateSignatures()
+        }
+    }
+
+    // MARK: - Decorations
+
+    func decoration(of kind: PageDecoration.Kind) -> PageDecoration? {
+        document.workspace.decorations.first { $0.kind == kind && $0.pageRefID == nil }
+    }
+
+    func isDecorationEnabled(_ kind: PageDecoration.Kind) -> Bool {
+        decoration(of: kind)?.isEnabled == true
+    }
+
+    func decorationText(for kind: PageDecoration.Kind) -> String {
+        decoration(of: kind)?.text ?? defaultDecoration(for: kind).text
+    }
+
+    func decorationPrefix(for kind: PageDecoration.Kind) -> String {
+        decoration(of: kind)?.prefix ?? defaultDecoration(for: kind).prefix
+    }
+
+    func decorationStartNumber(for kind: PageDecoration.Kind) -> Int {
+        decoration(of: kind)?.startNumber ?? defaultDecoration(for: kind).startNumber
+    }
+
+    func setDecoration(_ kind: PageDecoration.Kind, enabled: Bool) {
+        var decorations = document.workspace.decorations
+        if let index = decorations.firstIndex(where: { $0.kind == kind && $0.pageRefID == nil }) {
+            if enabled {
+                decorations[index].isEnabled = true
+            } else {
+                decorations.remove(at: index)
+            }
+        } else if enabled {
+            decorations.append(defaultDecoration(for: kind))
+        }
+        replaceDecorations(decorations, actionName: decorationActionName(for: kind))
+    }
+
+    func setDecorationText(_ kind: PageDecoration.Kind, text: String) {
+        updateDecoration(kind, actionName: decorationActionName(for: kind)) { decoration in
+            decoration.text = text
+        }
+    }
+
+    func setDecorationPrefix(_ kind: PageDecoration.Kind, prefix: String) {
+        updateDecoration(kind, actionName: decorationActionName(for: kind)) { decoration in
+            decoration.prefix = prefix
+        }
+    }
+
+    func setDecorationStartNumber(_ kind: PageDecoration.Kind, startNumber: Int) {
+        updateDecoration(kind, actionName: decorationActionName(for: kind)) { decoration in
+            decoration.startNumber = max(0, startNumber)
+        }
+    }
+
+    private func updateDecoration(_ kind: PageDecoration.Kind,
+                                  actionName: String,
+                                  mutate: (inout PageDecoration) -> Void) {
+        var decorations = document.workspace.decorations
+        let index: Int
+        if let existingIndex = decorations.firstIndex(where: { $0.kind == kind && $0.pageRefID == nil }) {
+            index = existingIndex
+        } else {
+            decorations.append(defaultDecoration(for: kind))
+            index = decorations.count - 1
+        }
+        mutate(&decorations[index])
+        replaceDecorations(decorations, actionName: actionName)
+    }
+
+    private func replaceDecorations(_ decorations: [PageDecoration], actionName: String) {
+        guard canPerformMutatingAction() else { return }
+        let previous = document.workspace.decorations
+        guard previous != decorations else { return }
+        document.workspace.decorations = decorations
+        if let selectedStampDecorationID,
+           !decorations.contains(where: { $0.id == selectedStampDecorationID }) {
+            self.selectedStampDecorationID = nil
+        }
+        markAnnotationsModified()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            guard vm.canPerformUndoMutation() else { return }
+            vm.replaceDecorations(previous, actionName: actionName)
+        }
+        undoManager?.setActionName(actionName)
+    }
+
+    private func defaultDecoration(for kind: PageDecoration.Kind) -> PageDecoration {
+        switch kind {
+        case .watermark:
+            return .watermark()
+        case .pageNumber:
+            return .pageNumber()
+        case .bates:
+            return .bates()
+        case .stamp:
+            return PageDecoration(kind: .stamp)
+        }
+    }
+
+    private func decorationActionName(for kind: PageDecoration.Kind) -> String {
+        switch kind {
+        case .watermark:
+            return "Change watermark"
+        case .pageNumber:
+            return "Change page numbers"
+        case .bates:
+            return "Change Bates stamp"
+        case .stamp:
+            return "Change stamp"
         }
     }
 
@@ -1551,6 +1692,10 @@ final class WorkspaceViewModel {
 
     func deleteSelectedAnnotation() {
         guard canPerformMutatingAction() else { return }
+        if selectedAnnotation == nil, selectedStampDecorationID != nil {
+            deleteSelectedStampDecoration()
+            return
+        }
         guard let ann = selectedAnnotation, let page = ann.page else {
             showEditWarning(.annotationCreationFailed)
             return
@@ -1563,6 +1708,7 @@ final class WorkspaceViewModel {
             signingIdentitiesByPlacementID.removeValue(forKey: removedSignature.id)
         }
         selectedAnnotation = nil
+        selectedStampDecorationID = nil
         markAnnotationsModified()
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
@@ -1700,6 +1846,7 @@ final class WorkspaceViewModel {
         )
         currentTool = .signature
         isShowingSignaturePalette = false
+        isShowingStampPalette = false
     }
 
     func beginCryptographicSignaturePlacement(imageData: Data,
@@ -1725,6 +1872,20 @@ final class WorkspaceViewModel {
         )
         currentTool = .signature
         isShowingSignaturePalette = false
+        isShowingStampPalette = false
+    }
+
+    func beginStampPlacement(text: String, swatch: PageDecorationSwatch) {
+        guard canPerformMutatingAction() else { return }
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { return }
+        pendingStampOptions = PendingStampPlacementOptions(text: trimmedText, swatch: swatch)
+        pendingSignatureData = nil
+        pendingSignatureOptions = nil
+        pendingSigningIdentity = nil
+        currentTool = .stamp
+        isShowingSignaturePalette = false
+        isShowingStampPalette = false
     }
 
     func resolveSigningIdentity(reference: String, signerName: String) throws -> any SigningIdentity {
@@ -1812,6 +1973,99 @@ final class WorkspaceViewModel {
     }
 
     @discardableResult
+    func placeStamp(at pagePoint: CGPoint,
+                    on page: PDFPage,
+                    size: CGSize = CGSize(width: 150, height: 48)) -> PageDecoration? {
+        guard canPerformMutatingAction() else { return nil }
+        guard let options = pendingStampOptions,
+              let refID = pageRefID(for: page) else { return nil }
+        let bounds = constrainedSignatureBounds(
+            CGRect(
+                x: pagePoint.x - size.width / 2,
+                y: pagePoint.y - size.height / 2,
+                width: size.width,
+                height: size.height
+            ),
+            on: page
+        )
+        let decoration = PageDecoration.stamp(
+            text: options.text,
+            swatch: options.swatch,
+            pageRefID: refID,
+            rect: bounds
+        )
+        var decorations = document.workspace.decorations
+        decorations.append(decoration)
+        selectedAnnotation = nil
+        selectedStampDecorationID = decoration.id
+        pendingStampOptions = nil
+        replaceDecorations(decorations, actionName: "Place stamp")
+        return decoration
+    }
+
+    func stampDecoration(id: UUID) -> PageDecoration? {
+        document.workspace.decorations.first { $0.id == id && $0.kind == .stamp }
+    }
+
+    func stampDecoration(at pagePoint: CGPoint, on page: PDFPage, in pdfDocument: PDFDocument?) -> PageDecoration? {
+        guard let pageRef = pageRef(for: page, in: pdfDocument) else { return nil }
+        return document.workspace.decorations.reversed().first { decoration in
+            guard decoration.kind == .stamp,
+                  decoration.isEnabled,
+                  decoration.pageRefID == pageRef.id,
+                  let rect = decoration.rect?.insetBy(dx: -4, dy: -4) else {
+                return false
+            }
+            return rect.contains(pagePoint)
+        }
+    }
+
+    func deleteSelectedStampDecoration() {
+        guard let selectedStampDecorationID else { return }
+        removeStampDecoration(id: selectedStampDecorationID)
+    }
+
+    func removeStampDecoration(id: UUID) {
+        var decorations = document.workspace.decorations
+        guard let index = decorations.firstIndex(where: { $0.id == id && $0.kind == .stamp }) else { return }
+        decorations.remove(at: index)
+        selectedStampDecorationID = nil
+        replaceDecorations(decorations, actionName: "Delete stamp")
+    }
+
+    @discardableResult
+    func updateStampDecoration(id decorationID: UUID,
+                               on page: PDFPage,
+                               to proposedBounds: CGRect,
+                               registerUndoFrom oldBounds: CGRect? = nil) -> CGRect {
+        let fallbackBounds = stampDecoration(id: decorationID)?.rect ?? proposedBounds
+        guard canPerformMutatingAction() else { return fallbackBounds }
+        guard let index = document.workspace.decorations.firstIndex(where: { $0.id == decorationID && $0.kind == .stamp }) else {
+            return fallbackBounds
+        }
+
+        let bounds = constrainedSignatureBounds(proposedBounds, on: page)
+        let previousBounds = oldBounds ?? document.workspace.decorations[index].rect ?? fallbackBounds
+        let shouldRegisterUndo = oldBounds.map { !$0.isApproximatelyEqual(to: bounds) } ?? false
+        guard !(document.workspace.decorations[index].rect?.isApproximatelyEqual(to: bounds) ?? false) ||
+              shouldRegisterUndo else {
+            return bounds
+        }
+
+        document.workspace.decorations[index].rect = bounds
+        markAnnotationsModified()
+
+        if shouldRegisterUndo {
+            undoManager?.registerUndo(withTarget: self) { vm in
+                guard vm.canPerformUndoMutation() else { return }
+                vm.updateStampDecoration(id: decorationID, on: page, to: previousBounds, registerUndoFrom: bounds)
+            }
+            undoManager?.setActionName("Move stamp")
+        }
+        return bounds
+    }
+
+    @discardableResult
     func updateSignaturePlacement(for annotation: PDFAnnotation,
                                   to proposedBounds: CGRect,
                                   registerUndoFrom oldBounds: CGRect? = nil) -> CGRect {
@@ -1895,8 +2149,11 @@ final class WorkspaceViewModel {
             memberPDFData: currentPDFData(),
             sourcePayloads: document.sourcePayloads
         )
-        guard let pdfData = document.exportedPDFData(from: snapshot) else {
-            exportError = ExportError(message: "pdFold could not prepare the PDF for signing.")
+        let pdfData: Data
+        do {
+            pdfData = try document.exportedPDFDataThrowing(from: snapshot)
+        } catch {
+            exportError = ExportError(message: userMessage(for: error, exporting: .pdf))
             return
         }
 
@@ -2306,9 +2563,7 @@ final class WorkspaceViewModel {
             memberPDFData: currentPDFData(),
             sourcePayloads: document.sourcePayloads
         )
-        guard let pdfData = document.exportedPDFData(from: snapshot) else {
-            throw ExportBuildError.cannotEncode(formatName: WorkspaceExportFormat.pdf.menuTitle)
-        }
+        let pdfData = try document.exportedPDFDataThrowing(from: snapshot)
         guard let encryption = options.encryption else { return pdfData }
         return try PDFEncryptionService.encryptedData(from: pdfData, options: encryption)
     }
@@ -2386,8 +2641,14 @@ final class WorkspaceViewModel {
             memberPDFData: currentPDFData(),
             sourcePayloads: document.sourcePayloads
         )
-        guard let exportData = document.exportedPDFData(from: snapshot),
-              let exportDoc = PDFDocument(data: exportData) else {
+        let exportData: Data
+        do {
+            exportData = try document.exportedPDFDataThrowing(from: snapshot)
+        } catch {
+            exportError = ExportError(message: userMessage(for: error, exporting: format))
+            return false
+        }
+        guard let exportDoc = PDFDocument(data: exportData) else {
             exportError = ExportError(message: "pdFold could not prepare pages for image export.")
             return false
         }
@@ -2563,6 +2824,7 @@ final class WorkspaceViewModel {
 
     private var hasWorkspaceExportAdditions: Bool {
         !document.workspace.comments.isEmpty ||
+            document.workspace.hasActiveDecorations ||
             !document.workspace.tags.isEmpty ||
             pdfNoteComments.contains { !$0.body.isEmpty }
     }
@@ -2591,6 +2853,7 @@ final class WorkspaceViewModel {
     private func sourcePayloadCanRepresentCurrentPDF(member: MemberDocument, payload: SourceDocumentPayload) -> Bool {
         guard document.workspace.documents.count == 1,
               document.workspace.signatures.isEmpty,
+              !document.workspace.hasActiveDecorations,
               document.workspace.pageOrder.map(\.id) == member.pageRefs else {
             return false
         }
@@ -2736,6 +2999,14 @@ final class WorkspaceViewModel {
             return "pdFold could not encode the \(formatName) export."
         case ExportBuildError.unsupportedRichTextFormat:
             return "pdFold does not have a rich-text writer for \(format.menuTitle)."
+        case PDFDecorationExportBaker.BakeError.invalidPDF:
+            return "pdFold could not apply decorations to this PDF. Reopen the document and try exporting again."
+        case PDFDecorationExportBaker.BakeError.pageOrderMismatch:
+            return "pdFold could not match decorations to the current page order. Reopen the document and try exporting again."
+        case PDFDecorationExportBaker.BakeError.invalidDecoration:
+            return "pdFold could not apply a decoration to this PDF. Add text or turn the decoration off."
+        case PDFDecorationExportBaker.BakeError.invalidStampDecoration:
+            return "pdFold could not apply a stamp to this PDF. Remove the stamp and place it again."
         default:
             return "pdFold could not create the \(format.menuTitle) export: \(error.localizedDescription)"
         }
@@ -3294,6 +3565,7 @@ final class WorkspaceViewModel {
         document.workspace.pageEditStates.removeAll { $0.pageRefID == ref.id }
         clearCommentAnchors(forRemovedPageRefIDs: [ref.id])
         removeSignaturePlacements(forRemovedPageRefIDs: [ref.id])
+        removeDecorations(forRemovedPageRefIDs: [ref.id])
         textAnalysisCache.removeValue(forKey: ref.id)
 
         // Drop empty member

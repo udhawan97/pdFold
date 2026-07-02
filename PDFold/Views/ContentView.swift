@@ -79,6 +79,9 @@ struct ContentView: View {
         .popover(isPresented: $viewModel.isShowingSignaturePalette, arrowEdge: .top) {
             SignaturePalette(viewModel: viewModel)
         }
+        .popover(isPresented: $viewModel.isShowingStampPalette, arrowEdge: .top) {
+            StampPalette(viewModel: viewModel)
+        }
         .sheet(isPresented: $isShowingExportSheet) {
             ExportSheet(viewModel: viewModel, isPresented: $isShowingExportSheet)
         }
@@ -399,7 +402,7 @@ private struct AnnotationToolPicker: View {
     // then selection, text markup (+ eraser), and free-form page content.
     private let toolGroups: [[AnnotationTool]] = [
         [.editText],
-        [.signature],
+        [.signature, .stamp],
         [.none],
         [.comment, .commentRegion],
         [.highlight, .underline, .strikeout, .eraser],
@@ -428,13 +431,13 @@ private struct AnnotationToolPicker: View {
         )
         .shadow(color: Color.black.opacity(0.10), radius: 8, x: 0, y: 2)
         .help("Annotation tool")
-        .animation(shouldReduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.9), value: viewModel.currentTool)
+        .animation(shouldReduceMotion ? nil : .spring(response: 0.31, dampingFraction: 0.79), value: viewModel.currentTool)
     }
 
     private func toolGroup(_ tools: [AnnotationTool], style: ToolGroupStyle) -> some View {
         HStack(spacing: 4) {
             ForEach(tools) { tool in
-                toolButton(tool)
+                toolButton(tool, shouldReduceMotion: shouldReduceMotion)
             }
         }
         .padding(.horizontal, style.horizontalPadding)
@@ -451,7 +454,7 @@ private struct AnnotationToolPicker: View {
     }
 
     @ViewBuilder
-    private func toolButton(_ tool: AnnotationTool) -> some View {
+    private func toolButton(_ tool: AnnotationTool, shouldReduceMotion: Bool) -> some View {
         let isSelected = viewModel.currentTool == tool
         let isHovered = hoveredTool == tool
         let accent = toolAccent(for: tool)
@@ -473,7 +476,7 @@ private struct AnnotationToolPicker: View {
             .frame(width: 32, height: 32)
             .contentShape(Capsule())
         }
-        .buttonStyle(ToolButtonStyle(isHovered: isHovered, isSelected: isSelected, hoverFill: hoverFill))
+        .buttonStyle(ToolButtonStyle(isHovered: isHovered, isSelected: isSelected, hoverFill: hoverFill, reduceMotion: shouldReduceMotion))
         .onHover { isHovered in
             if isHovered {
                 hoveredTool = tool
@@ -501,7 +504,7 @@ private struct AnnotationToolPicker: View {
         switch tool {
         case .editText:
             return Color.dsEditTextAccent
-        case .signature:
+        case .signature, .stamp:
             return Color.dsSignatureAccent
         case .comment, .commentRegion:
             return Color.dsAccent
@@ -514,7 +517,7 @@ private struct AnnotationToolPicker: View {
         switch tool {
         case .editText:
             return Color.dsEditTextSoft
-        case .signature:
+        case .signature, .stamp:
             return Color.dsSignatureSoft
         case .comment, .commentRegion:
             return Color.dsAccentSoft
@@ -527,7 +530,7 @@ private struct AnnotationToolPicker: View {
         switch tool {
         case .editText:
             return Color.dsEditTextHover
-        case .signature:
+        case .signature, .stamp:
             return Color.dsSignatureHover
         case .comment, .commentRegion:
             return Color.dsAccentSoft
@@ -539,8 +542,13 @@ private struct AnnotationToolPicker: View {
     private func select(_ tool: AnnotationTool) {
         if tool == .signature {
             viewModel.isShowingSignaturePalette = true
+            viewModel.isShowingStampPalette = false
+        } else if tool == .stamp {
+            viewModel.isShowingStampPalette = true
+            viewModel.isShowingSignaturePalette = false
         } else {
             viewModel.isShowingSignaturePalette = false
+            viewModel.isShowingStampPalette = false
         }
         viewModel.currentTool = tool
     }
@@ -561,6 +569,7 @@ private struct ToolButtonStyle: ButtonStyle {
     var isHovered: Bool
     var isSelected: Bool = false
     var hoverFill: Color = Color.dsAccentSoft
+    var reduceMotion: Bool = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -571,8 +580,8 @@ private struct ToolButtonStyle: ButtonStyle {
                 }
             }
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
     }
 }
 

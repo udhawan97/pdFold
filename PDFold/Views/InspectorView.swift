@@ -1,5 +1,6 @@
 import SwiftUI
 import PDFKit
+import AppKit
 
 struct InspectorView: View {
     @Bindable var viewModel: WorkspaceViewModel
@@ -10,6 +11,7 @@ struct InspectorView: View {
         case tags = "Tags"
         case comments = "Comments"
         case markup = "Markup"
+        case decorate = "Decorate"
 
         var iconName: String {
             switch self {
@@ -17,6 +19,7 @@ struct InspectorView: View {
             case .tags: return "tag"
             case .comments: return "text.bubble"
             case .markup: return "highlighter"
+            case .decorate: return "paintbrush.pointed"
             }
         }
     }
@@ -48,6 +51,7 @@ struct InspectorView: View {
                 case .tags: InspectorTagsView(viewModel: viewModel)
                 case .comments: InspectorWorkspaceCommentsView(viewModel: viewModel)
                 case .markup: InspectorMarkupView(viewModel: viewModel)
+                case .decorate: InspectorDecorateView(viewModel: viewModel)
                 }
             }
         }
@@ -373,10 +377,10 @@ private struct WorkspaceCommentRow: View {
 
     private let colorChoices: [(label: String, hex: String, color: Color)] = [
         ("Dark", "#1F2933", Color.dsTextPrimary),
-        ("Blue", "#1D6FA3", Color(red: 0.114, green: 0.435, blue: 0.639)),
-        ("Red", "#B42318", Color(red: 0.706, green: 0.137, blue: 0.094)),
-        ("Green", "#087443", Color(red: 0.031, green: 0.455, blue: 0.263)),
-        ("Violet", "#6941C6", Color(red: 0.412, green: 0.255, blue: 0.776))
+        ("Blue", "#1D6FA3", Color.dsAccent),
+        ("Red", "#B42318", Color.dsAnnotationCoral),
+        ("Green", "#087443", Color.dsAnnotationSage),
+        ("Violet", "#6941C6", Color.dsAnnotationLavender)
     ]
 
     private var displayedBody: String {
@@ -738,6 +742,109 @@ private struct PDFNoteCommentRow: View {
 }
 
 // MARK: - Markup tab
+
+private struct InspectorDecorateView: View {
+    @Bindable var viewModel: WorkspaceViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var shouldReduceMotion: Bool {
+        reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private var watermarkEnabled: Binding<Bool> {
+        Binding(
+            get: { viewModel.isDecorationEnabled(.watermark) },
+            set: { viewModel.setDecoration(.watermark, enabled: $0) }
+        )
+    }
+
+    private var pageNumbersEnabled: Binding<Bool> {
+        Binding(
+            get: { viewModel.isDecorationEnabled(.pageNumber) },
+            set: { viewModel.setDecoration(.pageNumber, enabled: $0) }
+        )
+    }
+
+    private var batesEnabled: Binding<Bool> {
+        Binding(
+            get: { viewModel.isDecorationEnabled(.bates) },
+            set: { viewModel.setDecoration(.bates, enabled: $0) }
+        )
+    }
+
+    private var watermarkText: Binding<String> {
+        Binding(
+            get: { viewModel.decorationText(for: .watermark) },
+            set: { viewModel.setDecorationText(.watermark, text: $0) }
+        )
+    }
+
+    private var batesPrefix: Binding<String> {
+        Binding(
+            get: { viewModel.decorationPrefix(for: .bates) },
+            set: { viewModel.setDecorationPrefix(.bates, prefix: $0) }
+        )
+    }
+
+    private var batesStartNumber: Binding<Int> {
+        Binding(
+            get: { viewModel.decorationStartNumber(for: .bates) },
+            set: { viewModel.setDecorationStartNumber(.bates, startNumber: $0) }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            decorationRow(title: "Watermark", isOn: watermarkEnabled) {
+                TextField("Text", text: watermarkText)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Rectangle().fill(Color.dsSeparator).frame(height: 0.5)
+
+            decorationRow(title: "Page numbers", isOn: pageNumbersEnabled) {
+                Text("Page 1 of \(max(viewModel.pageCount, 1))")
+                    .font(.dsCaption())
+                    .foregroundStyle(Color.dsTextSecondary)
+            }
+
+            Rectangle().fill(Color.dsSeparator).frame(height: 0.5)
+
+            decorationRow(title: "Bates stamp", isOn: batesEnabled) {
+                VStack(alignment: .leading, spacing: .dsSM) {
+                    TextField("Prefix", text: batesPrefix)
+                        .textFieldStyle(.roundedBorder)
+                    Stepper(value: batesStartNumber, in: 0...999_999) {
+                        Text("Start number \(viewModel.decorationStartNumber(for: .bates))")
+                            .font(.dsCaption())
+                            .foregroundStyle(Color.dsTextSecondary)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, .dsXS)
+        .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.16), value: viewModel.document.workspace.decorations)
+    }
+
+    private func decorationRow<Controls: View>(title: String,
+                                               isOn: Binding<Bool>,
+                                               @ViewBuilder controls: () -> Controls) -> some View {
+        VStack(alignment: .leading, spacing: .dsSM) {
+            Toggle(title, isOn: isOn)
+                .toggleStyle(.checkbox)
+                .font(.dsBody())
+                .foregroundStyle(Color.dsTextPrimary)
+
+            if isOn.wrappedValue {
+                controls()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.horizontal, .dsLG)
+        .padding(.vertical, .dsMD)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
 
 private struct InspectorMarkupView: View {
     var viewModel: WorkspaceViewModel

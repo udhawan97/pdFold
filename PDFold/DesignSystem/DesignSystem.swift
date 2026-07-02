@@ -118,6 +118,11 @@ extension NSColor {
             ? NSColor(srgbRed: 0.929, green: 0.965, blue: 0.980, alpha: 1)
             : NSColor(srgbRed: 0.063, green: 0.137, blue: 0.200, alpha: 1)
     }
+    static let dsTextTertiaryNS: NSColor = NSColor(name: nil) { app in
+        app.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.478, green: 0.569, blue: 0.620, alpha: 1)
+            : NSColor(srgbRed: 0.455, green: 0.510, blue: 0.549, alpha: 1)
+    }
     static let dsSeparatorNS: NSColor = NSColor(name: nil) { app in
         app.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             ? NSColor(srgbRed: 0.929, green: 0.965, blue: 0.980, alpha: 0.12)
