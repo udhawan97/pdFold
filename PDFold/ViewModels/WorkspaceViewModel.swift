@@ -3374,7 +3374,8 @@ final class WorkspaceViewModel {
                 edits,
                 to: original,
                 memberName: member.displayName,
-                replacementTransform: replacementTransform(for: targetFormat)
+                replacementTransform: replacementTransform(for: targetFormat),
+                sourceNeedleTransform: sourceNeedleTransform(for: targetFormat)
             )
             guard let data = edited.data(using: .utf8) else {
                 throw ExportBuildError.cannotEncode(formatName: format.menuTitle)
@@ -3486,38 +3487,59 @@ final class WorkspaceViewModel {
         _ edits: [PDFTextEditOperation],
         to original: String,
         memberName: String,
-        replacementTransform: (String) -> String = { $0 }
+        replacementTransform: (String) -> String = { $0 },
+        sourceNeedleTransform: (String) -> String? = { _ in nil }
     ) throws -> String {
         var output = original
-        for edit in edits where !edit.replacementText.isEmpty || !edit.sourceText.isEmpty {
-            let replacement = replacementTransform(edit.replacementText)
-            if edit.sourceText.isEmpty {
-                output += output.hasSuffix("\n") ? replacement : "\n\(replacement)"
-                continue
-            }
-            let ranges = ranges(of: edit.sourceText, in: output)
-            guard ranges.count == 1 else {
-                if ranges.isEmpty {
-                    throw ExportBuildError.cannotMapEdit(memberName: memberName, sourceText: edit.sourceText)
-                }
-                throw ExportBuildError.ambiguousSourceText(memberName: memberName, sourceText: edit.sourceText)
-            }
-            guard let range = ranges.first else {
-                throw ExportBuildError.cannotMapEdit(memberName: memberName, sourceText: edit.sourceText)
-            }
-            output.replaceSubrange(range, with: replacement)
+        let replacements = try resolvedStringReplacements(
+            for: edits,
+            in: original,
+            memberName: memberName,
+            sourceNeedleTransform: sourceNeedleTransform
+        )
+        for replacement in replacements.sorted(by: { $0.range.lowerBound > $1.range.lowerBound }) {
+            output.replaceSubrange(replacement.range, with: replacementTransform(replacement.text))
         }
         return output
     }
 
-    private func applyTextEdits(_ edits: [PDFTextEditOperation], to attributed: NSMutableAttributedString, memberName: String) throws {
+    private func resolvedStringReplacements(
+        for edits: [PDFTextEditOperation],
+        in original: String,
+        memberName: String,
+        sourceNeedleTransform: (String) -> String?
+    ) throws -> [StringReplacement] {
+        var replacements: [StringReplacement] = []
         for edit in edits where !edit.replacementText.isEmpty || !edit.sourceText.isEmpty {
             if edit.sourceText.isEmpty {
-                let separator = attributed.string.hasSuffix("\n") ? "" : "\n"
-                attributed.append(NSAttributedString(string: "\(separator)\(edit.replacementText)", attributes: attributes(for: edit)))
-                continue
+                throw ExportBuildError.pdfOnlyEditsCannotMap(memberName: memberName)
             }
-            let ranges = nsRanges(of: edit.sourceText, in: attributed.string)
+            var matchedRanges = ranges(of: edit.sourceText, in: original)
+            if matchedRanges.isEmpty, let transformedNeedle = sourceNeedleTransform(edit.sourceText) {
+                matchedRanges = ranges(of: transformedNeedle, in: original)
+            }
+            guard matchedRanges.count == 1 else {
+                if matchedRanges.isEmpty {
+                    throw ExportBuildError.cannotMapEdit(memberName: memberName, sourceText: edit.sourceText)
+                }
+                throw ExportBuildError.ambiguousSourceText(memberName: memberName, sourceText: edit.sourceText)
+            }
+            guard let range = matchedRanges.first else {
+                throw ExportBuildError.cannotMapEdit(memberName: memberName, sourceText: edit.sourceText)
+            }
+            replacements.append(StringReplacement(range: range, text: edit.replacementText))
+        }
+        return replacements
+    }
+
+    private func applyTextEdits(_ edits: [PDFTextEditOperation], to attributed: NSMutableAttributedString, memberName: String) throws {
+        let original = attributed.string
+        var replacements: [(range: NSRange, text: String, attributes: [NSAttributedString.Key: Any])] = []
+        for edit in edits where !edit.replacementText.isEmpty || !edit.sourceText.isEmpty {
+            if edit.sourceText.isEmpty {
+                throw ExportBuildError.pdfOnlyEditsCannotMap(memberName: memberName)
+            }
+            let ranges = nsRanges(of: edit.sourceText, in: original)
             guard ranges.count == 1 else {
                 if ranges.isEmpty {
                     throw ExportBuildError.cannotMapEdit(memberName: memberName, sourceText: edit.sourceText)
@@ -3527,11 +3549,18 @@ final class WorkspaceViewModel {
             guard let range = ranges.first else {
                 throw ExportBuildError.cannotMapEdit(memberName: memberName, sourceText: edit.sourceText)
             }
+            replacements.append((
+                range,
+                edit.replacementText,
+                attributedReplacementAttributes(in: attributed, range: range, edit: edit)
+            ))
+        }
+        for replacement in replacements.sorted(by: { $0.range.location > $1.range.location }) {
             attributed.replaceCharacters(
-                in: range,
+                in: replacement.range,
                 with: NSAttributedString(
-                    string: edit.replacementText,
-                    attributes: attributedReplacementAttributes(in: attributed, range: range, edit: edit)
+                    string: replacement.text,
+                    attributes: replacement.attributes
                 )
             )
         }
@@ -3548,6 +3577,15 @@ final class WorkspaceViewModel {
         }
     }
 
+    private func sourceNeedleTransform(for format: SourceDocumentFormat) -> (String) -> String? {
+        switch format {
+        case .html:
+            return escapeHTMLText
+        case .plainText, .markdown, .rtf, .docx, .wordDoc, .odt:
+            return { _ in nil }
+        }
+    }
+
     private func escapeHTMLText(_ text: String) -> String {
         text
             .replacingOccurrences(of: "&", with: "&amp;")
@@ -3556,7 +3594,7 @@ final class WorkspaceViewModel {
     }
 
     private func escapeMarkdownText(_ text: String) -> String {
-        let escapable = Set("\\`*_{}[]()#+-.!|>")
+        let escapable = Set("\\`*_{}[]()#+-.!|<>")
         var escaped = ""
         escaped.reserveCapacity(text.count)
         for character in text {
@@ -3582,6 +3620,11 @@ final class WorkspaceViewModel {
 
     private func nsRanges(of needle: String, in haystack: String) -> [NSRange] {
         ranges(of: needle, in: haystack).map { NSRange($0, in: haystack) }
+    }
+
+    private struct StringReplacement {
+        var range: Range<String.Index>
+        var text: String
     }
 
     private func attributes(for edit: PDFTextEditOperation) -> [NSAttributedString.Key: Any] {

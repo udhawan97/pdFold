@@ -120,6 +120,243 @@ final class SourceDocumentRoundTripTests: XCTestCase {
         }
     }
 
+    func testSameFormatMarkupExportsEscapeEditedVisibleText() throws {
+        let samples: [(format: SourceDocumentFormat, data: Data, expected: String)] = [
+            (
+                .markdown,
+                Data("# Heading\n\n- **Bold item**\n".utf8),
+                "- **AT&T \\<Draft\\> \\*literal\\***"
+            ),
+            (
+                .html,
+                Data("<!doctype html><html><body><p><strong>Bold item</strong></p></body></html>".utf8),
+                "<strong>AT&amp;T &lt;Draft&gt; *literal*</strong>"
+            )
+        ]
+
+        for sample in samples {
+            let viewModel = try makeViewModel(
+                data: sample.data,
+                contentType: sample.format.contentType,
+                filename: "sample.\(sample.format.fileExtension)"
+            )
+            let member = try XCTUnwrap(viewModel.loadedPDFs.first?.0, sample.format.rawValue)
+            let pageRefID = try XCTUnwrap(member.pageRefs.first, sample.format.rawValue)
+            viewModel.document.workspace.pageEditStates = [
+                PageEditState(pageRefID: pageRefID, operations: [
+                    PDFTextEditOperation(
+                        pageRefID: pageRefID,
+                        sourceBlockID: UUID(),
+                        sourceBounds: .zero,
+                        sourceText: "Bold item",
+                        editedBounds: .zero,
+                        replacementText: "AT&T <Draft> *literal*",
+                        fontName: "Helvetica",
+                        fontSize: 12,
+                        textColor: .documentText,
+                        alignment: .left
+                    )
+                ])
+            ]
+
+            let exported = try viewModel.dataForWorkspaceExport(as: exportFormat(for: sample.format))
+            let exportedSource = try XCTUnwrap(String(data: exported, encoding: .utf8), sample.format.rawValue)
+
+            XCTAssertTrue(exportedSource.contains(sample.expected), sample.format.rawValue)
+        }
+    }
+
+    func testHTMLEditedExportMapsRenderedEntitiesBackToSource() throws {
+        let viewModel = try makeViewModel(
+            data: Data("<!doctype html><html><body><p>R&amp;D budget</p></body></html>".utf8),
+            contentType: .html,
+            filename: "sample.html"
+        )
+        let member = try XCTUnwrap(viewModel.loadedPDFs.first?.0)
+        let pageRefID = try XCTUnwrap(member.pageRefs.first)
+        viewModel.document.workspace.pageEditStates = [
+            PageEditState(pageRefID: pageRefID, operations: [
+                PDFTextEditOperation(
+                    pageRefID: pageRefID,
+                    sourceBlockID: UUID(),
+                    sourceBounds: .zero,
+                    sourceText: "R&D budget",
+                    editedBounds: .zero,
+                    replacementText: "Research <draft>",
+                    fontName: "Helvetica",
+                    fontSize: 12,
+                    textColor: .documentText,
+                    alignment: .left
+                )
+            ])
+        ]
+
+        let exported = try viewModel.dataForWorkspaceExport(as: .html)
+        let html = try XCTUnwrap(String(data: exported, encoding: .utf8))
+
+        XCTAssertTrue(html.contains("Research &lt;draft&gt;"))
+        XCTAssertFalse(html.contains("R&amp;D budget"))
+    }
+
+    func testMultipleSourceEditsApplyAgainstOriginalText() throws {
+        let viewModel = try makeViewModel(
+            data: Data("Alpha\nBeta\n".utf8),
+            contentType: .plainText,
+            filename: "sample.txt"
+        )
+        let member = try XCTUnwrap(viewModel.loadedPDFs.first?.0)
+        let pageRefID = try XCTUnwrap(member.pageRefs.first)
+        viewModel.document.workspace.pageEditStates = [
+            PageEditState(pageRefID: pageRefID, operations: [
+                PDFTextEditOperation(
+                    pageRefID: pageRefID,
+                    sourceBlockID: UUID(),
+                    sourceBounds: .zero,
+                    sourceText: "Alpha",
+                    editedBounds: .zero,
+                    replacementText: "Beta",
+                    fontName: "Helvetica",
+                    fontSize: 12,
+                    textColor: .documentText,
+                    alignment: .left
+                ),
+                PDFTextEditOperation(
+                    pageRefID: pageRefID,
+                    sourceBlockID: UUID(),
+                    sourceBounds: .zero,
+                    sourceText: "Beta",
+                    editedBounds: .zero,
+                    replacementText: "Gamma",
+                    fontName: "Helvetica",
+                    fontSize: 12,
+                    textColor: .documentText,
+                    alignment: .left
+                )
+            ])
+        ]
+
+        let exported = try viewModel.dataForWorkspaceExport(as: .text)
+        let text = try XCTUnwrap(String(data: exported, encoding: .utf8))
+
+        XCTAssertEqual(text, "Beta\nGamma\n")
+    }
+
+    func testSourceExportRejectsUnmappedInsertedTextInsteadOfAppendingAtEnd() throws {
+        let viewModel = try makeViewModel(
+            data: Data("Alpha\n\nBeta\n".utf8),
+            contentType: .markdown,
+            filename: "sample.md"
+        )
+        let member = try XCTUnwrap(viewModel.loadedPDFs.first?.0)
+        let pageRefID = try XCTUnwrap(member.pageRefs.first)
+        viewModel.document.workspace.pageEditStates = [
+            PageEditState(pageRefID: pageRefID, operations: [
+                PDFTextEditOperation(
+                    pageRefID: pageRefID,
+                    sourceBlockID: UUID(),
+                    sourceBounds: .zero,
+                    sourceText: "",
+                    editedBounds: .zero,
+                    replacementText: "Middle",
+                    fontName: "Helvetica",
+                    fontSize: 12,
+                    textColor: .documentText,
+                    alignment: .left
+                )
+            ])
+        ]
+
+        XCTAssertThrowsError(try viewModel.dataForWorkspaceExport(as: .markdown)) { error in
+            guard case WorkspaceViewModel.ExportBuildError.pdfOnlyEditsCannotMap(let memberName) = error else {
+                return XCTFail("Expected pdfOnlyEditsCannotMap, got \(error)")
+            }
+            XCTAssertEqual(memberName, "sample")
+        }
+    }
+
+    func testRTFEditedExportPreservesOriginalRunAttributes() throws {
+        let rich = NSMutableAttributedString(string: "Heading\nBold item\nLink")
+        rich.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 18), range: NSRange(location: 8, length: 9))
+        rich.addAttribute(.link, value: URL(string: "https://example.com")!, range: NSRange(location: 18, length: 4))
+        let viewModel = try makeViewModel(
+            data: try richData(from: rich, documentType: .rtf),
+            contentType: .rtf,
+            filename: "sample.rtf"
+        )
+        let member = try XCTUnwrap(viewModel.loadedPDFs.first?.0)
+        let pageRefID = try XCTUnwrap(member.pageRefs.first)
+        viewModel.document.workspace.pageEditStates = [
+            PageEditState(pageRefID: pageRefID, operations: [
+                PDFTextEditOperation(
+                    pageRefID: pageRefID,
+                    sourceBlockID: UUID(),
+                    sourceBounds: .zero,
+                    sourceText: "Bold item",
+                    editedBounds: .zero,
+                    replacementText: "Crisp edit",
+                    fontName: "Helvetica",
+                    fontSize: 12,
+                    textColor: .documentText,
+                    alignment: .left
+                )
+            ])
+        ]
+
+        let exported = try viewModel.dataForWorkspaceExport(as: .rtf)
+        let attributed = try NSAttributedString(
+            data: exported,
+            options: [.documentType: NSAttributedString.DocumentType.rtf],
+            documentAttributes: nil
+        )
+        let editedRange = try XCTUnwrap(attributed.string.range(of: "Crisp edit"))
+        let nsRange = NSRange(editedRange, in: attributed.string)
+        let font = try XCTUnwrap(attributed.attribute(.font, at: nsRange.location, effectiveRange: nil) as? NSFont)
+        let linkRange = try XCTUnwrap(attributed.string.range(of: "Link"))
+        let link = attributed.attribute(.link, at: NSRange(linkRange, in: attributed.string).location, effectiveRange: nil)
+
+        XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.bold))
+        XCTAssertNotNil(link)
+    }
+
+    func testRTFEditedExportPreservesLinkOnReplacementRange() throws {
+        let rich = NSMutableAttributedString(string: "Heading\nDocs link")
+        rich.addAttribute(.link, value: URL(string: "https://example.com")!, range: NSRange(location: 8, length: 9))
+        let viewModel = try makeViewModel(
+            data: try richData(from: rich, documentType: .rtf),
+            contentType: .rtf,
+            filename: "sample.rtf"
+        )
+        let member = try XCTUnwrap(viewModel.loadedPDFs.first?.0)
+        let pageRefID = try XCTUnwrap(member.pageRefs.first)
+        viewModel.document.workspace.pageEditStates = [
+            PageEditState(pageRefID: pageRefID, operations: [
+                PDFTextEditOperation(
+                    pageRefID: pageRefID,
+                    sourceBlockID: UUID(),
+                    sourceBounds: .zero,
+                    sourceText: "Docs link",
+                    editedBounds: .zero,
+                    replacementText: "Knowledge base",
+                    fontName: "Helvetica",
+                    fontSize: 12,
+                    textColor: .documentText,
+                    alignment: .left
+                )
+            ])
+        ]
+
+        let exported = try viewModel.dataForWorkspaceExport(as: .rtf)
+        let attributed = try NSAttributedString(
+            data: exported,
+            options: [.documentType: NSAttributedString.DocumentType.rtf],
+            documentAttributes: nil
+        )
+        let editedRange = try XCTUnwrap(attributed.string.range(of: "Knowledge base"))
+        let link = attributed.attribute(.link, at: NSRange(editedRange, in: attributed.string).location, effectiveRange: nil)
+
+        XCTAssertNotNil(link)
+    }
+
     func testLiveInlineTextUpdatesRenderedPDFFromSupportedSourceFormats() throws {
         for sample in try makeSupportedSamples() {
             let viewModel = try makeViewModel(

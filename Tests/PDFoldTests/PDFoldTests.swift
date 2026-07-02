@@ -1065,6 +1065,63 @@ final class InlineTextEditPlacementTests: XCTestCase {
         XCTAssertEqual(stored.editedBounds.height, secondCommittedBounds.height, accuracy: 0.01)
     }
 
+    func testThreePassInlineTextEditExportsOnlyFinalTextWithoutGeometryDrift() throws {
+        let fixture = try makeMemberWithPDF(name: "Editable", pageTexts: ["Original text"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+
+        let sourceBounds = CGRect(x: 72, y: 690, width: 92, height: 16)
+        let committedBounds = CGRect(x: 72, y: 666, width: 210, height: 38)
+        var sourceBlock = EditableTextBlock(
+            pageRefID: fixture.refs[0].id,
+            text: "Original text",
+            bounds: sourceBounds,
+            lines: [],
+            columnBounds: CGRect(x: 72, y: 0, width: 260, height: 792),
+            fontName: "Helvetica",
+            fontSize: 12,
+            textColor: .documentText,
+            rotation: 0,
+            baseline: 690,
+            confidence: .high
+        )
+
+        for replacement in ["First edit", "Second edit wraps", "Final edit stays put"] {
+            XCTAssertTrue(viewModel.applyInlineTextEdit(
+                pageRef: fixture.refs[0],
+                sourceBlock: sourceBlock,
+                replacementText: replacement,
+                editedBounds: committedBounds,
+                fontName: "Helvetica",
+                fontSize: 12,
+                textColor: .black,
+                alignment: .left,
+                didManuallyReposition: true,
+                didManuallyResizeWidth: true,
+                didManuallyResizeHeight: true
+            ))
+            sourceBlock.text = replacement
+            sourceBlock.bounds = committedBounds
+        }
+
+        let stored = try XCTUnwrap(viewModel.document.workspace.pageEditStates.first?.operations.first)
+        XCTAssertEqual(viewModel.document.workspace.pageEditStates.first?.operations.count, 1)
+        XCTAssertEqual(stored.sourceBounds, sourceBounds)
+        XCTAssertEqual(stored.editedBounds, committedBounds)
+        XCTAssertEqual(stored.replacementText, "Final edit stays put")
+
+        let exportedData = try viewModel.document.exportedPDFDataThrowing(from: try viewModel.document.snapshot(contentType: .pdf))
+        let exportedPDF = try XCTUnwrap(PDFDocument(data: exportedData))
+        let exportedText = exportedPDF.string ?? ""
+
+        XCTAssertTrue(exportedText.contains("Final edit stays put"))
+        XCTAssertFalse(exportedText.contains("First edit"))
+        XCTAssertFalse(exportedText.contains("Second edit wraps"))
+    }
+
     func testRepeatedInlineTextEditPreservesExistingManualGeometryFlags() throws {
         let fixture = try makeMemberWithPDF(name: "Editable", pageTexts: ["Original text"])
         let document = WorkspaceDocument()
