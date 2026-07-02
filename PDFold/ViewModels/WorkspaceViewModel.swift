@@ -482,6 +482,7 @@ final class WorkspaceViewModel {
     // MARK: - Import
 
     func importFiles(urls: [URL]) {
+        guard canPerformMutatingAction() else { return }
         guard beginImportIfPossible() else { return }
         Task { [weak self] in
             await self?.performImport(urls: urls)
@@ -1234,6 +1235,13 @@ final class WorkspaceViewModel {
     private func canPerformUndoMutation() -> Bool {
         canPerformMutatingAction()
     }
+
+    #if DEBUG
+    func setProcessingStateForTesting(compressionActive: Bool = false, ocrActive: Bool = false) {
+        activeCompressionTask = compressionActive ? Task { } : nil
+        activeOCRTask = ocrActive ? Task { } : nil
+    }
+    #endif
 
     func markAnnotationsModified(warnAboutSignatureInvalidation: Bool = true) {
         markWorkspaceModified()

@@ -1996,6 +1996,29 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.editingStatus?.isError, false)
     }
 
+    func testProcessingBlocksNewImports() throws {
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument())
+        let importData = try makePDF(pageTexts: ["blocked import"]).dataRepresentation().unwrap()
+        let importURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pdFold-blocked-import-\(UUID().uuidString).pdf")
+        try importData.write(to: importURL)
+        defer { try? FileManager.default.removeItem(at: importURL) }
+
+        viewModel.setProcessingStateForTesting(compressionActive: true)
+        viewModel.importFiles(urls: [importURL])
+        XCTAssertFalse(viewModel.isImporting)
+        XCTAssertTrue(viewModel.memberDocuments.isEmpty)
+        XCTAssertEqual(viewModel.editingStatus?.message, "Finish reducing file size before making more changes.")
+
+        viewModel.setProcessingStateForTesting(ocrActive: true)
+        viewModel.importFiles(urls: [importURL])
+        XCTAssertFalse(viewModel.isImporting)
+        XCTAssertTrue(viewModel.memberDocuments.isEmpty)
+        XCTAssertEqual(viewModel.editingStatus?.message, "Finish making this document searchable before making more changes.")
+
+        viewModel.setProcessingStateForTesting()
+    }
+
     @MainActor
     func testDebouncedSearchUsesLastRapidQuery() async throws {
         let document = WorkspaceDocument()
@@ -2879,6 +2902,135 @@ final class PDFCompressionExportTests: XCTestCase {
     }
 }
 
+final class V6IntegratedFlowTests: XCTestCase {
+    func testFinalGateAllFiveFeaturesTogether() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pdFold-v6-final-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let formFixture = try makeFormMemberWithPDF(name: "Integrated form", fieldValue: "Integrated Answer")
+        let formURL = tempDirectory.appendingPathComponent("Integrated form.pdf")
+        let docxURL = tempDirectory.appendingPathComponent("Integrated rich.docx")
+        let imageURL = tempDirectory.appendingPathComponent("Integrated scan.png")
+        let docxData = makeMinimalDOCXData(text: "Integrated rich text")
+        try formFixture.pdfData.write(to: formURL)
+        try docxData.write(to: docxURL)
+        try makePNGData().write(to: imageURL)
+
+        let document = WorkspaceDocument()
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFiumProcessingEngine())
+        viewModel.importFiles(urls: [formURL, docxURL, imageURL])
+        try await waitForImportsToFinish(in: viewModel)
+        XCTAssertNil(viewModel.importError)
+        XCTAssertEqual(viewModel.memberDocuments.count, 3)
+
+        let formMember = try XCTUnwrap(viewModel.memberDocuments.first { $0.displayName == "Integrated form" })
+        let richMember = try XCTUnwrap(viewModel.memberDocuments.first { $0.displayName == "Integrated rich" })
+        let scanMember = try XCTUnwrap(viewModel.memberDocuments.first { $0.displayName == "Integrated scan" })
+        let formRef = try XCTUnwrap(document.workspace.pageOrder.first { $0.memberDocId == formMember.id })
+        let richRefs = document.workspace.pageOrder.filter { $0.memberDocId == richMember.id }
+        let richRef = try XCTUnwrap(richRefs.first)
+        let scanRef = try XCTUnwrap(document.workspace.pageOrder.first { $0.memberDocId == scanMember.id })
+        XCTAssertEqual(document.sourcePayloads[richMember.id]?.format, .docx)
+        XCTAssertEqual(document.sourcePayloads[richMember.id]?.originalData, docxData)
+
+        let scanDocumentIndex = try XCTUnwrap(viewModel.memberDocuments.firstIndex { $0.id == scanMember.id })
+        viewModel.moveDocument(from: IndexSet(integer: scanDocumentIndex), to: 1)
+        viewModel.rotatePage(richRef, by: 90)
+        XCTAssertEqual(viewModel.loadedPDFs.first { $0.0.id == richMember.id }?.1.page(at: 0)?.rotation, 90)
+        let formPage = try XCTUnwrap(viewModel.loadedPDFs.first { $0.0.id == formMember.id }?.1.page(at: 0))
+        let note = try XCTUnwrap(viewModel.addNote(at: CGPoint(x: 96, y: 96), on: formPage))
+        note.contents = "Integrated annotation"
+        XCTAssertEqual(document.workspace.pageOrder.map(\.id), [formRef.id, scanRef.id] + richRefs.map(\.id))
+
+        let preOCRSnapshot = try document.snapshot(contentType: .pdf)
+        _ = try PDFiumProcessingEngine().validatePDF(data: formFixture.pdfData, password: nil)
+        let scanData = try XCTUnwrap(preOCRSnapshot.memberPDFData[scanMember.id])
+        _ = try PDFiumProcessingEngine().validatePDF(data: scanData, password: nil)
+        let ocrResult = try await PDFOCRService.searchableData(
+            documents: [(scanMember, scanData)],
+            recognitionProvider: { _, _, _ in
+                [
+                    PDFOCRRecognizedLine(
+                        text: "Integrated scan phrase",
+                        normalizedBounds: CGRect(x: 0.16, y: 0.72, width: 0.5, height: 0.06),
+                        confidence: 0.95
+                    )
+                ]
+            }
+        )
+        let searchableScanData = try XCTUnwrap(ocrResult.dataByMemberID[scanMember.id])
+        _ = try PDFiumProcessingEngine().validatePDF(data: searchableScanData, password: nil)
+        document.memberPDFData[scanMember.id] = searchableScanData
+        let searchableScanPDF = try XCTUnwrap(PDFDocument(data: searchableScanData))
+        let scanIndex = try XCTUnwrap(viewModel.loadedPDFs.firstIndex { $0.0.id == scanMember.id })
+        viewModel.loadedPDFs[scanIndex] = (viewModel.loadedPDFs[scanIndex].0, searchableScanPDF)
+
+        document.workspace.title = "V6 final gate"
+        document.workspace.decorations = [
+            PageDecoration(kind: .watermark, text: "Internal", fontSize: 42, opacity: 0.18, swatch: .tertiary),
+            .pageNumber()
+        ]
+
+        let snapshot = try document.snapshot(contentType: .pdf)
+        let flattenedDecorated = try document.exportedPDFDataThrowing(
+            from: snapshot,
+            options: WorkspaceExportOptions(lockFormAnswers: true)
+        )
+        _ = try PDFiumProcessingEngine().validatePDF(data: flattenedDecorated, password: nil)
+        let flattenedPDF = try XCTUnwrap(PDFDocument(data: flattenedDecorated))
+        let pageCount = flattenedPDF.pageCount
+        let decorationPageCount = document.workspace.pageOrder.count
+
+        XCTAssertTrue(flattenedPDF.stringValue.contains("Integrated Answer"))
+        XCTAssertTrue(flattenedPDF.stringValue.contains("Integrated scan phrase"))
+        XCTAssertTrue(flattenedPDF.stringValue.contains("Internal"))
+        XCTAssertTrue(flattenedPDF.stringValue.contains("Page 1 of \(decorationPageCount)"))
+        XCTAssertTrue(flattenedPDF.stringValue.contains("Page 2 of \(decorationPageCount)"))
+        XCTAssertTrue(flattenedPDF.stringValue.contains("Page \(decorationPageCount) of \(decorationPageCount)"))
+        XCTAssertFalse(flattenedPDF.page(at: 0)?.annotations.contains { $0.isPDFWidget } ?? true)
+        XCTAssertTrue(flattenedPDF.page(at: 0)?.annotations.contains { $0.contents == "Integrated annotation" } ?? false)
+
+        let compressed = try PDFCompressionService.reduceFileSize(
+            of: flattenedDecorated,
+            preset: .balanced,
+            processingEngine: PDFiumProcessingEngine()
+        )
+        XCTAssertLessThan(compressed.compressedByteCount, compressed.originalByteCount)
+        _ = try PDFiumProcessingEngine().validatePDF(data: compressed.data, password: nil)
+
+        let encryptionOptions = PDFEncryptionOptions(
+            userPassword: "reader-pass",
+            ownerPassword: "owner-pass",
+            allowsPrinting: true,
+            allowsCopying: false
+        )
+        let encrypted = try PDFEncryptionService.encryptedData(from: compressed.data, options: encryptionOptions)
+        try PDFEncryptionService.validateEncryptedData(encrypted, options: encryptionOptions)
+        let validation = try PDFiumProcessingEngine().validatePDF(data: encrypted, password: encryptionOptions.userPassword)
+        XCTAssertEqual(validation.pageCount, pageCount)
+
+        let encryptedPDF = try XCTUnwrap(PDFDocument(data: encrypted))
+        XCTAssertTrue(encryptedPDF.isLocked)
+        XCTAssertTrue(encryptedPDF.unlock(withPassword: encryptionOptions.userPassword))
+        XCTAssertTrue(encryptedPDF.stringValue.contains("Integrated Answer"))
+        XCTAssertTrue(encryptedPDF.stringValue.contains("Integrated scan phrase"))
+
+        let reopenedDocument = WorkspaceDocument()
+        let reopenedViewModel = WorkspaceViewModel(document: reopenedDocument, processingEngine: PDFiumProcessingEngine())
+        let protectedURL = tempDirectory.appendingPathComponent("Protected final.pdf")
+        try encrypted.write(to: protectedURL)
+        reopenedViewModel.importFiles(urls: [protectedURL])
+        try await waitForImportsToFinish(in: reopenedViewModel)
+        XCTAssertNotNil(reopenedViewModel.pendingPasswordPDF)
+        let pendingPDF = try XCTUnwrap(reopenedViewModel.pendingPasswordPDF)
+        XCTAssertTrue(reopenedViewModel.unlock(pdf: pendingPDF, password: encryptionOptions.userPassword, url: protectedURL))
+        XCTAssertTrue(reopenedViewModel.loadedPDFs.first?.1.stringValue.contains("Integrated Answer") ?? false)
+        XCTAssertTrue(reopenedViewModel.loadedPDFs.first?.1.stringValue.contains("Integrated scan phrase") ?? false)
+    }
+}
+
 private func appInfoPlistURL(sourceFile: String) throws -> URL {
     let environment = ProcessInfo.processInfo.environment
     let sourceRoot = URL(fileURLWithPath: sourceFile)
@@ -2910,6 +3062,143 @@ private func makeMemberPDF(name: String, pageTexts: [String]) -> (MemberDocument
     var member = MemberDocument(displayName: name, sourcePDFRef: "\(name).pdf")
     member.pageRefs = (0..<pdf.pageCount).map { _ in UUID() }
     return (member, pdf)
+}
+
+private func makePNGData() throws -> Data {
+    let image = NSImage(size: NSSize(width: 256, height: 256))
+    image.lockFocus()
+    NSColor.white.setFill()
+    NSRect(x: 0, y: 0, width: 256, height: 256).fill()
+    NSColor.systemBlue.setFill()
+    NSBezierPath(ovalIn: NSRect(x: 40, y: 40, width: 176, height: 176)).fill()
+    image.unlockFocus()
+
+    let tiffData = try XCTUnwrap(image.tiffRepresentation)
+    let bitmap = try XCTUnwrap(NSBitmapImageRep(data: tiffData))
+    return try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+}
+
+private func makeMinimalDOCXData(text: String) -> Data {
+    let escaped = text
+        .replacingOccurrences(of: "&", with: "&amp;")
+        .replacingOccurrences(of: "<", with: "&lt;")
+        .replacingOccurrences(of: ">", with: "&gt;")
+        .replacingOccurrences(of: "\"", with: "&quot;")
+        .replacingOccurrences(of: "'", with: "&apos;")
+    let entries: [(String, Data)] = [
+        (
+            "[Content_Types].xml",
+            Data("""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+              <Default Extension="xml" ContentType="application/xml"/>
+              <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+            </Types>
+            """.utf8)
+        ),
+        (
+            "_rels/.rels",
+            Data("""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+            </Relationships>
+            """.utf8)
+        ),
+        (
+            "word/document.xml",
+            Data("""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:body>
+                <w:p><w:r><w:t>\(escaped)</w:t></w:r></w:p>
+                <w:sectPr/>
+              </w:body>
+            </w:document>
+            """.utf8)
+        )
+    ]
+    return makeStoredZipData(entries: entries)
+}
+
+private func makeStoredZipData(entries: [(String, Data)]) -> Data {
+    var archive = Data()
+    var centralDirectory = Data()
+    var localOffsets: [UInt32] = []
+
+    for (name, data) in entries {
+        let nameData = Data(name.utf8)
+        let crc = crc32(data)
+        localOffsets.append(UInt32(archive.count))
+        archive.appendLittleEndian(UInt32(0x04034b50))
+        archive.appendLittleEndian(UInt16(20))
+        archive.appendLittleEndian(UInt16(0))
+        archive.appendLittleEndian(UInt16(0))
+        archive.appendLittleEndian(UInt16(0))
+        archive.appendLittleEndian(UInt16(0))
+        archive.appendLittleEndian(crc)
+        archive.appendLittleEndian(UInt32(data.count))
+        archive.appendLittleEndian(UInt32(data.count))
+        archive.appendLittleEndian(UInt16(nameData.count))
+        archive.appendLittleEndian(UInt16(0))
+        archive.append(nameData)
+        archive.append(data)
+    }
+
+    for (index, entry) in entries.enumerated() {
+        let nameData = Data(entry.0.utf8)
+        let crc = crc32(entry.1)
+        centralDirectory.appendLittleEndian(UInt32(0x02014b50))
+        centralDirectory.appendLittleEndian(UInt16(20))
+        centralDirectory.appendLittleEndian(UInt16(20))
+        centralDirectory.appendLittleEndian(UInt16(0))
+        centralDirectory.appendLittleEndian(UInt16(0))
+        centralDirectory.appendLittleEndian(UInt16(0))
+        centralDirectory.appendLittleEndian(UInt16(0))
+        centralDirectory.appendLittleEndian(crc)
+        centralDirectory.appendLittleEndian(UInt32(entry.1.count))
+        centralDirectory.appendLittleEndian(UInt32(entry.1.count))
+        centralDirectory.appendLittleEndian(UInt16(nameData.count))
+        centralDirectory.appendLittleEndian(UInt16(0))
+        centralDirectory.appendLittleEndian(UInt16(0))
+        centralDirectory.appendLittleEndian(UInt16(0))
+        centralDirectory.appendLittleEndian(UInt16(0))
+        centralDirectory.appendLittleEndian(UInt32(0))
+        centralDirectory.appendLittleEndian(localOffsets[index])
+        centralDirectory.append(nameData)
+    }
+
+    let centralDirectoryOffset = UInt32(archive.count)
+    archive.append(centralDirectory)
+    archive.appendLittleEndian(UInt32(0x06054b50))
+    archive.appendLittleEndian(UInt16(0))
+    archive.appendLittleEndian(UInt16(0))
+    archive.appendLittleEndian(UInt16(entries.count))
+    archive.appendLittleEndian(UInt16(entries.count))
+    archive.appendLittleEndian(UInt32(centralDirectory.count))
+    archive.appendLittleEndian(centralDirectoryOffset)
+    archive.appendLittleEndian(UInt16(0))
+    return archive
+}
+
+private func crc32(_ data: Data) -> UInt32 {
+    var crc: UInt32 = 0xffffffff
+    for byte in data {
+        var current = crc ^ UInt32(byte)
+        for _ in 0..<8 {
+            current = (current & 1) == 1 ? (current >> 1) ^ 0xedb88320 : current >> 1
+        }
+        crc = current
+    }
+    return crc ^ 0xffffffff
+}
+
+private extension Data {
+    mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
+        var littleEndian = value.littleEndian
+        Swift.withUnsafeBytes(of: &littleEndian) { append(contentsOf: $0) }
+    }
 }
 
 private func makeMemberWithPDF(
