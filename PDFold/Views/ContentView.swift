@@ -653,6 +653,9 @@ private struct AnnotationToolPicker: View {
             viewModel.isShowingStampPalette = false
         }
         viewModel.currentTool = tool
+        if tool == .comment {
+            NotificationCenter.default.post(name: .pdfoldCreateCommentFromSelection, object: nil)
+        }
     }
 
     @ViewBuilder

@@ -357,6 +357,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
             name: .pdfoldPrint, object: nil)
         NotificationCenter.default.addObserver(
             context.coordinator,
+            selector: #selector(Coordinator.createCommentFromSelection(_:)),
+            name: .pdfoldCreateCommentFromSelection, object: nil)
+        NotificationCenter.default.addObserver(
+            context.coordinator,
             selector: #selector(Coordinator.zoomIn(_:)),
             name: .pdfoldZoomIn, object: nil)
         NotificationCenter.default.addObserver(
@@ -450,8 +454,15 @@ struct PDFViewRepresentable: NSViewRepresentable {
         func createCommentFromCurrentSelection() {
             guard let pdfView,
                   let selection = pdfView.currentSelection,
-                  !(selection.string?.isEmpty ?? true) else { return }
+                  !(selection.string?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) else {
+                viewModel.showEditMessage("Select text before adding a comment.", isError: false)
+                return
+            }
             createComment(from: selection)
+        }
+
+        @objc func createCommentFromSelection(_ notification: Notification) {
+            createCommentFromCurrentSelection()
         }
 
         private func createComment(from selection: PDFSelection) {
