@@ -493,6 +493,8 @@ private struct WorkspaceOperationProgressView: View {
 private struct AnnotationToolPicker: View {
     @Bindable var viewModel: WorkspaceViewModel
     @State private var hoveredTool: AnnotationTool?
+    @State private var tooltipTool: AnnotationTool?
+    @State private var tooltipTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var selectionNamespace
 
@@ -512,19 +514,23 @@ private struct AnnotationToolPicker: View {
     ]
 
     var body: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 2) {
             ForEach(toolGroups.indices, id: \.self) { groupIndex in
-                let tools = toolGroups[groupIndex]
-                toolGroup(tools, style: groupStyle(for: tools))
+                if groupIndex > 0 {
+                    groupDivider
+                }
+                ForEach(toolGroups[groupIndex]) { tool in
+                    toolButton(tool, shouldReduceMotion: shouldReduceMotion)
+                }
             }
 
-            AnnotationColorButton(viewModel: viewModel)
-                .opacity(viewModel.currentTool.isColorable ? 1 : 0)
-                .scaleEffect(viewModel.currentTool.isColorable ? 1 : 0.92)
-                .allowsHitTesting(viewModel.currentTool.isColorable)
-                .accessibilityHidden(!viewModel.currentTool.isColorable)
+            if viewModel.currentTool.isColorable {
+                groupDivider
+                AnnotationColorButton(viewModel: viewModel)
+                    .transition(shouldReduceMotion ? .identity : .scale(scale: 0.85).combined(with: .opacity))
+            }
         }
-        .padding(.horizontal, 7)
+        .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(
@@ -532,27 +538,48 @@ private struct AnnotationToolPicker: View {
                 .strokeBorder(Color.dsSeparator, lineWidth: 1)
         )
         .shadow(color: Color.dsTextPrimary.opacity(0.10), radius: 8, x: 0, y: 2)
-        .help("Annotation tool")
         .animation(shouldReduceMotion ? nil : .spring(response: 0.31, dampingFraction: 0.79), value: viewModel.currentTool)
+        .overlayPreferenceValue(ToolBoundsKey.self) { anchors in
+            GeometryReader { proxy in
+                if let tool = tooltipTool, let anchor = anchors[tool] {
+                    let rect = proxy[anchor]
+                    let minX: CGFloat = 4
+                    let maxX = max(minX, proxy.size.width - ToolTipBubble.width - 4)
+                    let x = min(max(rect.midX - ToolTipBubble.width / 2, minX), maxX)
+                    ToolTipBubble(tool: tool)
+                        .offset(x: x, y: rect.maxY + 8)
+                        .transition(.opacity)
+                }
+            }
+            .allowsHitTesting(false)
+        }
+        .animation(shouldReduceMotion ? nil : .easeOut(duration: 0.12), value: tooltipTool)
+        .onChange(of: hoveredTool) { _, newValue in
+            tooltipTask?.cancel()
+            guard let newValue else {
+                tooltipTool = nil
+                return
+            }
+            if tooltipTool != nil {
+                // Tooltip already visible — track the pointer between buttons.
+                tooltipTool = newValue
+            } else {
+                tooltipTask = Task {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    guard !Task.isCancelled else { return }
+                    if hoveredTool == newValue {
+                        tooltipTool = newValue
+                    }
+                }
+            }
+        }
     }
 
-    private func toolGroup(_ tools: [AnnotationTool], style: ToolGroupStyle) -> some View {
-        HStack(spacing: 4) {
-            ForEach(tools) { tool in
-                toolButton(tool, shouldReduceMotion: shouldReduceMotion)
-            }
-        }
-        .padding(.horizontal, style.horizontalPadding)
-        .background {
-            if let fill = style.fill {
-                Capsule()
-                    .fill(fill)
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(style.stroke, lineWidth: 1)
-                    )
-            }
-        }
+    private var groupDivider: some View {
+        Rectangle()
+            .fill(Color.dsSeparator)
+            .frame(width: 1, height: 16)
+            .padding(.horizontal, 5)
     }
 
     @ViewBuilder
@@ -560,14 +587,13 @@ private struct AnnotationToolPicker: View {
         let isSelected = viewModel.currentTool == tool
         let isHovered = hoveredTool == tool
         let accent = toolAccent(for: tool)
-        let hoverFill = toolHoverFill(for: tool)
 
         Button {
             select(tool)
         } label: {
             ZStack {
                 if isSelected {
-                    Capsule()
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(accent)
                         .matchedGeometryEffect(id: "selectedTool", in: selectionNamespace)
                 }
@@ -575,10 +601,11 @@ private struct AnnotationToolPicker: View {
                 toolIcon(tool, isSelected: isSelected)
                     .foregroundStyle(isSelected ? Color.dsSurface : Color.dsTextSecondary)
             }
-            .frame(width: 32, height: 32)
-            .contentShape(Capsule())
+            .frame(width: 28, height: 28)
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
-        .buttonStyle(ToolButtonStyle(isHovered: isHovered, isSelected: isSelected, hoverFill: hoverFill, reduceMotion: shouldReduceMotion))
+        .buttonStyle(ToolButtonStyle(isHovered: isHovered, isSelected: isSelected, hoverFill: toolAccentSoft(for: tool), reduceMotion: shouldReduceMotion))
+        .anchorPreference(key: ToolBoundsKey.self, value: .bounds) { [tool: $0] }
         .onHover { isHovered in
             if isHovered {
                 hoveredTool = tool
@@ -586,20 +613,8 @@ private struct AnnotationToolPicker: View {
                 hoveredTool = nil
             }
         }
-        .help(tool.helpText)
         .accessibilityLabel(tool.label)
-    }
-
-    private func groupStyle(for tools: [AnnotationTool]) -> ToolGroupStyle {
-        guard tools.count == 1, let tool = tools.first, tool.isServiceTool else {
-            return ToolGroupStyle()
-        }
-
-        return ToolGroupStyle(
-            horizontalPadding: 3,
-            fill: toolServiceFill(for: tool),
-            stroke: toolAccent(for: tool).opacity(0.18)
-        )
+        .accessibilityHint(tool.helpText)
     }
 
     private func toolAccent(for tool: AnnotationTool) -> Color {
@@ -608,34 +623,17 @@ private struct AnnotationToolPicker: View {
             return Color.dsEditTextAccent
         case .signature, .stamp:
             return Color.dsSignatureAccent
-        case .comment, .commentRegion:
-            return Color.dsAccent
         default:
             return Color.dsAccent
         }
     }
 
-    private func toolServiceFill(for tool: AnnotationTool) -> Color {
-        switch tool {
-        case .editText:
-            return Color.dsEditTextSoft
-        case .signature, .stamp:
-            return Color.dsSignatureSoft
-        case .comment, .commentRegion:
-            return Color.dsAccentSoft
-        default:
-            return Color.dsAccentSoft
-        }
-    }
-
-    private func toolHoverFill(for tool: AnnotationTool) -> Color {
+    private func toolAccentSoft(for tool: AnnotationTool) -> Color {
         switch tool {
         case .editText:
             return Color.dsEditTextHover
         case .signature, .stamp:
             return Color.dsSignatureHover
-        case .comment, .commentRegion:
-            return Color.dsAccentSoft
         default:
             return Color.dsAccentSoft
         }
@@ -664,9 +662,48 @@ private struct AnnotationToolPicker: View {
             HighlightGlyph(isSelected: isSelected)
         } else {
             Image(systemName: tool.iconName)
-                .font(.system(size: tool == .none ? 15 : 17, weight: .semibold))
+                .font(.system(size: tool == .none ? 13 : 14, weight: .semibold))
                 .symbolRenderingMode(.monochrome)
         }
+    }
+}
+
+private struct ToolBoundsKey: PreferenceKey {
+    static var defaultValue: [AnnotationTool: Anchor<CGRect>] = [:]
+
+    static func reduce(
+        value: inout [AnnotationTool: Anchor<CGRect>],
+        nextValue: () -> [AnnotationTool: Anchor<CGRect>]
+    ) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+private struct ToolTipBubble: View {
+    static let width: CGFloat = 190
+
+    var tool: AnnotationTool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(tool.label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.dsTextPrimary)
+            Text(tool.helpText)
+                .font(.system(size: 10))
+                .foregroundStyle(Color.dsTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(width: Self.width - 20, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.dsSeparator, lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.16), radius: 10, x: 0, y: 4)
+        .accessibilityHidden(true)
     }
 }
 
@@ -680,7 +717,7 @@ private struct ToolButtonStyle: ButtonStyle {
         configuration.label
             .background {
                 if isHovered && !isSelected {
-                    Capsule()
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(hoverFill)
                 }
             }
@@ -690,33 +727,21 @@ private struct ToolButtonStyle: ButtonStyle {
     }
 }
 
-private struct ToolGroupStyle {
-    var horizontalPadding: CGFloat = 0
-    var fill: Color?
-    var stroke: Color = Color.clear
-}
-
-private extension AnnotationTool {
-    var isServiceTool: Bool {
-        self == .editText || self == .signature || self == .comment
-    }
-}
-
 private struct HighlightGlyph: View {
     var isSelected: Bool
 
     var body: some View {
         ZStack(alignment: .bottom) {
             Image(systemName: "highlighter")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .symbolRenderingMode(.monochrome)
 
             Capsule()
                 .fill(isSelected ? Color.white.opacity(0.65) : Color.dsHighlightYellow)
-                .frame(width: 17, height: 3)
-                .offset(y: 3)
+                .frame(width: 15, height: 2.5)
+                .offset(y: 2.5)
         }
-        .frame(width: 19, height: 18)
+        .frame(width: 17, height: 16)
     }
 }
 
@@ -738,12 +763,12 @@ private struct AnnotationColorButton: View {
             ZStack {
                 Circle()
                     .fill(displayColor)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 18, height: 18)
                     .overlay(Circle().strokeBorder(Color.white.opacity(0.72), lineWidth: 1))
                     .shadow(color: Color.black.opacity(0.18), radius: 2, x: 0, y: 1)
             }
-            .frame(width: 36, height: 32)
-            .contentShape(RoundedRectangle(cornerRadius: .dsRadiusMd, style: .continuous))
+            .frame(width: 28, height: 28)
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .buttonStyle(ToolButtonStyle(isHovered: isHovered || showPalette))
         .onHover { isHovered = $0 }

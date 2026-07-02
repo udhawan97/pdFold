@@ -183,41 +183,48 @@ private struct EmptyStateAmbientBackground: View {
 
         let time = shouldReduceMotion ? 0 : date.timeIntervalSinceReferenceDate
         let phase = time / 28
-        let accentOpacity = colorScheme == .dark ? 0.10 : 0.075
+        let glowOpacity = colorScheme == .dark ? 0.08 : 0.05
         let tertiaryOpacity = colorScheme == .dark ? 0.07 : 0.045
 
-        drawFlowLines(in: &context, size: size, phase: phase, opacity: accentOpacity)
+        drawAmbientGlows(in: &context, size: size, phase: phase, opacity: glowOpacity)
         drawPageOutlines(in: &context, size: size, phase: phase, opacity: tertiaryOpacity)
     }
 
-    private func drawFlowLines(
+    private func drawAmbientGlows(
         in context: inout GraphicsContext,
         size: CGSize,
         phase: TimeInterval,
         opacity: Double
     ) {
-        let lineCount = 7
-        let startY = size.height * 0.18
-        let spacing = max(size.height * 0.11, 72)
+        // Large, slow-drifting radial glows — a quiet gradient wash instead of drawn lines.
+        // Spaced so their radii don't stack in the window's center (avoids a bright, muddy core).
+        let glows: [(x: CGFloat, y: CGFloat, radius: CGFloat, speed: Double)] = [
+            (0.15, 0.15, 0.32, 0.9),
+            (0.85, 0.20, 0.30, 0.7),
+            (0.50, 0.90, 0.34, 0.5)
+        ]
 
-        for index in 0..<lineCount {
-            let offset = sin(phase + Double(index) * 0.8) * 9
-            let y = startY + CGFloat(index) * spacing + offset
-            guard y > -40, y < size.height + 40 else { continue }
+        for (index, glow) in glows.enumerated() {
+            let drift = Double(index) * 2.1
+            let cx = size.width * glow.x + CGFloat(sin(phase * glow.speed + drift)) * size.width * 0.04
+            let cy = size.height * glow.y + CGFloat(cos(phase * glow.speed * 0.8 + drift)) * size.height * 0.03
+            let radius = max(size.width, size.height) * glow.radius
+            let center = CGPoint(x: cx, y: cy)
 
-            var path = Path()
-            path.move(to: CGPoint(x: -80, y: y))
-            path.addCurve(
-                to: CGPoint(x: size.width + 80, y: y + CGFloat(cos(phase * 0.7 + Double(index))) * 18),
-                control1: CGPoint(x: size.width * 0.28, y: y - 26),
-                control2: CGPoint(x: size.width * 0.68, y: y + 34)
-            )
+            let gradient = Gradient(stops: [
+                .init(color: Color.dsAccent.opacity(opacity), location: 0),
+                .init(color: Color.dsAccent.opacity(opacity * 0.4), location: 0.45),
+                .init(color: Color.dsAccent.opacity(0), location: 1)
+            ])
 
-            let width = index == 2 ? 1.1 : 0.7
-            context.stroke(
-                path,
-                with: .color(Color.dsAccent.opacity(opacity)),
-                style: StrokeStyle(lineWidth: width, lineCap: .round)
+            context.fill(
+                Path(ellipseIn: CGRect(
+                    x: center.x - radius,
+                    y: center.y - radius,
+                    width: radius * 2,
+                    height: radius * 2
+                )),
+                with: .radialGradient(gradient, center: center, startRadius: 0, endRadius: radius)
             )
         }
     }
