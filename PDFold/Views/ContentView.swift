@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showInspector = false
     @State private var inspectorTab: InspectorView.Tab = .info
     @State private var showTOC = false
+    @State private var isShowingExportSheet = false
     @State private var isWorkspaceDropTargeted = false
     @State private var isNavigationDropTargeted = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -77,6 +78,9 @@ struct ContentView: View {
         }
         .popover(isPresented: $viewModel.isShowingSignaturePalette, arrowEdge: .top) {
             SignaturePalette(viewModel: viewModel)
+        }
+        .sheet(isPresented: $isShowingExportSheet) {
+            ExportSheet(viewModel: viewModel, isPresented: $isShowingExportSheet)
         }
         .popover(isPresented: $showTOC, arrowEdge: .top) {
             TOCView(viewModel: viewModel) { pageIndex in
@@ -152,10 +156,8 @@ struct ContentView: View {
             .keyboardShortcut("f", modifiers: .command)
 
             Menu {
-                ForEach(WorkspaceExportFormat.allCases) { format in
-                    Button("Export as \(format.menuTitle)…") {
-                        viewModel.exportWorkspace(as: format)
-                    }
+                Button("Export…") {
+                    isShowingExportSheet = true
                 }
                 Divider()
                 Button("Print…") {
@@ -231,6 +233,155 @@ struct ContentView: View {
         panel.canChooseDirectories = false
         panel.allowedContentTypes = WorkspaceDocument.importableContentTypes
         if panel.runModal() == .OK { viewModel.importFiles(urls: panel.urls) }
+    }
+}
+
+private struct ExportSheet: View {
+    @Bindable var viewModel: WorkspaceViewModel
+    @Binding var isPresented: Bool
+    @State private var selectedFormat: WorkspaceExportFormat = .pdf
+    @State private var isProtectionExpanded = false
+    @State private var protectWithPassword = false
+    @State private var password = ""
+    @State private var passwordConfirmation = ""
+    @State private var allowsPrinting = true
+    @State private var allowsCopying = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var shouldReduceMotion: Bool {
+        reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private var canProtectSelectedFormat: Bool {
+        selectedFormat == .pdf && !viewModel.hasCryptographicSignaturePlacement
+    }
+
+    private var passwordMismatch: Bool {
+        protectWithPassword &&
+            !password.isEmpty &&
+            !passwordConfirmation.isEmpty &&
+            password != passwordConfirmation
+    }
+
+    private var passwordValidationMessage: String? {
+        guard protectWithPassword else { return nil }
+        if !canProtectSelectedFormat {
+            return nil
+        }
+        if password.isEmpty {
+            return "Password is missing. Enter a password."
+        }
+        if passwordConfirmation.isEmpty {
+            return "Confirmation is missing. Re-enter the password."
+        }
+        if passwordMismatch {
+            return "Passwords do not match. Re-enter the confirmation."
+        }
+        return nil
+    }
+
+    private var canExport: Bool {
+        guard protectWithPassword && canProtectSelectedFormat else { return true }
+        return !password.isEmpty && password == passwordConfirmation
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: .dsLG) {
+            Text("Export")
+                .font(.dsTitle())
+                .foregroundStyle(Color.dsTextPrimary)
+
+            Picker("Format", selection: $selectedFormat) {
+                ForEach(WorkspaceExportFormat.allCases) { format in
+                    Text(format.menuTitle).tag(format)
+                }
+            }
+            .pickerStyle(.menu)
+
+            VStack(alignment: .leading, spacing: .dsSM) {
+                DisclosureGroup(isExpanded: $isProtectionExpanded) {
+                    VStack(alignment: .leading, spacing: .dsSM) {
+                        SecureField("Password", text: $password)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(!protectWithPassword || !canProtectSelectedFormat)
+                        SecureField("Confirm password", text: $passwordConfirmation)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(!protectWithPassword || !canProtectSelectedFormat)
+
+                        Toggle("Allow printing", isOn: $allowsPrinting)
+                            .disabled(!protectWithPassword || !canProtectSelectedFormat)
+                        Toggle("Allow copying", isOn: $allowsCopying)
+                            .disabled(!protectWithPassword || !canProtectSelectedFormat)
+
+                        if let passwordValidationMessage {
+                            Text(passwordValidationMessage)
+                                .font(.dsCaption())
+                                .foregroundStyle(Color.dsAnnotationCoral)
+                        }
+                    }
+                    .padding(.top, .dsSM)
+                } label: {
+                    Toggle("Protect with password", isOn: Binding(
+                        get: { protectWithPassword },
+                        set: { newValue in
+                            protectWithPassword = newValue && canProtectSelectedFormat
+                            if protectWithPassword {
+                                isProtectionExpanded = true
+                            }
+                        }
+                    ))
+                    .disabled(!canProtectSelectedFormat)
+                }
+
+                if selectedFormat != .pdf {
+                    Text("Password protection is available for PDF exports.")
+                        .font(.dsCaption())
+                        .foregroundStyle(Color.dsTextTertiary)
+                } else if viewModel.hasCryptographicSignaturePlacement {
+                    Text("Password protection is unavailable because this PDF has a digital signature.")
+                        .font(.dsCaption())
+                        .foregroundStyle(Color.dsTextTertiary)
+                }
+            }
+            .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.16), value: isProtectionExpanded)
+            .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.16), value: protectWithPassword)
+            .onChange(of: selectedFormat) { _, _ in
+                if !canProtectSelectedFormat {
+                    protectWithPassword = false
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    isPresented = false
+                }
+                Button("Export") {
+                    export()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.dsAccent)
+                .disabled(!canExport)
+            }
+        }
+        .padding(.dsXL)
+        .frame(width: 380)
+        .background(Color.dsSurface)
+    }
+
+    private func export() {
+        var options = WorkspaceExportOptions()
+        if protectWithPassword && canProtectSelectedFormat {
+            options.encryption = PDFEncryptionOptions(
+                userPassword: password,
+                ownerPassword: "pdFold-owner-\(UUID().uuidString)",
+                allowsPrinting: allowsPrinting,
+                allowsCopying: allowsCopying
+            )
+        }
+        if viewModel.exportWorkspace(as: selectedFormat, options: options) {
+            isPresented = false
+        }
     }
 }
 

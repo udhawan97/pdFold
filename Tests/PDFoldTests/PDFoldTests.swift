@@ -2312,6 +2312,126 @@ private func firstDescendant<T: NSView>(of type: T.Type, in view: NSView) -> T? 
     return nil
 }
 
+final class PDFEncryptionExportTests: XCTestCase {
+    func testEncryptedPDFUnlocksWithRightPasswordAndRejectsWrongPassword() throws {
+        let sourcePDF = makePDF(pageTexts: ["Protected export text"])
+        let sourceData = try XCTUnwrap(sourcePDF.dataRepresentation())
+        let options = PDFEncryptionOptions(
+            userPassword: "reader-pass",
+            ownerPassword: "owner-pass",
+            allowsPrinting: true,
+            allowsCopying: true
+        )
+
+        let encryptedData = try PDFEncryptionService.encryptedData(from: sourceData, options: options)
+        let encryptedPDF = try XCTUnwrap(PDFDocument(data: encryptedData))
+
+        XCTAssertTrue(encryptedPDF.isLocked)
+        XCTAssertFalse(encryptedPDF.unlock(withPassword: "wrong-pass"))
+        XCTAssertTrue(encryptedPDF.unlock(withPassword: "reader-pass"))
+        XCTAssertEqual(encryptedPDF.string, sourcePDF.string)
+    }
+
+    func testEncryptedPDFPreservesPermissionsAndText() throws {
+        let sourcePDF = makePDF(pageTexts: ["Permission checked text"])
+        let sourceData = try XCTUnwrap(sourcePDF.dataRepresentation())
+        let options = PDFEncryptionOptions(
+            userPassword: "reader-pass",
+            ownerPassword: "owner-pass",
+            allowsPrinting: false,
+            allowsCopying: false
+        )
+
+        let encryptedData = try PDFEncryptionService.encryptedData(from: sourceData, options: options)
+        let encryptedPDF = try XCTUnwrap(PDFDocument(data: encryptedData))
+
+        XCTAssertTrue(encryptedPDF.unlock(withPassword: "reader-pass"))
+        XCTAssertFalse(encryptedPDF.allowsPrinting)
+        XCTAssertFalse(encryptedPDF.allowsCopying)
+        XCTAssertEqual(encryptedPDF.string, sourcePDF.string)
+    }
+
+    func testPasswordValidationRunsBeforeOutputFileIsCreated() throws {
+        let fixture = try makeMemberWithPDF(name: "Protected", pageTexts: ["Protected text"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(
+            document: document,
+            processingEngine: PDFKitProcessingEngineFallback()
+        )
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pdFold-empty-password-\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: outputURL) }
+
+        let didSave = viewModel.saveFlattenedPDF(
+            to: outputURL,
+            options: WorkspaceExportOptions(encryption: PDFEncryptionOptions(
+                userPassword: "",
+                ownerPassword: "owner-pass"
+            ))
+        )
+
+        XCTAssertFalse(didSave)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
+        XCTAssertEqual(viewModel.exportError?.message, PDFEncryptionError.emptyUserPassword.userMessage)
+    }
+
+    func testProtectedOutputValidationRejectsPlainPDFBytes() throws {
+        let sourcePDF = makePDF(pageTexts: ["Plain text is not protected"])
+        let sourceData = try XCTUnwrap(sourcePDF.dataRepresentation())
+
+        XCTAssertThrowsError(
+            try PDFEncryptionService.validateEncryptedData(
+                sourceData,
+                options: PDFEncryptionOptions(
+                    userPassword: "reader-pass",
+                    ownerPassword: "owner-pass"
+                ),
+                expectedText: sourcePDF.string
+            )
+        ) { error in
+            XCTAssertEqual(error as? PDFEncryptionError, .unprotectedOutput)
+        }
+    }
+
+    func testDigitalSignatureConflictRunsBeforeOutputFileIsCreated() throws {
+        let fixture = try makeMemberWithPDF(name: "Signed", pageTexts: ["Signed text"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        document.workspace.signatures = [
+            SignaturePlacement(
+                pageRefId: fixture.refs[0].id,
+                imageData: Data([1, 2, 3]),
+                rect: CGRect(x: 40, y: 40, width: 120, height: 48),
+                kind: .cryptographic
+            )
+        ]
+        let viewModel = WorkspaceViewModel(
+            document: document,
+            processingEngine: PDFKitProcessingEngineFallback()
+        )
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pdFold-signed-conflict-\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: outputURL) }
+
+        let didSave = viewModel.saveFlattenedPDF(
+            to: outputURL,
+            options: WorkspaceExportOptions(encryption: PDFEncryptionOptions(
+                userPassword: "reader-pass",
+                ownerPassword: "owner-pass"
+            ))
+        )
+
+        XCTAssertFalse(didSave)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
+        XCTAssertEqual(viewModel.exportError?.message, PDFEncryptionError.digitalSignatureConflict.userMessage)
+    }
+}
+
 private func appInfoPlistURL(sourceFile: String) throws -> URL {
     let environment = ProcessInfo.processInfo.environment
     let sourceRoot = URL(fileURLWithPath: sourceFile)

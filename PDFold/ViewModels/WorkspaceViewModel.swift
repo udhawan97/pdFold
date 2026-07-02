@@ -2209,11 +2209,12 @@ final class WorkspaceViewModel {
 
     // MARK: - Export
 
-    func exportWorkspace(as format: WorkspaceExportFormat) {
-        guard canPerformMutatingAction() else { return }
+    @discardableResult
+    func exportWorkspace(as format: WorkspaceExportFormat, options: WorkspaceExportOptions = WorkspaceExportOptions()) -> Bool {
+        guard canPerformMutatingAction() else { return false }
         let didExport = switch format {
         case .pdf:
-            exportPlainPDF()
+            exportPlainPDF(options: options)
         case .word:
             exportRichDocument(as: .word)
         case .legacyWord:
@@ -2237,28 +2238,27 @@ final class WorkspaceViewModel {
             }
             PetBuddyHook.trigger(.export)
         }
+        return didExport
     }
 
     @discardableResult
-    func exportPlainPDF() -> Bool {
+    func exportPlainPDF(options: WorkspaceExportOptions = WorkspaceExportOptions()) -> Bool {
         guard canPerformMutatingAction() else { return false }
-        return saveFlattenedPDF(to: nil, triggerPet: false)
+        return saveFlattenedPDF(to: nil, options: options, triggerPet: false)
     }
 
     @discardableResult
-    func saveFlattenedPDF(to url: URL? = nil) -> Bool {
+    func saveFlattenedPDF(to url: URL? = nil, options: WorkspaceExportOptions = WorkspaceExportOptions()) -> Bool {
         guard canPerformMutatingAction() else { return false }
-        return saveFlattenedPDF(to: url, triggerPet: true)
+        return saveFlattenedPDF(to: url, options: options, triggerPet: true)
     }
 
-    private func saveFlattenedPDF(to url: URL?, triggerPet: Bool) -> Bool {
-        let snapshot = WorkspacePackage(
-            workspace: document.workspace,
-            memberPDFData: currentPDFData(),
-            sourcePayloads: document.sourcePayloads
-        )
-        guard let pdfData = document.exportedPDFData(from: snapshot) else {
-            exportError = ExportError(message: "pdFold could not serialize the PDF for saving. Try exporting individual documents first.")
+    private func saveFlattenedPDF(to url: URL?, options: WorkspaceExportOptions, triggerPet: Bool) -> Bool {
+        let pdfData: Data
+        do {
+            pdfData = try dataForPDFExport(options: options)
+        } catch {
+            exportError = ExportError(message: userMessage(for: error, exporting: .pdf))
             return false
         }
 
@@ -2282,14 +2282,65 @@ final class WorkspaceViewModel {
         }
 
         do {
-            try pdfData.write(to: targetURL, options: .atomic)
+            try writePDFExportData(pdfData, to: targetURL, validationOptions: options.encryption)
             if triggerPet {
                 PetBuddyHook.trigger(.save)
             }
             return true
         } catch {
-            exportError = ExportError(message: "pdFold could not save the PDF: \(error.localizedDescription)")
+            if let encryptionError = error as? PDFEncryptionError {
+                exportError = ExportError(message: encryptionError.userMessage)
+            } else {
+                exportError = ExportError(message: "pdFold could not save the PDF: \(error.localizedDescription)")
+            }
             return false
+        }
+    }
+
+    func dataForPDFExport(options: WorkspaceExportOptions = WorkspaceExportOptions()) throws -> Data {
+        if options.encryption != nil, hasCryptographicSignaturePlacement {
+            throw PDFEncryptionError.digitalSignatureConflict
+        }
+        let snapshot = WorkspacePackage(
+            workspace: document.workspace,
+            memberPDFData: currentPDFData(),
+            sourcePayloads: document.sourcePayloads
+        )
+        guard let pdfData = document.exportedPDFData(from: snapshot) else {
+            throw ExportBuildError.cannotEncode(formatName: WorkspaceExportFormat.pdf.menuTitle)
+        }
+        guard let encryption = options.encryption else { return pdfData }
+        return try PDFEncryptionService.encryptedData(from: pdfData, options: encryption)
+    }
+
+    private func writePDFExportData(_ data: Data, to targetURL: URL, validationOptions: PDFEncryptionOptions?) throws {
+        guard let validationOptions else {
+            try data.write(to: targetURL, options: .atomic)
+            return
+        }
+
+        let directory = targetURL.deletingLastPathComponent()
+        let tempURL = directory
+            .appendingPathComponent(".pdFold-export-\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        try data.write(to: tempURL, options: .atomic)
+        let writtenData = try Data(contentsOf: tempURL)
+        try PDFEncryptionService.validateEncryptedData(writtenData, options: validationOptions)
+
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: targetURL.path) {
+            let replacedURL = try fileManager.replaceItemAt(
+                targetURL,
+                withItemAt: tempURL,
+                backupItemName: nil,
+                options: [.usingNewMetadataOnly]
+            )
+            guard replacedURL != nil else {
+                throw PDFEncryptionError.writeFailed
+            }
+        } else {
+            try fileManager.moveItem(at: tempURL, to: targetURL)
         }
     }
 
@@ -2665,6 +2716,9 @@ final class WorkspaceViewModel {
     }
 
     private func userMessage(for error: Error, exporting format: WorkspaceExportFormat) -> String {
+        if let encryptionError = error as? PDFEncryptionError {
+            return encryptionError.userMessage
+        }
         switch error {
         case ExportBuildError.cannotMapEdit(let memberName, let sourceText):
             let preview = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
