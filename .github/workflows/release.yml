@@ -50,10 +50,22 @@ jobs:
           path: ${{ runner.temp }}/pdFold.zip
           if-no-files-found: error
 
+      - name: Compute tagged release title
+        if: startsWith(github.ref, 'refs/tags/')
+        id: release-title
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          display_version="$tag"
+          if [[ "$tag" == release-* ]]; then
+            display_version="${tag#release-}"
+          fi
+          echo "title=${display_version} pdFold" >> "$GITHUB_OUTPUT"
+
       - name: Publish tagged GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ steps.release-title.outputs.title }}
           files: ${{ runner.temp }}/pdFold.zip
           generate_release_notes: true
           make_latest: true

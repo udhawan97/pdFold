@@ -53,7 +53,7 @@ targets:
       path: PDFold/Resources/Info.plist
       properties:
         CFBundleDisplayName: pdFold
-        CFBundleShortVersionString: "3.0"
+        CFBundleShortVersionString: "v6"
         CFBundleVersion: "6"
         NSHumanReadableCopyright: "Copyright © 2026. MIT License."
         NSPrincipalClass: NSApplication

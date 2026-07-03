@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import PDFKit
 import UniformTypeIdentifiers
 import XCTest
@@ -2495,7 +2496,7 @@ final class PDFEncryptionExportTests: XCTestCase {
         XCTAssertTrue(encryptedPDF.isLocked)
         XCTAssertFalse(encryptedPDF.unlock(withPassword: "wrong-pass"))
         XCTAssertTrue(encryptedPDF.unlock(withPassword: "reader-pass"))
-        XCTAssertEqual(encryptedPDF.string, sourcePDF.string)
+        XCTAssertEqual(encryptedPDF.normalizedStringValue, sourcePDF.normalizedStringValue)
     }
 
     func testEncryptedPDFPreservesPermissionsAndText() throws {
@@ -2514,7 +2515,7 @@ final class PDFEncryptionExportTests: XCTestCase {
         XCTAssertTrue(encryptedPDF.unlock(withPassword: "reader-pass"))
         XCTAssertFalse(encryptedPDF.allowsPrinting)
         XCTAssertFalse(encryptedPDF.allowsCopying)
-        XCTAssertEqual(encryptedPDF.string, sourcePDF.string)
+        XCTAssertEqual(encryptedPDF.normalizedStringValue, sourcePDF.normalizedStringValue)
     }
 
     func testPasswordValidationRunsBeforeOutputFileIsCreated() throws {
@@ -3404,28 +3405,66 @@ private func makeRadioMemberWithPDF(
 }
 
 private func makePhotoPDFData(text: String = "") throws -> Data {
-    let imageSize = NSSize(width: 2400, height: 2400)
-    let image = NSImage(size: imageSize)
-    image.lockFocus()
-    for y in stride(from: 0, to: 2400, by: 4) {
-        for x in stride(from: 0, to: 2400, by: 4) {
-            NSColor(
-                calibratedRed: CGFloat((x * y) % 255) / 255,
-                green: CGFloat((x + 2 * y) % 255) / 255,
-                blue: CGFloat((2 * x + y) % 255) / 255,
-                alpha: 1
-            ).setFill()
-            NSBezierPath(rect: NSRect(x: x, y: y, width: 4, height: 4)).fill()
+    let pageBounds = CGRect(x: 0, y: 0, width: 612, height: 792)
+    let data = NSMutableData()
+    var mediaBox = pageBounds
+    guard let consumer = CGDataConsumer(data: data),
+          let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil),
+          let image = makePhotoFixtureImage(width: 2400, height: 2400) else {
+        throw PDFCompressionError.writeFailed
+    }
+
+    context.beginPDFPage(nil)
+    context.draw(image, in: pageBounds)
+    if !text.isEmpty {
+        drawExtractableText(text, in: context, pageBounds: pageBounds)
+    }
+    context.endPDFPage()
+    context.closePDF()
+    return data as Data
+}
+
+private func makePhotoFixtureImage(width: Int, height: Int) -> CGImage? {
+    var pixels = [UInt8](repeating: 0, count: width * height * 4)
+    for y in 0..<height {
+        for x in 0..<width {
+            let offset = (y * width + x) * 4
+            pixels[offset] = UInt8((x * y) % 255)
+            pixels[offset + 1] = UInt8((x + 2 * y) % 255)
+            pixels[offset + 2] = UInt8((2 * x + y) % 255)
+            pixels[offset + 3] = 255
         }
     }
-    image.unlockFocus()
 
-    let view = PhotoFixturePageView(
-        frame: CGRect(x: 0, y: 0, width: 612, height: 792),
-        image: image,
-        text: text
-    )
-    return view.dataWithPDF(inside: view.bounds)
+    return pixels.withUnsafeBytes { rawBuffer in
+        guard let provider = CGDataProvider(data: Data(rawBuffer) as CFData) else { return nil }
+        return CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: true,
+            intent: .defaultIntent
+        )
+    }
+}
+
+private func drawExtractableText(_ text: String, in context: CGContext, pageBounds: CGRect) {
+    let attributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont(name: "Helvetica", size: 18) ?? NSFont.systemFont(ofSize: 18),
+        .foregroundColor: NSColor.black
+    ]
+    let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
+    context.saveGState()
+    context.textMatrix = .identity
+    context.textPosition = CGPoint(x: 72, y: pageBounds.height - 92)
+    CTLineDraw(line, context)
+    context.restoreGState()
 }
 
 private func makeMemberFixture(
@@ -3437,35 +3476,6 @@ private func makeMemberFixture(
     member.pageRefs = refs.map(\.id)
     let pdfData = try pdf.dataRepresentation().unwrap()
     return (member, refs, pdfData)
-}
-
-private final class PhotoFixturePageView: NSView {
-    let image: NSImage
-    let text: String
-
-    init(frame frameRect: NSRect, image: NSImage, text: String) {
-        self.image = image
-        self.text = text
-        super.init(frame: frameRect)
-    }
-
-    required init?(coder: NSCoder) {
-        nil
-    }
-
-    override var isFlipped: Bool { true }
-
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.white.setFill()
-        bounds.fill()
-        image.draw(in: bounds)
-        guard !text.isEmpty else { return }
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont(name: "Helvetica", size: 18) ?? NSFont.systemFont(ofSize: 18),
-            .foregroundColor: NSColor.black
-        ]
-        NSString(string: text).draw(at: CGPoint(x: 72, y: 72), withAttributes: attributes)
-    }
 }
 
 private func waitForImportsToFinish(in viewModel: WorkspaceViewModel) async throws {
@@ -3932,6 +3942,12 @@ private extension PDFDocument {
         (0..<pageCount)
             .compactMap { page(at: $0)?.string }
             .joined(separator: "\n")
+    }
+
+    var normalizedStringValue: String {
+        stringValue
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 }
 

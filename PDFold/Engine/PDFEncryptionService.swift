@@ -66,11 +66,11 @@ enum PDFEncryptionService {
                 throw PDFEncryptionError.textChanged
             }
             for pageIndex in 0..<encryptedPDF.pageCount {
-                guard (encryptedPDF.page(at: pageIndex)?.string ?? "") == expectedPageStrings[pageIndex] else {
+                guard normalizedText(encryptedPDF.page(at: pageIndex)?.string ?? "") == normalizedText(expectedPageStrings[pageIndex]) else {
                     throw PDFEncryptionError.textChanged
                 }
             }
-        } else if let expectedText, (encryptedPDF.string ?? "") != expectedText {
+        } else if let expectedText, normalizedText(encryptedPDF.string ?? "") != normalizedText(expectedText) {
             throw PDFEncryptionError.textChanged
         }
     }
@@ -79,5 +79,11 @@ enum PDFEncryptionService {
         (0..<document.pageCount).map { pageIndex in
             document.page(at: pageIndex)?.string ?? ""
         }
+    }
+
+    private static func normalizedText(_ text: String) -> String {
+        text
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 }

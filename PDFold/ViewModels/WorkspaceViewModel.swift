@@ -2705,7 +2705,7 @@ final class WorkspaceViewModel {
             guard let self,
                   self.activeSearchID == searchID,
                   self.searchQuery == query else { return }
-            self.beginAsyncSearch(query: query, searchID: searchID, autoJump: true)
+            self.performSearch(query: query, autoJump: true)
         }
     }
 

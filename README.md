@@ -157,7 +157,7 @@ pdFold v6 is the current release candidate. It expands the app from document ass
 | --- | --- |
 | Release tag | [`release-v6`](https://github.com/udhawan97/PDFold/releases/tag/release-v6) |
 | Release asset | [`pdFold.zip`](https://github.com/udhawan97/PDFold/releases/latest/download/pdFold.zip) |
-| App metadata | `CFBundleShortVersionString` `3.0`, `CFBundleVersion` `6` |
+| App metadata | `CFBundleShortVersionString` `v6`, `CFBundleVersion` `6` |
 | Recommended install | `curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh \| zsh` |
 | Distribution | Prebuilt macOS app zip, with source builds available for developers |
 | Privacy model | Local document processing; no upload pipeline |

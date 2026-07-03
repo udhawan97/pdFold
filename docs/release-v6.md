@@ -20,17 +20,88 @@ Build the asset with:
 
 # v6 pdFold
 
-**Release:** Latest release candidate  
-**Release date:** July 2, 2026  
+**Release:** Latest release
+**Release date:** July 3, 2026
 **Tag:** [`release-v6`](https://github.com/udhawan97/PDFold/releases/tag/release-v6)
 
 ---
 
-## A Bigger Local PDF Finishing Workflow
+## A More Complete Local PDF Finishing Workspace
 
-pdFold v6 turns the app into a more complete Mac-first PDF workspace. You can still import scattered files, organize pages, comment, annotate, sign, save, and export. The new release adds the finishing tools people usually need right before sending a document: searchable scans, form handling, stamps, watermarks, page numbers, Bates labels, compression, and password-protected PDF export.
+pdFold v6 expands the app from document assembly and markup into a fuller PDF finishing workflow: make scans searchable, complete forms, add stamps and page decorations, reduce file size, protect the final PDF, and keep the exported result aligned with what you saw in the workspace.
 
-The important part is the same as before: the work stays local. pdFold uses the Mac's native PDF and OCR tooling plus local PDF validation instead of sending documents to a remote service.
+The local-first document workspace, one-line installer, automatic update flow, clean uninstall command, inline text editing, comments, signatures, PDF-first save path, source-aware export, and multi-format export remain intact. Version 6 adds OCR, form export controls, decoration baking, compression, encryption, stricter export snapshots, and UI polish around the everyday reading and annotation surface.
+
+This is primarily a **searchable scans, forms, stamps, protected export, compression, and PDF export integrity release**.
+
+---
+
+## What's New in v6
+
+### Searchable Scans With Local OCR
+
+pdFold can turn image-only scan pages into searchable PDF pages without sending the document to a remote service.
+
+- Local Vision OCR recognizes scan text and writes it back as invisible selectable/searchable text.
+- OCR work is cancellable and reports clear progress.
+- The export path validates OCR output before it becomes part of the workspace.
+- The final V6 gate re-imports a protected PDF and checks that searchable scan text survives.
+
+### PDF Forms That Can Be Finished
+
+Forms are now part of the normal workspace instead of a fragile edge case.
+
+- pdFold scans imported PDFs for form fields and shows form status in the reader.
+- Users can reset form values when they need a clean start.
+- Export can lock form answers by flattening widgets into the final PDF.
+- Tests cover text fields, checkboxes, malformed radio groups, reset/undo behavior, and unsupported dynamic-form markers.
+
+### Stamps, Watermarks, Page Numbers, And Bates Labels
+
+Version 6 adds document decorations for packet preparation and review workflows.
+
+- Watermarks, page numbers, Bates labels, and movable stamps are stored in workspace state until export.
+- Decorations are burned into exported PDFs so the final file matches the prepared packet.
+- Page numbers and Bates labels follow the current page order.
+- Existing PDF annotations are preserved while decorations are baked.
+
+### Protected PDF Export
+
+pdFold can export password-protected PDFs and verify the result before handing it back to the user.
+
+- User and owner passwords are validated before writing output.
+- Printing and copying permissions are checked after encryption.
+- Protected output is reopened and unlocked during verification.
+- The app blocks password protection when it would conflict with an existing digital-signature flow.
+
+### File-Size Reduction
+
+The compression path reduces image-heavy PDFs while keeping validation strict.
+
+- Image-heavy PDFs can be downsampled and rewritten through the local PDF processing path.
+- Compressed output must remain smaller than the source.
+- Text integrity and PDF validity are checked after compression.
+- If a PDF is already optimized or cannot be safely reduced, pdFold reports that instead of writing a misleading larger copy.
+
+### Stricter Export Integrity
+
+The V6 export path is deliberately conservative.
+
+- Export uses copied snapshots rather than mutating the live document pages.
+- Form flattening, decoration baking, compression, encryption, and validation share one stricter pipeline.
+- Compressed encrypted output is validated after encryption, not only before it.
+- User-facing save/export paths use throwing export code so failures are surfaced instead of silently ignored.
+
+### Everyday UI Polish
+
+The document workspace got several small fixes that make repeated use feel less brittle.
+
+- Empty-state import UI and the annotation toolbar were redesigned.
+- Page indicator behavior and sidebar metrics were tightened.
+- Search width and submitted-search behavior were fixed.
+- Comment controls now update live state more reliably, and the page badge focuses on the current page.
+
+---
 
 ## Install
 
@@ -38,9 +109,9 @@ The important part is the same as before: the work stays local. pdFold uses the 
 curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | zsh
 ```
 
-Direct download: [`pdFold.zip`](https://github.com/udhawan97/PDFold/releases/latest/download/pdFold.zip)
-
 The installer downloads the latest `pdFold.zip`, installs `pdFold.app` to `~/Applications`, creates Desktop commands for launch/update and uninstall, clears quarantine metadata, and opens pdFold.
+
+Direct download: [`pdFold.zip`](https://github.com/udhawan97/PDFold/releases/latest/download/pdFold.zip)
 
 Homebrew users can install the same prebuilt release app:
 
@@ -51,21 +122,11 @@ brew install --cask udhawan97/pdfold/pdfold
 
 ---
 
-## What's New
-
-| Area | What changed | Why it helps |
-| --- | --- | --- |
-| Searchable scans | Local OCR can add invisible text to scanned pages | Scanned PDFs become searchable without uploading documents |
-| Forms | pdFold detects form fields, shows form status, supports reset, and can lock answers during export | Forms can be completed and sent as final PDFs |
-| Stamps and decorations | Watermarks, page numbers, Bates labels, and movable stamps can be added and burned into export | Legal, review, and packet-prep workflows need fewer outside tools |
-| Protected export | Final PDFs can be password-protected and verified after export | Sensitive documents are easier to share deliberately |
-| Compression | Oversized PDFs can be downsampled and validated | Large image-heavy files become easier to send |
-| Export integrity | Form flattening, decoration baking, compression, encryption, and validation share a stricter export path | The exported PDF better matches what the user expects |
-| UI polish | Empty state, annotation toolbar, page indicator, sidebar metrics, search width, and comment actions were cleaned up | The app feels calmer during repeated document work |
-
 ## Update
 
 After installing v6, double-click `pdFold.command` on the Desktop. It checks the latest release before opening the app.
+
+---
 
 ## Uninstall
 
@@ -109,11 +170,13 @@ Feature range used for the product-change summary: `release-v5..HEAD`
 Summary:
 
 ```text
-18 commits changed 30 files, with 8150 insertions and 509 deletions.
+20 commits changed 37 files, with 9020 insertions and 1212 deletions.
 ```
 
 Commits:
 
+- `cc3a9ba` Fixing comments
+- `065f36e` Intro popover edit
 - `374457b` More bug fixes
 - `646be7a` Prevent sidebar metric truncation
 - `1dff4d5` Redesign empty-state background and annotation toolbar
@@ -153,8 +216,8 @@ Notable files:
 
 ### Release Checklist
 
-- Confirm `PDFold/Resources/Info.plist` is `3.0` / `6`.
-- Confirm `project.yml` is `3.0` / `6`.
+- Confirm `PDFold/Resources/Info.plist` is `v6` / `6`.
+- Confirm `project.yml` is `v6` / `6`.
 - Run the verification commands above.
 - Confirm the `release-v6` tag points at the intended release commit locally and on `origin`.
 - Confirm the GitHub release for `release-v6` is marked latest and contains `pdFold.zip`.
