@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 20
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      PDFOLD_HAS_DEVELOPER_ID_CERTIFICATE: ${{ secrets.PDFOLD_DEVELOPER_ID_CERTIFICATE_BASE64 != '' && '1' || '0' }}
 
     steps:
       - name: Checkout
@@ -30,12 +31,54 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Cache SwiftPM downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-downloads-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-downloads-
+
       - name: Show tool versions
         run: |
           xcodebuild -version
           swift --version
 
+      - name: Import Developer ID certificate
+        if: ${{ env.PDFOLD_HAS_DEVELOPER_ID_CERTIFICATE == '1' }}
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.PDFOLD_DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.PDFOLD_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/pdfold-signing.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+          certificate_path="$RUNNER_TEMP/pdfold-developer-id.p12"
+
+          echo "$CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate_path" \
+            -k "$keychain" \
+            -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | sed 's/[ "]//g')
+          security default-keychain -s "$keychain"
+          security find-identity -v -p codesigning "$keychain"
+
       - name: Build distributable zip
+        env:
+          PDFOLD_SIGNING_IDENTITY: ${{ secrets.PDFOLD_SIGNING_IDENTITY || '-' }}
+          PDFOLD_NOTARIZE: ${{ secrets.PDFOLD_SIGNING_IDENTITY != '' && secrets.PDFOLD_APPLE_ID != '' && secrets.PDFOLD_APPLE_TEAM_ID != '' && secrets.PDFOLD_APPLE_APP_SPECIFIC_PASSWORD != '' && '1' || '0' }}
+          PDFOLD_APPLE_ID: ${{ secrets.PDFOLD_APPLE_ID }}
+          PDFOLD_APPLE_TEAM_ID: ${{ secrets.PDFOLD_APPLE_TEAM_ID }}
+          PDFOLD_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.PDFOLD_APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
           zsh scripts/install-mac.sh \
             --clean \

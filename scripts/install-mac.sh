@@ -13,6 +13,12 @@ PREBUILT_ONLY=0
 VERBOSE=0
 PACKAGE_PATH=""
 PACKAGE_ONLY=0
+SIGNING_IDENTITY="${PDFOLD_SIGNING_IDENTITY:--}"
+NOTARIZE="${PDFOLD_NOTARIZE:-0}"
+NOTARY_KEYCHAIN_PROFILE="${PDFOLD_NOTARY_KEYCHAIN_PROFILE:-}"
+APPLE_ID="${PDFOLD_APPLE_ID:-}"
+APPLE_TEAM_ID="${PDFOLD_APPLE_TEAM_ID:-}"
+APPLE_APP_SPECIFIC_PASSWORD="${PDFOLD_APPLE_APP_SPECIFIC_PASSWORD:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -136,6 +142,8 @@ Started: $(date)
 macOS: $(sw_vers -productVersion 2>/dev/null || printf "unknown")
 Architecture: $(uname -m)
 Verbose: $VERBOSE
+Signing identity: $SIGNING_IDENTITY
+Notarize: $NOTARIZE
 LOG
 
 latest_release_zip_url() {
@@ -201,6 +209,51 @@ verify_app_bundle() {
         fail "The app bundle still exports the old pdFold Workspace document type."
     fi
     codesign --verify --deep --strict "$app_path" >>"$LOG_FILE" 2>&1 || fail "The installed app signature could not be verified."
+}
+
+sign_staged_app() {
+    local sign_args
+    sign_args=(--force --deep --sign "$SIGNING_IDENTITY" --entitlements "$PROJECT_ROOT/PDFold/Resources/PDFold.entitlements")
+
+    if [[ "$SIGNING_IDENTITY" != "-" ]]; then
+        sign_args+=(--options runtime --timestamp)
+    fi
+
+    print_step "Signing app bundle"
+    codesign "${sign_args[@]}" "$STAGED_APP" >>"$LOG_FILE" 2>&1 || fail "Could not sign the app."
+    codesign --verify --deep --strict "$STAGED_APP" >>"$LOG_FILE" 2>&1 || fail "The app signature could not be verified."
+}
+
+notarize_staged_app() {
+    local notary_zip
+
+    [[ "$NOTARIZE" == "1" ]] || return 0
+    [[ "$SIGNING_IDENTITY" != "-" ]] || fail "PDFOLD_NOTARIZE=1 requires PDFOLD_SIGNING_IDENTITY to be a Developer ID Application identity."
+    command -v xcrun >/dev/null 2>&1 || fail "xcrun was not found, so notarization cannot run."
+
+    notary_zip="$STAGE_ROOT/$APP_NAME-notary.zip"
+    print_step "Submitting app for Apple notarization"
+    /bin/rm -f "$notary_zip"
+    (cd "$STAGE_ROOT" && /usr/bin/ditto -c -k --keepParent "$APP_NAME.app" "$notary_zip") >>"$LOG_FILE" 2>&1
+
+    if [[ -n "$NOTARY_KEYCHAIN_PROFILE" ]]; then
+        xcrun notarytool submit "$notary_zip" \
+            --keychain-profile "$NOTARY_KEYCHAIN_PROFILE" \
+            --wait >>"$LOG_FILE" 2>&1 || fail "Apple notarization failed."
+    else
+        [[ -n "$APPLE_ID" && -n "$APPLE_TEAM_ID" && -n "$APPLE_APP_SPECIFIC_PASSWORD" ]] \
+            || fail "Notarization requires PDFOLD_NOTARY_KEYCHAIN_PROFILE or PDFOLD_APPLE_ID, PDFOLD_APPLE_TEAM_ID, and PDFOLD_APPLE_APP_SPECIFIC_PASSWORD."
+        xcrun notarytool submit "$notary_zip" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait >>"$LOG_FILE" 2>&1 || fail "Apple notarization failed."
+    fi
+
+    print_step "Stapling notarization ticket"
+    xcrun stapler staple "$STAGED_APP" >>"$LOG_FILE" 2>&1 || fail "Could not staple the notarization ticket."
+    xcrun stapler validate "$STAGED_APP" >>"$LOG_FILE" 2>&1 || fail "Could not validate the stapled notarization ticket."
+    codesign --verify --deep --strict "$STAGED_APP" >>"$LOG_FILE" 2>&1 || fail "The notarized app signature could not be verified."
 }
 
 capture_launch_diagnostics() {
@@ -372,9 +425,8 @@ build_from_source() {
     /usr/bin/xattr -cr "$STAGED_APP" 2>/dev/null || true
     verify_required_frameworks "$STAGED_APP"
 
-    print_step "Signing app bundle"
-    codesign --force --deep --sign - --entitlements "$PROJECT_ROOT/PDFold/Resources/PDFold.entitlements" "$STAGED_APP" >>"$LOG_FILE" 2>&1 || fail "Could not sign the app."
-    codesign --verify --deep --strict "$STAGED_APP" >>"$LOG_FILE" 2>&1 || fail "The app signature could not be verified."
+    sign_staged_app
+    notarize_staged_app
 }
 
 write_package() {

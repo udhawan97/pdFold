@@ -12,6 +12,7 @@ struct InspectorView: View {
         case comments = "Comments"
         case markup = "Markup"
         case decorate = "Decorate"
+        case ocr = "OCR"
 
         var iconName: String {
             switch self {
@@ -20,6 +21,7 @@ struct InspectorView: View {
             case .comments: return "text.bubble"
             case .markup: return "highlighter"
             case .decorate: return "paintbrush.pointed"
+            case .ocr: return "doc.text.viewfinder"
             }
         }
     }
@@ -52,6 +54,7 @@ struct InspectorView: View {
                 case .comments: InspectorWorkspaceCommentsView(viewModel: viewModel)
                 case .markup: InspectorMarkupView(viewModel: viewModel)
                 case .decorate: InspectorDecorateView(viewModel: viewModel)
+                case .ocr: InspectorOCRView(viewModel: viewModel)
                 }
             }
         }
@@ -92,6 +95,7 @@ private struct InspectorTabPicker: View {
                     .contentShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
             }
         }
         .padding(4)
@@ -995,6 +999,92 @@ private extension PageDecorationSwatch {
     }
 }
 
+// MARK: - OCR tab
+
+private struct InspectorOCRView: View {
+    @Bindable var viewModel: WorkspaceViewModel
+
+    private var statusTitle: String {
+        if viewModel.isMakingSearchable {
+            return "Making document searchable"
+        }
+        if viewModel.hasScannedPages && !viewModel.canStartSearchable {
+            return "OCR waiting"
+        }
+        if viewModel.hasScannedPages {
+            return "Scanned pages detected"
+        }
+        return "Searchable text ready"
+    }
+
+    private var statusDetail: String {
+        if viewModel.isMakingSearchable {
+            return viewModel.operationProgress.detail
+        }
+        if viewModel.hasScannedPages && !viewModel.canStartSearchable {
+            return "Finish the current document operation before running OCR."
+        }
+        if viewModel.hasScannedPages {
+            let pageLabel = viewModel.scannedPageCount == 1 ? "page" : "pages"
+            return "\(viewModel.scannedPageCount) scanned \(pageLabel) can be processed with local OCR."
+        }
+        return "No image-only scan pages need OCR right now."
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: .dsLG) {
+            HStack(alignment: .top, spacing: .dsMD) {
+                Image(systemName: viewModel.hasScannedPages ? "doc.text.viewfinder" : "checkmark.circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(viewModel.hasScannedPages ? Color.dsAccent : Color.dsAnnotationSage)
+                    .frame(width: 24, height: 24)
+
+                VStack(alignment: .leading, spacing: .dsXS) {
+                    Text(statusTitle)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.dsTextPrimary)
+                    Text(statusDetail)
+                        .font(.dsCaption())
+                        .foregroundStyle(Color.dsTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Button {
+                if viewModel.isMakingSearchable {
+                    viewModel.cancelActiveOperation()
+                } else {
+                    viewModel.makeSearchable()
+                }
+            } label: {
+                Label(viewModel.isMakingSearchable ? "Cancel OCR" : "Make searchable",
+                      systemImage: viewModel.isMakingSearchable ? "xmark.circle" : "doc.text.viewfinder")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .disabled(!viewModel.isMakingSearchable && !viewModel.canStartSearchable)
+            .help(buttonHelp)
+        }
+        .padding(.horizontal, .dsLG)
+        .padding(.vertical, .dsXL)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var buttonHelp: String {
+        if viewModel.isMakingSearchable {
+            return "Cancel making searchable"
+        }
+        if viewModel.canStartSearchable {
+            return "Run local OCR on scanned pages"
+        }
+        if viewModel.hasScannedPages {
+            return "Finish the current document operation before running OCR"
+        }
+        return "No scanned pages detected"
+    }
+}
+
 private struct InspectorMarkupView: View {
     @Bindable var viewModel: WorkspaceViewModel
 
@@ -1009,8 +1099,12 @@ private struct InspectorMarkupView: View {
         return result
     }
 
+    private var textEdits: [WorkspaceViewModel.InlineTextEditListItem] {
+        viewModel.inlineTextEditListItems()
+    }
+
     var body: some View {
-        if allAnnotations.isEmpty && viewModel.selectedAnnotation == nil {
+        if allAnnotations.isEmpty && viewModel.selectedAnnotation == nil && textEdits.isEmpty {
             VStack(spacing: .dsSM) {
                 Image(systemName: "highlighter")
                     .font(.system(size: 24, weight: .light))
@@ -1029,6 +1123,10 @@ private struct InspectorMarkupView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if let selected = viewModel.selectedAnnotation {
                     InspectorEditingDetails(ann: selected)
+                    Rectangle().fill(Color.dsSeparator).frame(height: 0.5)
+                }
+                if !textEdits.isEmpty {
+                    InspectorTextEditsSection(viewModel: viewModel, textEdits: textEdits)
                     Rectangle().fill(Color.dsSeparator).frame(height: 0.5)
                 }
                 ForEach(allAnnotations.indices, id: \.self) { i in
@@ -1063,6 +1161,93 @@ private struct InspectorMarkupView: View {
             }
             .padding(.vertical, .dsXS)
         }
+    }
+}
+
+private struct InspectorTextEditsSection: View {
+    @Bindable var viewModel: WorkspaceViewModel
+    var textEdits: [WorkspaceViewModel.InlineTextEditListItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: .dsSM) {
+                InspectorSectionHeader(title: "Text Edits", count: textEdits.count)
+                Spacer()
+                Button("Revert All") {
+                    viewModel.revertAllInlineTextEdits()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.dsAccent)
+                .padding(.trailing, .dsMD)
+                .help("Remove every text edit and restore the original document text")
+            }
+            ForEach(textEdits) { item in
+                InspectorTextEditRow(
+                    item: item,
+                    onSelect: {
+                        if let ref = viewModel.document.workspace.pageOrder.first(where: { $0.id == item.pageRefID }) {
+                            viewModel.selectPage(ref)
+                        }
+                    },
+                    onRevert: {
+                        viewModel.revertInlineTextEdit(pageRefID: item.pageRefID, operationID: item.id)
+                    }
+                )
+            }
+        }
+        .padding(.vertical, .dsXS)
+    }
+}
+
+private struct InspectorTextEditRow: View {
+    var item: WorkspaceViewModel.InlineTextEditListItem
+    var onSelect: () -> Void
+    var onRevert: () -> Void
+
+    private var changeSummary: String {
+        if item.isInsertion || item.originalText.isEmpty {
+            return "Added \u{201C}\(item.replacementText)\u{201D}"
+        }
+        return "\u{201C}\(item.originalText)\u{201D} \u{2192} \u{201C}\(item.replacementText)\u{201D}"
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: .dsXS) {
+            Button(action: onSelect) {
+                HStack(alignment: .top, spacing: .dsSM) {
+                    Image(systemName: item.isInsertion ? "plus.square" : "character.cursor.ibeam")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.dsTextTertiary)
+                        .frame(width: 16)
+                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(changeSummary)
+                            .font(.dsCaption())
+                            .foregroundStyle(Color.dsTextPrimary)
+                            .lineLimit(3)
+                        Text("Page \(item.pageNumber)\(item.memberName.isEmpty ? "" : " · \(item.memberName)")")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.dsTextTertiary)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .buttonStyle(.plain)
+            .help("Show this page")
+
+            Button(action: onRevert) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(Color.dsTextTertiary)
+            .help(item.isInsertion ? "Remove this added text" : "Restore the original text")
+        }
+        .padding(.horizontal, .dsMD)
+        .padding(.vertical, .dsSM)
+        .contentShape(Rectangle())
     }
 }
 

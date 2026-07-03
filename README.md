@@ -88,7 +88,7 @@ brew tap udhawan97/pdfold https://github.com/udhawan97/PDFold
 brew install --cask udhawan97/pdfold/pdfold
 ```
 
-Homebrew installs the same prebuilt app. The one-line installer remains the friendliest path because it also creates Desktop launch/update and uninstall commands.
+Homebrew installs the same prebuilt app and clears the download quarantine after installation. The one-line installer remains the friendliest path because it also creates Desktop launch/update and uninstall commands.
 </details>
 
 <details>
@@ -293,6 +293,19 @@ Create the same release zip used by GitHub Releases:
 ./scripts/install-mac.sh --package-only --package /tmp/pdFold.zip
 ```
 
+Create a Developer ID signed and notarized release zip:
+
+```zsh
+PDFOLD_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+PDFOLD_NOTARIZE=1 \
+PDFOLD_APPLE_ID="apple-id@example.com" \
+PDFOLD_APPLE_TEAM_ID="TEAMID" \
+PDFOLD_APPLE_APP_SPECIFIC_PASSWORD="app-specific-password" \
+./scripts/install-mac.sh --package-only --package /tmp/pdFold.zip
+```
+
+GitHub Actions uses the same path when these secrets are configured: `PDFOLD_DEVELOPER_ID_CERTIFICATE_BASE64`, `PDFOLD_DEVELOPER_ID_CERTIFICATE_PASSWORD`, `PDFOLD_SIGNING_IDENTITY`, `PDFOLD_APPLE_ID`, `PDFOLD_APPLE_TEAM_ID`, and `PDFOLD_APPLE_APP_SPECIFIC_PASSWORD`.
+
 Install from the current source checkout without opening the app:
 
 ```zsh
@@ -337,7 +350,6 @@ xcodebuild test -quiet -project PDFold.xcodeproj -scheme PDFold -destination 'pl
 
 ## 🗺️ Roadmap
 
-- Developer ID signing and notarization, so Gatekeeper greets pdFold by name instead of patting it down.
 - More export presets.
 - Faster large-document navigation.
 - Automated UI smoke tests.
@@ -379,9 +391,9 @@ curl -fsSL https://raw.githubusercontent.com/udhawan97/PDFold/main/install.sh | 
 <details>
 <summary>macOS warns the app is from an unidentified developer</summary>
 
-pdFold release builds are ad-hoc signed but not notarized. The installer removes download quarantine from the installed app. If macOS still warns, open it from Finder, then use **Open** from the security prompt.
+pdFold release builds are ad-hoc signed but not notarized. The one-line installer and Homebrew cask remove download quarantine from the installed app. If macOS still warns, open it from Finder, then use **Open** from the security prompt.
 
-Fully quiet Gatekeeper behavior requires Apple Developer ID signing and notarization, which is on the roadmap.
+Fully quiet Gatekeeper behavior requires a release zip built with Apple Developer ID signing and notarization secrets configured in GitHub Actions.
 </details>
 
 <details>
