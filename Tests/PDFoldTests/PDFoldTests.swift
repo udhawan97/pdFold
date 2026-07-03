@@ -2685,6 +2685,31 @@ final class PageDecorationExportTests: XCTestCase {
         XCTAssertFalse(viewModel.document.workspace.decorations.contains { $0.kind == .watermark })
     }
 
+    func testGlobalDecorationTogglesUpdateVisibleStateAndRemoveWhenDisabled() {
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument(), processingEngine: PDFKitProcessingEngineFallback())
+        let initialVersion = viewModel.decorationStateVersion
+
+        viewModel.setDecoration(.watermark, enabled: true)
+        viewModel.setDecoration(.pageNumber, enabled: true)
+        viewModel.setDecoration(.bates, enabled: true)
+
+        XCTAssertTrue(viewModel.isDecorationEnabled(.watermark))
+        XCTAssertTrue(viewModel.isDecorationEnabled(.pageNumber))
+        XCTAssertTrue(viewModel.isDecorationEnabled(.bates))
+        XCTAssertEqual(Set(viewModel.document.workspace.decorations.map(\.kind)), [.watermark, .pageNumber, .bates])
+        XCTAssertEqual(viewModel.decorationStateVersion, initialVersion + 3)
+
+        viewModel.setDecoration(.watermark, enabled: false)
+        viewModel.setDecoration(.pageNumber, enabled: false)
+        viewModel.setDecoration(.bates, enabled: false)
+
+        XCTAssertFalse(viewModel.isDecorationEnabled(.watermark))
+        XCTAssertFalse(viewModel.isDecorationEnabled(.pageNumber))
+        XCTAssertFalse(viewModel.isDecorationEnabled(.bates))
+        XCTAssertFalse(viewModel.document.workspace.hasActiveDecorations)
+        XCTAssertTrue(viewModel.document.workspace.decorations.isEmpty)
+    }
+
     func testDecorationEditingOptionsPersistThroughViewModel() {
         let viewModel = WorkspaceViewModel(document: WorkspaceDocument(), processingEngine: PDFKitProcessingEngineFallback())
 
@@ -2704,14 +2729,14 @@ final class PageDecorationExportTests: XCTestCase {
         let watermark = viewModel.decoration(of: .watermark)
         XCTAssertEqual(watermark?.text, "Internal only")
         XCTAssertEqual(watermark?.fontSize, 42)
-        XCTAssertEqual(watermark?.opacity, 0.35, accuracy: 0.001)
+        XCTAssertEqual(watermark?.opacity ?? 0, 0.35, accuracy: 0.001)
         XCTAssertEqual(watermark?.swatch, .coral)
 
         let bates = viewModel.decoration(of: .bates)
         XCTAssertEqual(bates?.prefix, "PRD")
         XCTAssertEqual(bates?.startNumber, 7)
         XCTAssertEqual(bates?.fontSize, 14)
-        XCTAssertEqual(bates?.opacity, 0.75, accuracy: 0.001)
+        XCTAssertEqual(bates?.opacity ?? 0, 0.75, accuracy: 0.001)
         XCTAssertEqual(bates?.swatch, .accent)
     }
 

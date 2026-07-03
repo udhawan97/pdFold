@@ -801,6 +801,7 @@ private struct InspectorDecorateView: View {
     }
 
     var body: some View {
+        let _ = viewModel.decorationStateVersion
         VStack(alignment: .leading, spacing: 0) {
             decorationRow(title: "Watermark", isOn: watermarkEnabled) {
                 VStack(alignment: .leading, spacing: .dsSM) {
@@ -919,7 +920,12 @@ private struct InspectorDecorateView: View {
                 Button {
                     viewModel.setDecorationSwatch(kind, swatch: swatch)
                 } label: {
-                    Label(swatch.label, systemImage: viewModel.decorationSwatch(for: kind) == swatch ? "checkmark" : "")
+                    HStack {
+                        Text(swatch.label)
+                        if viewModel.decorationSwatch(for: kind) == swatch {
+                            Image(systemName: "checkmark")
+                        }
+                    }
                 }
             }
         } label: {

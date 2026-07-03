@@ -246,6 +246,7 @@ final class WorkspaceViewModel {
     var pendingSignatureOptions: PendingSignaturePlacementOptions? = nil
     var pendingStampOptions: PendingStampPlacementOptions? = nil
     var selectedStampDecorationID: UUID? = nil
+    private(set) var decorationStateVersion = 0
     var selectedPageRefID: UUID? = nil
     var draggedPageRefID: UUID? = nil
     var selectedCommentID: UUID? = nil
@@ -1207,6 +1208,7 @@ final class WorkspaceViewModel {
             guard let pageRefID = decoration.pageRefID else { return false }
             return removedPageRefIDs.contains(pageRefID)
         }
+        decorationStateVersion &+= 1
         if let selectedStampDecorationID,
            removedStampIDs.contains(selectedStampDecorationID) {
             self.selectedStampDecorationID = nil
@@ -1602,6 +1604,7 @@ final class WorkspaceViewModel {
         let previous = document.workspace.decorations
         guard previous != decorations else { return }
         document.workspace.decorations = decorations
+        decorationStateVersion &+= 1
         if let selectedStampDecorationID,
            !decorations.contains(where: { $0.id == selectedStampDecorationID }) {
             self.selectedStampDecorationID = nil
@@ -2443,6 +2446,7 @@ final class WorkspaceViewModel {
         }
 
         document.workspace.decorations[index].rect = bounds
+        decorationStateVersion &+= 1
         markAnnotationsModified()
 
         if shouldRegisterUndo {
