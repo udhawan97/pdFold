@@ -125,6 +125,17 @@ final class PDFIncrementalSignerStructureTests: XCTestCase {
         return try XCTUnwrap(doc.dataRepresentation())
     }
 
+    private func multiPagePDFData(count: Int = 3) throws -> Data {
+        let bounds = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let doc = PDFDocument()
+        for index in 0..<count {
+            let page = PDFPage()
+            page.setBounds(bounds, for: .mediaBox)
+            doc.insert(page, at: index)
+        }
+        return try XCTUnwrap(doc.dataRepresentation())
+    }
+
     func testSignedOutputIsAnAppendOnlyIncrementalUpdate() throws {
         let original = try onePagePDFData()
         let field = SignatureFieldSpec(
@@ -155,6 +166,56 @@ final class PDFIncrementalSignerStructureTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(text.components(separatedBy: "startxref").count - 1, 2)
 
         // Still a valid, openable PDF.
+        XCTAssertNotNil(PDFDocument(data: signed))
+    }
+
+    func testSignedWidgetAttachesToRequestedPageObject() throws {
+        let original = try multiPagePDFData()
+        let field = SignatureFieldSpec(
+            pageIndex: 1,
+            rect: CGRect(x: 120, y: 80, width: 180, height: 54),
+            signerName: "Grace Hopper"
+        )
+        let signed = try PDFIncrementalSigner().sign(pdf: original, field: field, appearance: nil) { _ in
+            Data([0x30, 0x03, 0x02, 0x01, 0x00])
+        }
+
+        let text = String(decoding: signed, as: UTF8.self)
+        let objects = pdfObjects(in: text)
+        let fieldObject = try XCTUnwrap(objects.last { $0.body.contains("/Subtype /Widget") })
+        let fieldObjectNumber = fieldObject.number
+        let pageObject = try XCTUnwrap(objects.last {
+            $0.body.contains("/Type /Page") &&
+            !$0.body.contains("/Type /Pages") &&
+            $0.body.contains("/Annots") &&
+            $0.body.contains("\(fieldObjectNumber) 0 R")
+        })
+        let pageObjectNumber = pageObject.number
+
+        XCTAssertTrue(text.contains("/P \(pageObjectNumber) 0 R"))
+        XCTAssertNotEqual(pageObjectNumber, fieldObjectNumber)
+        XCTAssertNotNil(PDFDocument(data: signed))
+    }
+
+    func testSignedWidgetIncludesVisibleAppearanceStreamWhenProvided() throws {
+        let original = try onePagePDFData()
+        let appearance = try SignatureAppearanceRenderer.pdfAppearanceStream(
+            for: .typedName("Visible Signer"),
+            bounds: CGRect(x: 0, y: 0, width: 180, height: 54)
+        )
+        let field = SignatureFieldSpec(
+            pageIndex: 0,
+            rect: CGRect(x: 120, y: 80, width: 180, height: 54),
+            signerName: "Visible Signer"
+        )
+
+        let signed = try PDFIncrementalSigner().sign(pdf: original, field: field, appearance: appearance) { _ in
+            Data([0x30, 0x03, 0x02, 0x01, 0x00])
+        }
+
+        let text = String(decoding: signed, as: UTF8.self)
+        XCTAssertTrue(text.contains("/AP << /N"))
+        XCTAssertTrue(text.contains("/Type /XObject /Subtype /Form"))
         XCTAssertNotNil(PDFDocument(data: signed))
     }
 
@@ -238,4 +299,39 @@ final class SignatureExportSurvivalTests: XCTestCase {
             XCTAssertEqual(error as? SigningError, .invalidPDF)
         }
     }
+}
+
+private func pdfObjects(in text: String) -> [(number: Int, body: String)] {
+    var objects: [(number: Int, body: String)] = []
+    var currentNumber: Int?
+    var currentBody: [Substring] = []
+
+    for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+        let parts = line.split(separator: " ")
+        if currentNumber == nil,
+           parts.count >= 3,
+           let number = Int(parts[0]),
+           parts[1] == "0",
+           parts[2] == "obj" {
+            currentNumber = number
+            let remainder = parts.dropFirst(3).joined(separator: " ")
+            if !remainder.isEmpty {
+                currentBody.append(Substring(remainder))
+            }
+            continue
+        }
+
+        if line == "endobj", let number = currentNumber {
+            objects.append((number, currentBody.joined(separator: "\n")))
+            currentNumber = nil
+            currentBody.removeAll()
+            continue
+        }
+
+        if currentNumber != nil {
+            currentBody.append(line)
+        }
+    }
+
+    return objects
 }

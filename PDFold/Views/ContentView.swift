@@ -141,8 +141,8 @@ struct ContentView: View {
                 Label("Add Files", systemImage: "plus.circle")
             }
             .acceptsImportDrops(perform: handleDrop)
-            .help("Add files (⌘O)")
-            .keyboardShortcut("o", modifiers: .command)
+            .help("Add files to this workspace (⌘⇧O)")
+            .keyboardShortcut("o", modifiers: [.command, .shift])
         }
 
         // Header navigation: keep document structure near the title.
@@ -178,7 +178,7 @@ struct ContentView: View {
                     NotificationCenter.default.post(name: .pdfoldPrint, object: nil)
                 }
             } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
+                Label("Export", systemImage: "square.and.arrow.up")
             }
             .acceptsImportDrops(perform: handleDrop)
             .help("Export / Print (⌘⇧E)")

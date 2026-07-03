@@ -37,7 +37,7 @@ struct TOCView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(entries) { entry in
                             Button {
-                                onJump?(entry.startPageIndex)
+                                onJump?(entry.jumpPageIndex)
                             } label: {
                                 HStack(spacing: .dsSM) {
                                     Image(systemName: "doc.text.fill")
@@ -49,7 +49,7 @@ struct TOCView: View {
                                             .font(.dsBody())
                                             .foregroundStyle(Color.dsTextPrimary)
                                             .lineLimit(1)
-                                        Text("Page \(entry.startPageIndex + 1)")
+                                        Text("Page \(entry.displayPageNumber)")
                                             .font(.dsCaption())
                                             .foregroundStyle(Color.dsTextTertiary)
                                     }

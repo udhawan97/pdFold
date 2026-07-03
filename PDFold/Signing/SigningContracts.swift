@@ -329,7 +329,8 @@ private struct PDFIncrementalUpdatePlan {
     private let previousStartXref: Int
     private let maxObjectNumber: Int
     private let originalCatalogBody: String
-    private let pageObjectNumber: Int?
+    private let pageObjectNumber: Int
+    private let originalPageBody: String
 
     private let acroFormObjectNumber: Int
     private let fieldObjectNumber: Int
@@ -346,7 +347,8 @@ private struct PDFIncrementalUpdatePlan {
         self.previousStartXref = try Self.parsePreviousStartXref(from: text)
         self.maxObjectNumber = max(Self.parseMaxObjectNumber(from: text), try Self.parseTrailerSize(from: text) - 1)
         self.originalCatalogBody = try Self.parseObjectBody(objectNumber: rootObjectNumber, in: text)
-        self.pageObjectNumber = nil
+        self.pageObjectNumber = try Self.parsePageObjectNumber(at: field.pageIndex, in: text)
+        self.originalPageBody = try Self.parseObjectBody(objectNumber: pageObjectNumber, in: text)
 
         self.acroFormObjectNumber = maxObjectNumber + 1
         self.fieldObjectNumber = maxObjectNumber + 2
@@ -365,6 +367,12 @@ private struct PDFIncrementalUpdatePlan {
         appendObject(
             number: rootObjectNumber,
             body: catalogBody(),
+            to: &output,
+            offsets: &offsets
+        )
+        appendObject(
+            number: pageObjectNumber,
+            body: pageBody(),
             to: &output,
             offsets: &offsets
         )
@@ -418,6 +426,23 @@ private struct PDFIncrementalUpdatePlan {
         return updated
     }
 
+    private func pageBody() -> String {
+        let widgetRef = "\(fieldObjectNumber) 0 R"
+        if let annotsRange = originalPageBody.range(of: #"/Annots\s*\[[^\]]*\]"#, options: .regularExpression),
+           let closingBracket = originalPageBody[annotsRange].range(of: "]", options: .backwards) {
+            var updated = originalPageBody
+            updated.insert(contentsOf: " \(widgetRef)", at: closingBracket.lowerBound)
+            return updated
+        }
+
+        guard let insertion = originalPageBody.range(of: ">>", options: .backwards) else {
+            return "<< /Type /Page /Annots [\(widgetRef)] >>"
+        }
+        var updated = originalPageBody
+        updated.insert(contentsOf: " /Annots [\(widgetRef)]", at: insertion.lowerBound)
+        return updated
+    }
+
     private func fieldBody() -> String {
         let rect = pdfArray(field.rect.pdfRectValues)
         var entries = [
@@ -429,9 +454,7 @@ private struct PDFIncrementalUpdatePlan {
             "/F 132",
             "/V \(signatureObjectNumber) 0 R"
         ]
-        if let pageObjectNumber {
-            entries.append("/P \(pageObjectNumber) 0 R")
-        }
+        entries.append("/P \(pageObjectNumber) 0 R")
         if let appearanceObjectNumber {
             entries.append("/AP << /N \(appearanceObjectNumber) 0 R >>")
         }
@@ -595,6 +618,22 @@ private struct PDFIncrementalUpdatePlan {
             throw SigningError.invalidPDF
         }
         return String(text[headerRange.upperBound..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func parsePageObjectNumber(at pageIndex: Int, in text: String) throws -> Int {
+        guard pageIndex >= 0 else { throw SigningError.invalidPDF }
+        var pageObjects: [Int] = []
+        for match in text.allRegexMatches(#"(?s)(\d+)\s+0\s+obj\s*(.*?)\s*endobj"#) {
+            guard match.count >= 3,
+                  let objectNumber = Int(match[1]) else { continue }
+            let body = match[2]
+            guard body.firstRegexMatch(#"/Type\s*/Page(?!s)"#) != nil else { continue }
+            pageObjects.append(objectNumber)
+        }
+        guard pageObjects.indices.contains(pageIndex) else {
+            throw SigningError.invalidPDF
+        }
+        return pageObjects[pageIndex]
     }
 
     private static func skipPDFWhitespace(in bytes: [UInt8], cursor: inout Int) -> Bool {

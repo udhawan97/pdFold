@@ -4,13 +4,16 @@ struct WorkspaceExportOptions: Equatable {
     var encryption: PDFEncryptionOptions?
     var lockFormAnswers: Bool
     var compressionPreset: PDFCompressionPreset?
+    var embedsEditableWorkspaceState: Bool
 
     init(encryption: PDFEncryptionOptions? = nil,
          lockFormAnswers: Bool = false,
-         compressionPreset: PDFCompressionPreset? = nil) {
+         compressionPreset: PDFCompressionPreset? = nil,
+         embedsEditableWorkspaceState: Bool = false) {
         self.encryption = encryption
         self.lockFormAnswers = lockFormAnswers
         self.compressionPreset = compressionPreset
+        self.embedsEditableWorkspaceState = embedsEditableWorkspaceState
     }
 }
 

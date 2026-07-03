@@ -31,13 +31,21 @@ struct ReadingCanvas: View {
                     .allowsHitTesting(viewModel.hasFormNotice)
                     .accessibilityHidden(!viewModel.hasFormNotice)
                     .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.18), value: viewModel.hasFormNotice)
+                if viewModel.hasPendingSignaturePlacement {
+                    SignaturePlacementBanner {
+                        viewModel.cancelSignaturePlacement()
+                    }
+                    .padding(.top, viewModel.canvasBannerInset + .dsMD)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 if let status = viewModel.editingStatus {
                     EditingStatusBanner(status: status) {
                         viewModel.editingStatus = nil
                     }
-                    .padding(.top, viewModel.canvasBannerInset + .dsMD)
+                    .padding(.top, viewModel.canvasBannerInset + (viewModel.hasPendingSignaturePlacement ? 48 : 0) + .dsMD)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .task(id: status.id) {
+                        guard !viewModel.hasPendingSignaturePlacement else { return }
                         guard !status.isError else { return }
                         try? await Task.sleep(for: .seconds(4))
                         guard !Task.isCancelled, viewModel.editingStatus?.id == status.id else { return }
@@ -47,6 +55,31 @@ struct ReadingCanvas: View {
             }
         }
         .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.18), value: viewModel.editingStatus?.id)
+    }
+}
+
+private struct SignaturePlacementBanner: View {
+    var cancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: .dsSM) {
+            Image(systemName: "signature")
+                .foregroundStyle(Color.dsSignatureAccent)
+            Text("Click a page to place the signature.")
+                .font(.dsCaption())
+                .foregroundStyle(Color.dsTextPrimary)
+            Button("Cancel", action: cancel)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Cancel signature placement")
+        }
+        .padding(.horizontal, .dsMD)
+        .padding(.vertical, .dsSM)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
+                .strokeBorder(Color.dsSeparator, lineWidth: 1)
+        }
     }
 }
 
@@ -631,8 +664,8 @@ struct PDFViewRepresentable: NSViewRepresentable {
                     self?.viewModel.showEditMessage(message, isError: isError)
                     view?.needsDisplay = true
                 },
-                changeHandler: { [weak self, weak view] in
-                    self?.viewModel.markAnnotationsModified()
+                changeHandler: { [weak self, weak view] annotation, snapshot, actionName in
+                    self?.viewModel.registerAnnotationEdit(annotation, from: snapshot, actionName: actionName)
                     view?.needsDisplay = true
                 }
             )
@@ -860,8 +893,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
         }
 
         @objc func printDocument(_ notification: Notification) {
-            guard let pdfView else { return }
-            viewModel.printWorkspace(pdfView: pdfView)
+            viewModel.printWorkspace()
         }
 
         @objc func zoomIn(_ notification: Notification) {
@@ -1685,7 +1717,7 @@ final class SignatureSelectionOverlayView: NSView {
 final class NoteEditorViewController: NSViewController {
     private let annotation: PDFAnnotation
     private let statusHandler: (String, Bool) -> Void
-    private let changeHandler: () -> Void
+    private let changeHandler: (PDFAnnotation, PDFAnnotationEditSnapshot, String) -> Void
     var closeHandler: (() -> Void)?
     private weak var textView: NSTextView?
     private weak var scrollView: NSScrollView?
@@ -1715,7 +1747,7 @@ final class NoteEditorViewController: NSViewController {
     init(
         annotation: PDFAnnotation,
         statusHandler: @escaping (String, Bool) -> Void = { _, _ in },
-        changeHandler: @escaping () -> Void = {}
+        changeHandler: @escaping (PDFAnnotation, PDFAnnotationEditSnapshot, String) -> Void = { _, _, _ in }
     ) {
         self.annotation = annotation
         self.statusHandler = statusHandler
@@ -1861,7 +1893,7 @@ final class NoteEditorViewController: NSViewController {
         ) {
         case .removeDraft:
             annotation.page?.removeAnnotation(annotation)
-            changeHandler()
+            changeHandler(annotation, originalSnapshot, editorTitle)
             return true
         case .rejectReplacement:
             statusHandler("Replacement text cannot be empty. Use a text box or a future redaction tool for removal.", true)
@@ -1872,7 +1904,7 @@ final class NoteEditorViewController: NSViewController {
         annotation.contents = textView.string
         annotation.setValue(false, forAnnotationKey: WorkspaceViewModel.draftTextAnnotationKey)
         if !isFreeTextAnnotation {
-            changeHandler()
+            changeHandler(annotation, originalSnapshot, editorTitle)
             return true
         }
         if isFreeTextAnnotation {
@@ -1894,7 +1926,7 @@ final class NoteEditorViewController: NSViewController {
             statusHandler(PDFTextEditWarning.serializationFailed.message, true)
             return false
         }
-        changeHandler()
+        changeHandler(annotation, originalSnapshot, editorTitle)
         return true
     }
 
@@ -1902,7 +1934,7 @@ final class NoteEditorViewController: NSViewController {
         didCancel = true
         if isDraftAnnotation, (originalSnapshot.contents ?? "").isEmpty {
             annotation.page?.removeAnnotation(annotation)
-            changeHandler()
+            changeHandler(annotation, originalSnapshot, editorTitle)
         } else {
             originalSnapshot.restore(to: annotation)
         }

@@ -2019,6 +2019,32 @@ final class WorkspaceDocumentTests: XCTestCase {
         XCTAssertTrue(try workspaceCommentMetadataValues(in: clearedData).isEmpty)
     }
 
+    func testEditableWorkspaceMetadataRestoresMultiDocumentWorkspaceOnReopen() throws {
+        let first = try makeMemberWithPDF(name: "First", pageTexts: ["one"])
+        let second = try makeMemberWithPDF(name: "Second", pageTexts: ["two"])
+        let document = WorkspaceDocument()
+        document.workspace.title = "Packet"
+        document.workspace.documents = [first.member, second.member]
+        document.workspace.pageOrder = first.refs + second.refs
+        document.workspace.tags = ["review"]
+        document.memberPDFData[first.member.id] = first.pdfData
+        document.memberPDFData[second.member.id] = second.pdfData
+
+        let saved = try document.exportedPDFDataThrowing(
+            from: try document.snapshot(contentType: .pdf),
+            options: WorkspaceExportOptions(embedsEditableWorkspaceState: true)
+        )
+        let savedPDF = try XCTUnwrap(PDFDocument(data: saved))
+        let reopened = WorkspaceDocument()
+        try reopened.importPDFDocumentForTesting(savedPDF, filename: "Packet.pdf")
+
+        XCTAssertEqual(reopened.workspace.title, "Packet")
+        XCTAssertEqual(reopened.workspace.documents.map(\.displayName), ["First", "Second"])
+        XCTAssertEqual(reopened.workspace.pageOrder.map(\.id), (first.refs + second.refs).map(\.id))
+        XCTAssertEqual(Set(reopened.memberPDFData.keys), Set([first.member.id, second.member.id]))
+        XCTAssertEqual(reopened.workspace.tags, ["review"])
+    }
+
     func testPDFExportBakesAnchoredCommentAnnotationAndSummaryPage() throws {
         let fixture = try makeMemberWithPDF(name: "Anchored", pageTexts: ["Anchor target"])
         let document = WorkspaceDocument()
@@ -2209,7 +2235,7 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertGreaterThan(viewModel.commentRevision, initialRevision)
     }
 
-    func testPageCommentBadgeIgnoresPDFStickyNotes() throws {
+    func testPageCommentBadgeIncludesPDFStickyNotes() throws {
         let fixture = try makeMemberWithPDF(name: "Notes", pageTexts: ["Sticky note target"])
         let document = WorkspaceDocument()
         document.workspace.documents = [fixture.member]
@@ -2227,7 +2253,7 @@ final class WorkspaceViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.pdfNoteComments.count, 1)
         XCTAssertEqual(viewModel.totalCommentCount, 1)
-        XCTAssertEqual(viewModel.commentCount(for: fixture.refs[0].id), 0)
+        XCTAssertEqual(viewModel.commentCount(for: fixture.refs[0].id), 1)
     }
 
     func testPageOperationsKeepWorkspaceAndPDFInSync() throws {
@@ -2269,6 +2295,58 @@ final class WorkspaceViewModelTests: XCTestCase {
         ])
         XCTAssertEqual(viewModel.loadedPDFs[0].1.pageCount, 2)
         XCTAssertEqual(viewModel.combinedPageIndex(forWorkspacePageNumber: 3), 4)
+    }
+
+    func testMovingPageAcrossDocumentsMovesLivePDFPageAndInvalidatesSourcePayloads() throws {
+        let document = WorkspaceDocument()
+        let first = try makeMemberWithPDF(name: "First", pageTexts: ["one", "two"])
+        let second = try makeMemberWithPDF(name: "Second", pageTexts: ["three"])
+        document.workspace.documents = [first.member, second.member]
+        document.workspace.pageOrder = first.refs + second.refs
+        document.memberPDFData[first.member.id] = first.pdfData
+        document.memberPDFData[second.member.id] = second.pdfData
+        document.sourcePayloads[first.member.id] = SourceDocumentPayload(
+            format: .plainText,
+            originalFilename: "first.txt",
+            originalContentTypeIdentifier: "public.plain-text",
+            originalData: Data("one two".utf8),
+            plainText: "one two",
+            renderedPageCount: 2
+        )
+        document.sourcePayloads[second.member.id] = SourceDocumentPayload(
+            format: .plainText,
+            originalFilename: "second.txt",
+            originalContentTypeIdentifier: "public.plain-text",
+            originalData: Data("three".utf8),
+            plainText: "three",
+            renderedPageCount: 1
+        )
+        let viewModel = WorkspaceViewModel(document: document)
+
+        XCTAssertTrue(viewModel.movePage(first.refs[0], after: second.refs[0]))
+
+        XCTAssertEqual(viewModel.document.workspace.documents[0].pageRefs, [first.refs[1].id])
+        XCTAssertEqual(viewModel.document.workspace.documents[1].pageRefs, [second.refs[0].id, first.refs[0].id])
+        XCTAssertEqual(viewModel.document.workspace.pageOrder.map(\.id), [first.refs[1].id, second.refs[0].id, first.refs[0].id])
+        XCTAssertEqual(viewModel.loadedPDFs[0].1.pageCount, 1)
+        XCTAssertEqual(viewModel.loadedPDFs[1].1.pageCount, 2)
+        XCTAssertTrue(viewModel.loadedPDFs[1].1.page(at: 1)?.string?.contains("one") ?? false)
+        XCTAssertNil(viewModel.document.sourcePayloads[first.member.id])
+        XCTAssertNil(viewModel.document.sourcePayloads[second.member.id])
+    }
+
+    @MainActor
+    func testFirstImportIntoEmptyWorkspaceUpdatesWorkspaceTitle() throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Quarterly Packet \(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        try makePDF(pageTexts: ["title"]).dataRepresentation().unwrap().write(to: tempURL)
+
+        let document = WorkspaceDocument()
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+        viewModel.addFile(from: tempURL)
+
+        XCTAssertTrue(viewModel.document.workspace.title.hasPrefix("Quarterly Packet"))
     }
 
     func testRemovingDocumentCleansWorkspaceArtifactsAndKeepsRemainingDocument() throws {
@@ -2793,7 +2871,7 @@ final class WorkspaceViewModelTests: XCTestCase {
         page.addAnnotation(annotation)
         var changeCount = 0
         let controller = NoteEditorViewController(annotation: annotation) { _, _ in
-        } changeHandler: {
+        } changeHandler: { _, _, _ in
             changeCount += 1
         }
 
@@ -2818,7 +2896,7 @@ final class WorkspaceViewModelTests: XCTestCase {
         var changeCount = 0
         var didClose = false
         let controller = NoteEditorViewController(annotation: annotation) { _, _ in
-        } changeHandler: {
+        } changeHandler: { _, _, _ in
             changeCount += 1
         }
         controller.closeHandler = {

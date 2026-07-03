@@ -34,7 +34,7 @@
 			<key>CFBundleTypeName</key>
 			<string>HTML Document</string>
 			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
+			<string>Viewer</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
@@ -51,7 +51,7 @@
 			<key>CFBundleTypeName</key>
 			<string>Word Document</string>
 			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
+			<string>Viewer</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
@@ -69,7 +69,7 @@
 			<key>CFBundleTypeName</key>
 			<string>OpenDocument Text and RTFD</string>
 			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
+			<string>Viewer</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
@@ -88,7 +88,7 @@
 			<key>CFBundleTypeName</key>
 			<string>Structured Package Document</string>
 			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
+			<string>Viewer</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
@@ -106,7 +106,7 @@
 			<key>CFBundleTypeName</key>
 			<string>SVG Image</string>
 			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
+			<string>Viewer</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
@@ -163,7 +163,7 @@
 			<key>CFBundleTypeName</key>
 			<string>Text Document</string>
 			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
+			<string>Viewer</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>

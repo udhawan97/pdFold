@@ -98,6 +98,36 @@ final class PDFOCRTests: XCTestCase {
         }
     }
 
+    func testSearchableDataCanRepairPageWithExistingTextLayer() async throws {
+        let sourcePDF = try textPDF("Existing bad text layer")
+        let sourceData = try XCTUnwrap(PDFSerializer.data(from: sourcePDF))
+        var member = MemberDocument(displayName: "Text", sourcePDFRef: "text.pdf")
+        member.pageRefs = [PageRef(memberDocId: member.id, sourcePageIndex: 0).id]
+        var requestedPages: [Int] = []
+
+        let result = try await PDFOCRService.searchableData(
+            documents: [(member, sourceData)],
+            includePagesWithText: true,
+            recognitionProvider: { _, pageNumber, _ in
+                requestedPages.append(pageNumber)
+                return [
+                    PDFOCRRecognizedLine(
+                        text: "Repaired searchable phrase",
+                        normalizedBounds: CGRect(x: 0.14, y: 0.70, width: 0.55, height: 0.08),
+                        confidence: 0.92
+                    )
+                ]
+            }
+        )
+
+        let outputData = try XCTUnwrap(result.dataByMemberID[member.id])
+        let outputPDF = try XCTUnwrap(PDFDocument(data: outputData))
+        XCTAssertEqual(requestedPages, [1])
+        XCTAssertEqual(result.recognizedPageCount, 1)
+        XCTAssertFalse(outputPDF.findString("Repaired searchable phrase", withOptions: .caseInsensitive).isEmpty)
+        XCTAssertNoThrow(try PDFiumProcessingEngine().validatePDF(data: outputData))
+    }
+
     @MainActor
     func testBlankPageDoesNotShowScanBanner() throws {
         let document = WorkspaceDocument()
@@ -105,6 +135,21 @@ final class PDFOCRTests: XCTestCase {
         let viewModel = WorkspaceViewModel(document: document)
         XCTAssertFalse(viewModel.hasScannedPages)
         XCTAssertEqual(viewModel.scannedPageCount, 0)
+        XCTAssertEqual(viewModel.ocrCandidatePageCount, 0)
+        XCTAssertFalse(viewModel.canRepairSearchableText)
+    }
+
+    @MainActor
+    func testViewModelOffersRepairWhenVisiblePageAlreadyHasTextLayer() throws {
+        let document = WorkspaceDocument()
+        try document.importPDFDocumentForTesting(try textPDF("Existing searchable-looking text"), filename: "text.pdf")
+        let viewModel = WorkspaceViewModel(document: document)
+
+        XCTAssertFalse(viewModel.hasScannedPages)
+        XCTAssertEqual(viewModel.scannedPageCount, 0)
+        XCTAssertEqual(viewModel.ocrCandidatePageCount, 1)
+        XCTAssertFalse(viewModel.canStartSearchable)
+        XCTAssertTrue(viewModel.canRepairSearchableText)
     }
 
     func testSearchableDataDropsLowConfidenceLines() async throws {

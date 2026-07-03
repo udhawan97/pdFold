@@ -1014,6 +1014,9 @@ private struct InspectorOCRView: View {
         if viewModel.hasScannedPages {
             return "Scanned pages detected"
         }
+        if viewModel.ocrCandidatePageCount > 0 {
+            return "Text layer detected"
+        }
         return "Searchable text ready"
     }
 
@@ -1028,15 +1031,18 @@ private struct InspectorOCRView: View {
             let pageLabel = viewModel.scannedPageCount == 1 ? "page" : "pages"
             return "\(viewModel.scannedPageCount) scanned \(pageLabel) can be processed with local OCR."
         }
+        if viewModel.ocrCandidatePageCount > 0 {
+            return "pdFold found existing PDF text, so it did not auto-run OCR. If search misses visible words, the text layer may be partial or incorrect."
+        }
         return "No image-only scan pages need OCR right now."
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: .dsLG) {
             HStack(alignment: .top, spacing: .dsMD) {
-                Image(systemName: viewModel.hasScannedPages ? "doc.text.viewfinder" : "checkmark.circle")
+                Image(systemName: viewModel.hasScannedPages ? "doc.text.viewfinder" : statusIconName)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(viewModel.hasScannedPages ? Color.dsAccent : Color.dsAnnotationSage)
+                    .foregroundStyle(viewModel.hasScannedPages ? Color.dsAccent : statusIconColor)
                     .frame(width: 24, height: 24)
 
                 VStack(alignment: .leading, spacing: .dsXS) {
@@ -1053,17 +1059,19 @@ private struct InspectorOCRView: View {
             Button {
                 if viewModel.isMakingSearchable {
                     viewModel.cancelActiveOperation()
-                } else {
+                } else if viewModel.hasScannedPages {
                     viewModel.makeSearchable()
+                } else {
+                    viewModel.makeSearchable(includePagesWithText: true)
                 }
             } label: {
-                Label(viewModel.isMakingSearchable ? "Cancel OCR" : "Make searchable",
+                Label(buttonTitle,
                       systemImage: viewModel.isMakingSearchable ? "xmark.circle" : "doc.text.viewfinder")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
-            .disabled(!viewModel.isMakingSearchable && !viewModel.canStartSearchable)
+            .disabled(!viewModel.isMakingSearchable && !canRunButtonAction)
             .help(buttonHelp)
         }
         .padding(.horizontal, .dsLG)
@@ -1078,10 +1086,41 @@ private struct InspectorOCRView: View {
         if viewModel.canStartSearchable {
             return "Run local OCR on scanned pages"
         }
+        if viewModel.canRepairSearchableText {
+            return "Run OCR even though the PDF already has a text layer"
+        }
         if viewModel.hasScannedPages {
             return "Finish the current document operation before running OCR"
         }
-        return "No scanned pages detected"
+        if viewModel.ocrCandidatePageCount > 0 {
+            return "Finish the current document operation before repairing searchable text"
+        }
+        return "No visible pages detected for OCR"
+    }
+
+    private var buttonTitle: String {
+        if viewModel.isMakingSearchable {
+            return "Cancel OCR"
+        }
+        if viewModel.hasScannedPages {
+            return "Make searchable"
+        }
+        if viewModel.ocrCandidatePageCount > 0 {
+            return "Run OCR anyway"
+        }
+        return "Make searchable"
+    }
+
+    private var canRunButtonAction: Bool {
+        viewModel.canStartSearchable || viewModel.canRepairSearchableText
+    }
+
+    private var statusIconName: String {
+        viewModel.ocrCandidatePageCount > 0 ? "text.viewfinder" : "checkmark.circle"
+    }
+
+    private var statusIconColor: Color {
+        viewModel.ocrCandidatePageCount > 0 ? Color.dsAccent : Color.dsAnnotationSage
     }
 }
 

@@ -1,9 +1,12 @@
+import AppKit
 import SwiftUI
 
 struct AppCommands: Commands {
     var body: some Commands {
         // File menu additions — DocumentGroup already provides New, Open, Save, etc.
         CommandGroup(after: .newItem) {
+            AddFilesCommandButton()
+            Divider()
             ReduceFileSizeCommandButton()
             MakeSearchableCommandButton()
             Divider()
@@ -24,14 +27,34 @@ struct AppCommands: Commands {
     }
 }
 
+private struct AddFilesCommandButton: View {
+    @FocusedValue(\.pdfoldWorkspaceViewModel) private var viewModel
+
+    var body: some View {
+        Button("Add Files to Workspace…") {
+            let panel = NSOpenPanel()
+            panel.allowsMultipleSelection = true
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowedContentTypes = WorkspaceDocument.importableContentTypes
+            if panel.runModal() == .OK {
+                viewModel?.importFiles(urls: panel.urls)
+            }
+        }
+        .keyboardShortcut("o", modifiers: [.command, .shift])
+        .disabled(viewModel == nil)
+    }
+}
+
 private struct MakeSearchableCommandButton: View {
     @FocusedValue(\.pdfoldWorkspaceViewModel) private var viewModel
 
     var body: some View {
         Button("Make searchable…") {
-            viewModel?.makeSearchable()
+            let shouldRepairExistingText = viewModel?.hasScannedPages != true
+            viewModel?.makeSearchable(includePagesWithText: shouldRepairExistingText)
         }
-        .disabled(viewModel?.canStartSearchable != true)
+        .disabled(viewModel?.canStartSearchable != true && viewModel?.canRepairSearchableText != true)
     }
 }
 

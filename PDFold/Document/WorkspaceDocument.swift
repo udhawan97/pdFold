@@ -42,16 +42,25 @@ final class WorkspaceDocument: ReferenceFileDocument {
     private struct PDFoldMetadata: Codable {
         var comments: [WorkspaceComment]
         var sourcePayloads: [UUID: SourceDocumentPayload] = [:]
+        var editableWorkspace: Workspace?
+        var editableMemberPDFData: [UUID: Data] = [:]
 
-        init(comments: [WorkspaceComment] = [], sourcePayloads: [UUID: SourceDocumentPayload] = [:]) {
+        init(comments: [WorkspaceComment] = [],
+             sourcePayloads: [UUID: SourceDocumentPayload] = [:],
+             editableWorkspace: Workspace? = nil,
+             editableMemberPDFData: [UUID: Data] = [:]) {
             self.comments = comments
             self.sourcePayloads = sourcePayloads
+            self.editableWorkspace = editableWorkspace
+            self.editableMemberPDFData = editableMemberPDFData
         }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             comments = try c.decodeIfPresent([WorkspaceComment].self, forKey: .comments) ?? []
             sourcePayloads = try c.decodeIfPresent([UUID: SourceDocumentPayload].self, forKey: .sourcePayloads) ?? [:]
+            editableWorkspace = try c.decodeIfPresent(Workspace.self, forKey: .editableWorkspace)
+            editableMemberPDFData = try c.decodeIfPresent([UUID: Data].self, forKey: .editableMemberPDFData) ?? [:]
         }
     }
 
@@ -170,6 +179,13 @@ final class WorkspaceDocument: ReferenceFileDocument {
 
     private func importPDFDocument(_ pdf: PDFDocument, filename: String, sourcePayload: SourceDocumentPayload?) throws {
         let metadata = Self.metadata(from: pdf)
+        if let editableWorkspace = metadata.editableWorkspace,
+           !metadata.editableMemberPDFData.isEmpty {
+            workspace = editableWorkspace
+            memberPDFData = metadata.editableMemberPDFData
+            sourcePayloads = metadata.sourcePayloads
+            return
+        }
         guard let pdfData = PDFSerializer.data(from: pdf) else {
             throw DocumentImportConverter.ConversionError.renderingFailed
         }
@@ -227,12 +243,21 @@ final class WorkspaceDocument: ReferenceFileDocument {
 
         let omitsCommentMetadata = snapshot.workspace.signatures.contains { $0.isCryptographic }
         let sourcePayloads = Self.sourcePayloadsForPDFMetadata(from: snapshot)
+        let editableWorkspace = options.embedsEditableWorkspaceState ? snapshot.workspace : nil
+        let editableMemberPDFData = options.embedsEditableWorkspaceState ? snapshot.memberPDFData : [:]
         let visualPlacements = snapshot.workspace.signatures.filter { !$0.isCryptographic }
         guard !visualPlacements.isEmpty else {
             let formData = try Self.applyFormExportAdditions(to: pdfData, workspace: snapshot.workspace, options: options)
             let decoratedData = try Self.applyDecorationExportAdditions(to: formData, workspace: snapshot.workspace)
             let commentData = Self.applyCommentExportAdditions(to: decoratedData, workspace: snapshot.workspace) ?? decoratedData
-            return Self.embedMetadata(in: commentData, workspace: snapshot.workspace, sourcePayloads: sourcePayloads, omittingComments: omitsCommentMetadata) ?? commentData
+            return Self.embedMetadata(
+                in: commentData,
+                workspace: snapshot.workspace,
+                sourcePayloads: sourcePayloads,
+                editableWorkspace: editableWorkspace,
+                editableMemberPDFData: editableMemberPDFData,
+                omittingComments: omitsCommentMetadata
+            ) ?? commentData
         }
 
         do {
@@ -242,12 +267,26 @@ final class WorkspaceDocument: ReferenceFileDocument {
             let formData = try Self.applyFormExportAdditions(to: bakedData, workspace: snapshot.workspace, options: options)
             let decoratedData = try Self.applyDecorationExportAdditions(to: formData, workspace: snapshot.workspace)
             let commentData = Self.applyCommentExportAdditions(to: decoratedData, workspace: snapshot.workspace) ?? decoratedData
-            return Self.embedMetadata(in: commentData, workspace: snapshot.workspace, sourcePayloads: sourcePayloads, omittingComments: omitsCommentMetadata) ?? commentData
+            return Self.embedMetadata(
+                in: commentData,
+                workspace: snapshot.workspace,
+                sourcePayloads: sourcePayloads,
+                editableWorkspace: editableWorkspace,
+                editableMemberPDFData: editableMemberPDFData,
+                omittingComments: omitsCommentMetadata
+            ) ?? commentData
         } catch SigningError.notImplemented {
             let formData = try Self.applyFormExportAdditions(to: pdfData, workspace: snapshot.workspace, options: options)
             let decoratedData = try Self.applyDecorationExportAdditions(to: formData, workspace: snapshot.workspace)
             let commentData = Self.applyCommentExportAdditions(to: decoratedData, workspace: snapshot.workspace) ?? decoratedData
-            return Self.embedMetadata(in: commentData, workspace: snapshot.workspace, sourcePayloads: sourcePayloads, omittingComments: omitsCommentMetadata) ?? commentData
+            return Self.embedMetadata(
+                in: commentData,
+                workspace: snapshot.workspace,
+                sourcePayloads: sourcePayloads,
+                editableWorkspace: editableWorkspace,
+                editableMemberPDFData: editableMemberPDFData,
+                omittingComments: omitsCommentMetadata
+            ) ?? commentData
         } catch {
             throw error
         }
@@ -506,16 +545,23 @@ final class WorkspaceDocument: ReferenceFileDocument {
     private static func embedMetadata(in data: Data,
                                       workspace: Workspace,
                                       sourcePayloads: [UUID: SourceDocumentPayload],
+                                      editableWorkspace: Workspace? = nil,
+                                      editableMemberPDFData: [UUID: Data] = [:],
                                       omittingComments: Bool = false) -> Data? {
         guard let pdf = PDFDocument(data: data) else {
             return data
         }
         let removedExistingMetadata = removeMetadataAnnotations(from: pdf)
         let comments = omittingComments ? [] : workspace.comments
-        guard !comments.isEmpty || !sourcePayloads.isEmpty else {
+        guard !comments.isEmpty || !sourcePayloads.isEmpty || editableWorkspace != nil || !editableMemberPDFData.isEmpty else {
             return removedExistingMetadata ? PDFSerializer.data(from: pdf) : data
         }
-        guard let metadataData = try? JSONEncoder().encode(PDFoldMetadata(comments: comments, sourcePayloads: sourcePayloads)),
+        guard let metadataData = try? JSONEncoder().encode(PDFoldMetadata(
+            comments: comments,
+            sourcePayloads: sourcePayloads,
+            editableWorkspace: editableWorkspace,
+            editableMemberPDFData: editableMemberPDFData
+        )),
               let metadataString = String(data: metadataData, encoding: .utf8) else {
             return removedExistingMetadata ? PDFSerializer.data(from: pdf) : data
         }
@@ -550,7 +596,10 @@ final class WorkspaceDocument: ReferenceFileDocument {
         guard configuration.contentType.conforms(to: .pdf) else {
             throw CocoaError(.fileWriteUnknown)
         }
-        let pdfData = try exportedPDFDataThrowing(from: snapshot)
+        let pdfData = try exportedPDFDataThrowing(
+            from: snapshot,
+            options: WorkspaceExportOptions(embedsEditableWorkspaceState: true)
+        )
         PetBuddyHook.trigger(.save)
         return FileWrapper(regularFileWithContents: pdfData)
     }

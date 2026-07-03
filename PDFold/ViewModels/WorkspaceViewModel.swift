@@ -234,6 +234,9 @@ final class WorkspaceViewModel {
                 selectedAnnotation = nil
                 selectedStampDecorationID = nil
             }
+            if oldValue == .signature, currentTool != .signature {
+                clearPendingSignaturePlacement()
+            }
         }
     }
     var isShowingSearch = false
@@ -248,6 +251,7 @@ final class WorkspaceViewModel {
     var selectedStampDecorationID: UUID? = nil
     private(set) var decorationStateVersion = 0
     var selectedPageRefID: UUID? = nil
+    var selectedPageRefIDs: Set<UUID> = []
     var draggedPageRefID: UUID? = nil
     var selectedCommentID: UUID? = nil
     var commentFilter: CommentFilter = .open
@@ -257,12 +261,20 @@ final class WorkspaceViewModel {
     var formSummary = PDFFormSummary()
     var highlightFormFields = false
     var selectedFormFieldIndex: Int? = nil
+
+    var hasPendingSignaturePlacement: Bool {
+        pendingSignatureData != nil && pendingSignatureOptions != nil
+    }
     var scannedPageCount = 0
+    var ocrCandidatePageCount = 0
     var isMakingSearchable: Bool {
         activeOCRTask != nil
     }
     var canStartSearchable: Bool {
-        hasScannedPages && !isImporting && activeCompressionTask == nil && activeOCRTask == nil
+        hasScannedPages && canRunOCROperation
+    }
+    var canRepairSearchableText: Bool {
+        !hasScannedPages && ocrCandidatePageCount > 0 && canRunOCROperation
     }
 
     // MARK: - Annotation colors (curated palette)
@@ -508,11 +520,11 @@ final class WorkspaceViewModel {
 
     // MARK: - Import
 
-    func importFiles(urls: [URL]) {
+    func importFiles(urls: [URL], insertingAfter targetPageRefID: UUID? = nil) {
         guard canPerformMutatingAction() else { return }
         guard beginImportIfPossible() else { return }
         Task { [weak self] in
-            await self?.performImport(urls: urls)
+            await self?.performImport(urls: urls, insertingAfter: targetPageRefID)
         }
     }
 
@@ -534,13 +546,13 @@ final class WorkspaceViewModel {
         return true
     }
 
-    private func performImport(urls: [URL]) async {
+    private func performImport(urls: [URL], insertingAfter targetPageRefID: UUID? = nil) async {
         for url in urls {
             let result = await importDocument(from: url)
             await MainActor.run {
                 switch result {
                 case .success(let imported):
-                    self.attachImportedDocument(imported.document, from: imported.url)
+                    self.attachImportedDocument(imported.document, from: imported.url, insertingAfter: targetPageRefID)
                 case .failure(let failure):
                     self.importError = ImportError(
                         fileName: failure.url.lastPathComponent,
@@ -614,7 +626,9 @@ final class WorkspaceViewModel {
         attachPDF(pdf, from: url, sourcePayload: imported.sourcePayload)
     }
 
-    private func attachImportedDocument(_ imported: DocumentImportConverter.ImportedDocument, from url: URL) {
+    private func attachImportedDocument(_ imported: DocumentImportConverter.ImportedDocument,
+                                        from url: URL,
+                                        insertingAfter targetPageRefID: UUID? = nil) {
         let pdf = imported.pdfDocument
         if pdf.isLocked {
             pendingPasswordURL = url
@@ -622,7 +636,7 @@ final class WorkspaceViewModel {
             isShowingPasswordPrompt = true
             return
         }
-        attachPDF(pdf, from: url, sourcePayload: imported.sourcePayload)
+        attachPDF(pdf, from: url, sourcePayload: imported.sourcePayload, insertingAfter: targetPageRefID)
     }
 
     func unlock(pdf: PDFDocument, password: String, url: URL) -> Bool {
@@ -635,7 +649,10 @@ final class WorkspaceViewModel {
         return true
     }
 
-    private func attachPDF(_ pdf: PDFDocument, from url: URL, sourcePayload: SourceDocumentPayload? = nil) {
+    private func attachPDF(_ pdf: PDFDocument,
+                           from url: URL,
+                           sourcePayload: SourceDocumentPayload? = nil,
+                           insertingAfter targetPageRefID: UUID? = nil) {
         sanitizeInkAnnotations(in: pdf)
 
         guard let data = PDFSerializer.data(from: pdf) else {
@@ -651,8 +668,19 @@ final class WorkspaceViewModel {
         var member = MemberDocument(displayName: name, sourcePDFRef: url.lastPathComponent)
         let refs = (0..<pdf.pageCount).map { i in PageRef(memberDocId: member.id, sourcePageIndex: i) }
         member.pageRefs = refs.map(\.id)
-        document.workspace.documents.append(member)
-        document.workspace.pageOrder.append(contentsOf: refs)
+        if document.workspace.title == "Untitled Workspace", document.workspace.documents.isEmpty, !name.isEmpty {
+            document.workspace.title = name
+        }
+        if let targetPageRefID,
+           let targetDocIndex = document.workspace.documents.firstIndex(where: { $0.pageRefs.contains(targetPageRefID) }),
+           let lastTargetPageID = document.workspace.documents[targetDocIndex].pageRefs.last,
+           let targetPageIndex = document.workspace.pageOrder.firstIndex(where: { $0.id == lastTargetPageID }) {
+            document.workspace.documents.insert(member, at: min(targetDocIndex + 1, document.workspace.documents.count))
+            document.workspace.pageOrder.insert(contentsOf: refs, at: min(targetPageIndex + 1, document.workspace.pageOrder.count))
+        } else {
+            document.workspace.documents.append(member)
+            document.workspace.pageOrder.append(contentsOf: refs)
+        }
         document.memberPDFData[member.id] = data
         if let sourcePayload {
             document.sourcePayloads[member.id] = sourcePayload
@@ -660,6 +688,7 @@ final class WorkspaceViewModel {
         originalMemberPDFData[member.id] = data
         memberSourceURLs[member.id] = url
         loadedPDFs.append((member, pdf))
+        syncLoadedPDFsOrder()
         PetBuddyHook.trigger(.addFile)
     }
 
@@ -1163,7 +1192,9 @@ final class WorkspaceViewModel {
 
     func commentCount(for pageRefID: UUID) -> Int {
         _ = commentRevision
-        return document.workspace.comments.filter { $0.anchor?.pageRefID == pageRefID }.count
+        let workspaceCount = document.workspace.comments.filter { $0.anchor?.pageRefID == pageRefID }.count
+        let noteCount = pdfNoteComments.filter { $0.pageRef.id == pageRefID }.count
+        return workspaceCount + noteCount
     }
 
     func isCommentVisibleOnPage(_ comment: WorkspaceComment) -> Bool {
@@ -1254,6 +1285,31 @@ final class WorkspaceViewModel {
         undoManager?.setActionName("Remove Note")
     }
 
+    func registerAnnotationEdit(_ annotation: PDFAnnotation,
+                                from oldSnapshot: PDFAnnotationEditSnapshot,
+                                actionName: String) {
+        guard canPerformMutatingAction() else { return }
+        guard annotation.page != nil else {
+            markAnnotationsModified()
+            return
+        }
+        registerAnnotationSnapshotUndo(annotation, restore: oldSnapshot, actionName: actionName)
+        markAnnotationsModified()
+    }
+
+    private func registerAnnotationSnapshotUndo(_ annotation: PDFAnnotation,
+                                                restore snapshot: PDFAnnotationEditSnapshot,
+                                                actionName: String) {
+        let redoSnapshot = PDFAnnotationEditSnapshot(annotation: annotation)
+        undoManager?.registerUndo(withTarget: self) { vm in
+            guard vm.canPerformUndoMutation() else { return }
+            snapshot.restore(to: annotation)
+            vm.markAnnotationsModified()
+            vm.registerAnnotationSnapshotUndo(annotation, restore: redoSnapshot, actionName: actionName)
+        }
+        undoManager?.setActionName(actionName)
+    }
+
     private func normalizedTag(_ value: String) -> String {
         value
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1336,17 +1392,26 @@ final class WorkspaceViewModel {
         scannedPageCount > 0
     }
 
+    private var canRunOCROperation: Bool {
+        !isImporting && activeCompressionTask == nil && activeOCRTask == nil
+    }
+
     private func refreshScannedPageSummary() {
-        var count = 0
+        var scannedCount = 0
+        var candidateCount = 0
         for (_, pdf) in loadedPDFs {
             for pageIndex in 0..<pdf.pageCount {
                 guard let page = pdf.page(at: pageIndex) else { continue }
+                if PDFOCRService.hasVisibleContent(page) {
+                    candidateCount += 1
+                }
                 if PDFOCRService.isLikelyScannedPage(page) {
-                    count += 1
+                    scannedCount += 1
                 }
             }
         }
-        scannedPageCount = count
+        scannedPageCount = scannedCount
+        ocrCandidatePageCount = candidateCount
     }
 
     func selectNextFormField() {
@@ -1404,8 +1469,9 @@ final class WorkspaceViewModel {
 
     // MARK: - Searchable scans
 
-    func makeSearchable() {
-        guard canPerformMutatingAction(), hasScannedPages else { return }
+    func makeSearchable(includePagesWithText: Bool = false) {
+        let hasEligiblePages = includePagesWithText ? ocrCandidatePageCount > 0 : hasScannedPages
+        guard canPerformMutatingAction(), hasEligiblePages else { return }
         let snapshot = captureOrderSnapshot()
         let sourceDocuments: [(MemberDocument, Data)]
         do {
@@ -1432,6 +1498,7 @@ final class WorkspaceViewModel {
             do {
                 let result = try await self.searchableData(
                     from: sourceDocuments,
+                    includePagesWithText: includePagesWithText,
                     cancellation: cancellation,
                     operationID: operationID
                 )
@@ -1475,12 +1542,14 @@ final class WorkspaceViewModel {
 
     private func searchableData(
         from sourceDocuments: [(MemberDocument, Data)],
+        includePagesWithText: Bool,
         cancellation: OperationCancellationToken,
         operationID: UUID
     ) async throws -> PDFOCRResult {
         let progressThrottle = ProgressUpdateThrottle()
         return try await PDFOCRService.makeSearchable(
             documents: sourceDocuments,
+            includePagesWithText: includePagesWithText,
             progress: { progress in
                 guard progressThrottle.shouldEmit(progress) else { return }
                 Task { @MainActor [weak self] in
@@ -1666,11 +1735,26 @@ final class WorkspaceViewModel {
         editingStatus = .warning("Editing after a digital signature invalidates existing signatures.")
     }
 
-    func selectPage(_ ref: PageRef) {
-        selectedPageRefID = ref.id
+    func selectPage(_ ref: PageRef, extendingSelection: Bool = false) {
+        if extendingSelection {
+            if selectedPageRefIDs.contains(ref.id) {
+                selectedPageRefIDs.remove(ref.id)
+            } else {
+                selectedPageRefIDs.insert(ref.id)
+            }
+            selectedPageRefID = selectedPageRefIDs.first ?? ref.id
+        } else {
+            selectedPageRefID = ref.id
+            selectedPageRefIDs = [ref.id]
+        }
         if let pageIndex = combinedPageIndex(for: ref) {
             NotificationCenter.default.post(name: .pdfoldJumpToPageIndex, object: pageIndex)
         }
+    }
+
+    func pageRefsForCurrentSelection(including ref: PageRef) -> [PageRef] {
+        let selectedIDs = selectedPageRefIDs.isEmpty ? [ref.id] : selectedPageRefIDs.union([ref.id])
+        return document.workspace.pageOrder.filter { selectedIDs.contains($0.id) }
     }
 
     func combinedPageIndex(for ref: PageRef) -> Int? {
@@ -1696,17 +1780,22 @@ final class WorkspaceViewModel {
         guard let draggedPageRefID,
               draggedPageRefID != targetRef.id,
               let sourceRef = document.workspace.pageOrder.first(where: { $0.id == draggedPageRefID }),
-              sourceRef.memberDocId == targetRef.memberDocId,
               let memberIndex = document.workspace.documents.firstIndex(where: { $0.id == targetRef.memberDocId }),
-              let sourceIndex = document.workspace.documents[memberIndex].pageRefs.firstIndex(of: sourceRef.id),
               let targetIndex = document.workspace.documents[memberIndex].pageRefs.firstIndex(of: targetRef.id)
         else {
             self.draggedPageRefID = nil
             return false
         }
 
-        let destination = targetIndex > sourceIndex ? targetIndex + 1 : targetIndex
-        guard movePage(sourceRef, toIndex: destination) else {
+        let didMove: Bool
+        if sourceRef.memberDocId == targetRef.memberDocId,
+           let sourceIndex = document.workspace.documents[memberIndex].pageRefs.firstIndex(of: sourceRef.id) {
+            let destination = targetIndex > sourceIndex ? targetIndex + 1 : targetIndex
+            didMove = movePage(sourceRef, toIndex: destination)
+        } else {
+            didMove = movePage(sourceRef, after: targetRef)
+        }
+        guard didMove else {
             self.draggedPageRefID = nil
             return false
         }
@@ -2391,6 +2480,7 @@ final class WorkspaceViewModel {
         currentTool = .signature
         isShowingSignaturePalette = false
         isShowingStampPalette = false
+        editingStatus = .warning("Click a page to place the signature.")
     }
 
     func beginCryptographicSignaturePlacement(imageData: Data,
@@ -2417,6 +2507,21 @@ final class WorkspaceViewModel {
         currentTool = .signature
         isShowingSignaturePalette = false
         isShowingStampPalette = false
+        editingStatus = .warning("Click a page to place the digital signature.")
+    }
+
+    func cancelSignaturePlacement() {
+        clearPendingSignaturePlacement()
+        if currentTool == .signature {
+            currentTool = .none
+        }
+        editingStatus = nil
+    }
+
+    private func clearPendingSignaturePlacement() {
+        pendingSignatureData = nil
+        pendingSignatureOptions = nil
+        pendingSigningIdentity = nil
     }
 
     func beginStampPlacement(text: String, swatch: PageDecorationSwatch) {
@@ -2424,9 +2529,7 @@ final class WorkspaceViewModel {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return }
         pendingStampOptions = PendingStampPlacementOptions(text: trimmedText, swatch: swatch)
-        pendingSignatureData = nil
-        pendingSignatureOptions = nil
-        pendingSigningIdentity = nil
+        clearPendingSignaturePlacement()
         currentTool = .stamp
         isShowingSignaturePalette = false
         isShowingStampPalette = false
@@ -2477,7 +2580,7 @@ final class WorkspaceViewModel {
             signingIdentitiesByPlacementID[placement.id] = identity
         }
         markAnnotationsModified(warnAboutSignatureInvalidation: options.kind != .cryptographic)
-        pendingSigningIdentity = nil
+        clearPendingSignaturePlacement()
 
         if let image = NSImage(data: imageData) {
             let ann = SignatureImageAnnotation(bounds: bounds, image: image, placementID: placement.id)
@@ -2719,11 +2822,21 @@ final class WorkspaceViewModel {
             contactInfo: placement.contactInfo,
             subFilter: placement.subFilter ?? "ETSI.CAdES.detached"
         )
+        let appearance: PDFAppearanceStream?
+        do {
+            appearance = try SignatureAppearanceRenderer.pdfAppearanceStream(
+                for: .typedName(placement.signerName ?? "Signer"),
+                bounds: placement.rect
+            )
+        } catch {
+            exportError = ExportError(message: "pdFold could not prepare the visible signature appearance: \(error.localizedDescription)")
+            return
+        }
 
         do {
             var timestampWasApplied = false
             var timestampFallbackMessage: String?
-            let signedData = try PDFIncrementalSigner().sign(pdf: pdfData, field: field, appearance: nil) { byteRangeBytes in
+            let signedData = try PDFIncrementalSigner().sign(pdf: pdfData, field: field, appearance: appearance) { byteRangeBytes in
                 if timestampRequested {
                     return try CMSSignatureBuilder.buildCMS(byteRangeBytes: byteRangeBytes, identity: identity) { signatureValue in
                         do {
@@ -4508,6 +4621,132 @@ final class WorkspaceViewModel {
         PetBuddyHook.trigger(.delete)
     }
 
+    func deletePages(_ refs: [PageRef]) {
+        guard canPerformMutatingAction() else { return }
+        let uniqueIDs = Set(refs.map(\.id))
+        let orderedRefs = document.workspace.pageOrder.filter { uniqueIDs.contains($0.id) }
+        guard !orderedRefs.isEmpty else { return }
+
+        let snapshot = captureOrderSnapshot()
+        for ref in orderedRefs.reversed() {
+            guard let lookup = memberPDF(for: ref),
+                  let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
+                  lookup.pdf.page(at: localIdx) != nil else { continue }
+            lookup.pdf.removePage(at: localIdx)
+            document.workspace.pageOrder.removeAll { $0.id == ref.id }
+            document.workspace.documents[lookup.documentIndex].pageRefs.removeAll { $0 == ref.id }
+            document.workspace.pageEditStates.removeAll { $0.pageRefID == ref.id }
+            clearCommentAnchors(forRemovedPageRefIDs: [ref.id])
+            removeSignaturePlacements(forRemovedPageRefIDs: [ref.id])
+            removeDecorations(forRemovedPageRefIDs: [ref.id])
+            textAnalysisCache.removeValue(forKey: ref.id)
+        }
+        for index in document.workspace.documents.indices.reversed() where document.workspace.documents[index].pageRefs.isEmpty {
+            let id = document.workspace.documents[index].id
+            document.workspace.documents.remove(at: index)
+            loadedPDFs.removeAll { $0.0.id == id }
+            document.memberPDFData.removeValue(forKey: id)
+            document.sourcePayloads.removeValue(forKey: id)
+        }
+        for loadedIndex in loadedPDFs.indices {
+            let memberID = loadedPDFs[loadedIndex].0.id
+            if let updated = document.workspace.documents.first(where: { $0.id == memberID }) {
+                loadedPDFs[loadedIndex].0 = updated
+            }
+        }
+        selectedPageRefIDs.subtract(uniqueIDs)
+        if let selectedPageRefID, uniqueIDs.contains(selectedPageRefID) {
+            self.selectedPageRefID = selectedPageRefIDs.first
+        }
+        rebuild()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            guard vm.canPerformUndoMutation() else { return }
+            vm.restore(snapshot)
+        }
+        undoManager?.setActionName(orderedRefs.count == 1 ? "Delete Page" : "Delete Pages")
+        PetBuddyHook.trigger(.delete)
+    }
+
+    func rotatePages(_ refs: [PageRef], by degrees: Int) {
+        guard canPerformMutatingAction() else { return }
+        let uniqueIDs = Set(refs.map(\.id))
+        let orderedRefs = document.workspace.pageOrder.filter { uniqueIDs.contains($0.id) }
+        guard !orderedRefs.isEmpty else { return }
+        let snapshot = captureOrderSnapshot()
+        for ref in orderedRefs {
+            guard let lookup = memberPDF(for: ref),
+                  let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
+                  let page = lookup.pdf.page(at: localIdx) else { continue }
+            page.rotation = (page.rotation + degrees + 360) % 360
+        }
+        rebuild()
+        markWorkspaceModified()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            guard vm.canPerformUndoMutation() else { return }
+            vm.restore(snapshot)
+        }
+        undoManager?.setActionName(orderedRefs.count == 1 ? "Rotate Page" : "Rotate Pages")
+        PetBuddyHook.trigger(.rotate)
+    }
+
+    func duplicatePages(_ refs: [PageRef]) {
+        guard canPerformMutatingAction() else { return }
+        let uniqueIDs = Set(refs.map(\.id))
+        let orderedRefs = document.workspace.pageOrder.filter { uniqueIDs.contains($0.id) }
+        guard !orderedRefs.isEmpty else { return }
+        let snapshot = captureOrderSnapshot()
+        for ref in orderedRefs.reversed() {
+            guard let lookup = memberPDF(for: ref),
+                  let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
+                  let page = lookup.pdf.page(at: localIdx),
+                  let copiedPage = page.copy() as? PDFPage else { continue }
+            let duplicate = PageRef(memberDocId: ref.memberDocId, sourcePageIndex: ref.sourcePageIndex, rotation: ref.rotation, cropBox: ref.cropBox)
+            lookup.pdf.insert(copiedPage, at: localIdx + 1)
+            document.workspace.documents[lookup.documentIndex].pageRefs.insert(duplicate.id, at: localIdx + 1)
+            if let pageOrderIndex = document.workspace.pageOrder.firstIndex(where: { $0.id == ref.id }) {
+                document.workspace.pageOrder.insert(duplicate, at: pageOrderIndex + 1)
+            }
+            loadedPDFs[lookup.loadedIndex].0 = document.workspace.documents[lookup.documentIndex]
+        }
+        rebuild()
+        markWorkspaceModified()
+        undoManager?.registerUndo(withTarget: self) { vm in
+            guard vm.canPerformUndoMutation() else { return }
+            vm.restore(snapshot)
+        }
+        undoManager?.setActionName(orderedRefs.count == 1 ? "Duplicate Page" : "Duplicate Pages")
+    }
+
+    func exportPages(_ refs: [PageRef]) {
+        let uniqueIDs = Set(refs.map(\.id))
+        let orderedRefs = document.workspace.pageOrder.filter { uniqueIDs.contains($0.id) }
+        guard !orderedRefs.isEmpty else { return }
+        let output = PDFDocument()
+        for ref in orderedRefs {
+            guard let lookup = memberPDF(for: ref),
+                  let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
+                  let page = lookup.pdf.page(at: localIdx),
+                  let copiedPage = page.copy() as? PDFPage else { continue }
+            output.insert(copiedPage, at: output.pageCount)
+        }
+        guard output.pageCount > 0,
+              let data = PDFSerializer.data(from: output) else {
+            exportError = ExportError(message: "pdFold could not prepare the selected pages for export.")
+            return
+        }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "\(safeFilename(document.workspace.title))-selected-pages.pdf"
+        panel.title = "Export Selected Pages"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            exportError = ExportError(message: "pdFold could not export the selected pages: \(error.localizedDescription)")
+        }
+    }
+
     @discardableResult
     func movePage(_ ref: PageRef, toIndex destination: Int) -> Bool {
         guard canPerformMutatingAction() else { return false }
@@ -4535,6 +4774,64 @@ final class WorkspaceViewModel {
         rebuildPageOrder()
         rebuild()
 
+        undoManager?.registerUndo(withTarget: self) { vm in
+            guard vm.canPerformUndoMutation() else { return }
+            vm.restore(snapshot)
+        }
+        undoManager?.setActionName("Move Page")
+        return true
+    }
+
+    @discardableResult
+    func movePage(_ ref: PageRef, after targetRef: PageRef) -> Bool {
+        guard canPerformMutatingAction() else { return false }
+        guard ref.memberDocId != targetRef.memberDocId,
+              let sourceLookup = memberPDF(for: ref),
+              let targetLookup = memberPDF(for: targetRef),
+              let sourceLocalIdx = localIndex(ref: ref, memberIndex: sourceLookup.documentIndex),
+              let targetLocalIdx = localIndex(ref: targetRef, memberIndex: targetLookup.documentIndex),
+              let page = sourceLookup.pdf.page(at: sourceLocalIdx) else { return false }
+
+        let snapshot = captureOrderSnapshot()
+        sourceLookup.pdf.removePage(at: sourceLocalIdx)
+        let targetInsertIndex = min(targetLocalIdx + 1, targetLookup.pdf.pageCount)
+        targetLookup.pdf.insert(page, at: targetInsertIndex)
+
+        document.workspace.documents[sourceLookup.documentIndex].pageRefs.removeAll { $0 == ref.id }
+        var movedRef = ref
+        movedRef.memberDocId = targetRef.memberDocId
+        movedRef.sourcePageIndex = targetInsertIndex
+        document.workspace.documents[targetLookup.documentIndex].pageRefs.insert(
+            movedRef.id,
+            at: min(targetInsertIndex, document.workspace.documents[targetLookup.documentIndex].pageRefs.count)
+        )
+        if let pageOrderIndex = document.workspace.pageOrder.firstIndex(where: { $0.id == movedRef.id }) {
+            document.workspace.pageOrder.remove(at: pageOrderIndex)
+        }
+        if let targetPageOrderIndex = document.workspace.pageOrder.firstIndex(where: { $0.id == targetRef.id }) {
+            document.workspace.pageOrder.insert(movedRef, at: min(targetPageOrderIndex + 1, document.workspace.pageOrder.count))
+        } else {
+            document.workspace.pageOrder.append(movedRef)
+        }
+
+        document.sourcePayloads.removeValue(forKey: ref.memberDocId)
+        document.sourcePayloads.removeValue(forKey: targetRef.memberDocId)
+        if document.workspace.documents[sourceLookup.documentIndex].pageRefs.isEmpty {
+            let removedID = document.workspace.documents[sourceLookup.documentIndex].id
+            document.workspace.documents.remove(at: sourceLookup.documentIndex)
+            loadedPDFs.removeAll { $0.0.id == removedID }
+            document.memberPDFData.removeValue(forKey: removedID)
+            document.sourcePayloads.removeValue(forKey: removedID)
+        }
+        for loadedIndex in loadedPDFs.indices {
+            let memberID = loadedPDFs[loadedIndex].0.id
+            if let updated = document.workspace.documents.first(where: { $0.id == memberID }) {
+                loadedPDFs[loadedIndex].0 = updated
+            }
+        }
+        selectedPageRefID = movedRef.id
+        selectedPageRefIDs = [movedRef.id]
+        rebuild()
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
             vm.restore(snapshot)
@@ -4582,28 +4879,55 @@ final class WorkspaceViewModel {
     struct TOCEntry: Identifiable {
         var id: UUID
         var title: String
-        var startPageIndex: Int  // index in combinedPDF (including banner pages)
+        var jumpPageIndex: Int
+        var displayPageNumber: Int
     }
 
     var tableOfContents: [TOCEntry] {
         var entries: [TOCEntry] = []
         var combinedIdx = 0
+        var realPageNumber = 1
         for member in document.workspace.documents {
-            entries.append(TOCEntry(id: member.id, title: member.displayName, startPageIndex: combinedIdx))
+            entries.append(TOCEntry(
+                id: member.id,
+                title: member.displayName,
+                jumpPageIndex: combinedIdx + 1,
+                displayPageNumber: realPageNumber
+            ))
             combinedIdx += 1 + member.pageRefs.count  // 1 banner + N pages
+            realPageNumber += member.pageRefs.count
         }
         return entries
     }
 
     // MARK: - Print
 
-    func printWorkspace(pdfView: PDFView) {
+    func printWorkspace() {
+        let printableDocument: PDFDocument
+        do {
+            let data = try dataForPDFExport()
+            guard let document = PDFDocument(data: data) else {
+                exportError = ExportError(message: "pdFold could not prepare this workspace for printing.")
+                return
+            }
+            printableDocument = document
+        } catch {
+            exportError = ExportError(message: userMessage(for: error, exporting: .pdf))
+            return
+        }
+
         let info = NSPrintInfo.shared
         info.horizontalPagination = .fit
         info.verticalPagination = .fit
         info.isHorizontallyCentered = true
         info.isVerticallyCentered = false
-        let op = NSPrintOperation(view: pdfView, printInfo: info)
+
+        let printView = PDFView(frame: NSRect(x: 0, y: 0, width: 612, height: 792))
+        printView.document = printableDocument
+        printView.displayMode = .singlePageContinuous
+        printView.autoScales = true
+
+        let op = NSPrintOperation(view: printView, printInfo: info)
         op.showsPrintPanel = true
         op.run()
     }

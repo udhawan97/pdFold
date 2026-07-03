@@ -299,7 +299,7 @@ struct ThumbnailStrip: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
+        LazyVStack(spacing: 4) {
             ForEach(Array(zip(member.pageRefs.indices, member.pageRefs)), id: \.1) { i, refId in
                 if let page = pdf.page(at: i),
                    let ref = viewModel.document.workspace.pageOrder.first(where: { $0.id == refId }) {
@@ -327,9 +327,12 @@ struct ThumbnailCell: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var thumbnail: NSImage? = nil
     @State private var isHovered = false
+    @State private var isConfirmingDelete = false
 
     private static let thumbSize = CGSize(width: 48, height: 64)
-    private var isSelected: Bool { viewModel.selectedPageRefID == pageRef.id }
+    private var isSelected: Bool {
+        viewModel.selectedPageRefIDs.contains(pageRef.id) || viewModel.selectedPageRefID == pageRef.id
+    }
     private var commentCount: Int { viewModel.commentCount(for: pageRef.id) }
     private var shouldReduceMotion: Bool {
         reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -372,10 +375,31 @@ struct ThumbnailCell: View {
             .shadow(color: .black.opacity(0.10), radius: 3, x: 0, y: 1)
             .background(Color.dsCard, in: RoundedRectangle(cornerRadius: 3))
             .contextMenu {
-                Button("Rotate 90° CW")  { viewModel.rotatePage(pageRef, by: 90);  thumbnail = nil }
-                Button("Rotate 90° CCW") { viewModel.rotatePage(pageRef, by: -90); thumbnail = nil }
+                let selection = viewModel.pageRefsForCurrentSelection(including: pageRef)
+                let selectionLabel = selection.count == 1 ? "Page" : "\(selection.count) Pages"
+                Button("Rotate \(selectionLabel) 90° CW")  {
+                    viewModel.rotatePages(selection, by: 90)
+                    thumbnail = nil
+                }
+                Button("Rotate \(selectionLabel) 90° CCW") {
+                    viewModel.rotatePages(selection, by: -90)
+                    thumbnail = nil
+                }
+                Button("Duplicate \(selectionLabel)") {
+                    viewModel.duplicatePages(selection)
+                    thumbnail = nil
+                }
+                Button("Export \(selectionLabel)…") {
+                    viewModel.exportPages(selection)
+                }
                 Divider()
-                Button("Delete Page", role: .destructive) { viewModel.deletePage(pageRef) }
+                Button("Insert Files After This Document…") {
+                    openFiles(insertingAfter: pageRef)
+                }
+                Divider()
+                Button("Delete \(selectionLabel)…", role: .destructive) {
+                    isConfirmingDelete = true
+                }
             }
 
             // Label
@@ -402,7 +426,10 @@ struct ThumbnailCell: View {
         .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.10), value: isHovered)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .onTapGesture { viewModel.selectPage(pageRef) }
+        .onTapGesture {
+            let flags = NSApp.currentEvent?.modifierFlags ?? []
+            viewModel.selectPage(pageRef, extendingSelection: flags.contains(.command) || flags.contains(.shift))
+        }
         .onDrag {
             viewModel.beginDraggingPage(pageRef)
             let provider = NSItemProvider()
@@ -425,6 +452,31 @@ struct ThumbnailCell: View {
             thumbnail = await Task.detached(priority: .utility) {
                 p.thumbnail(of: size, for: .mediaBox)
             }.value
+        }
+        .confirmationDialog(
+            "Delete selected pages?",
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                viewModel.deletePages(viewModel.pageRefsForCurrentSelection(including: pageRef))
+                thumbnail = nil
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            let count = viewModel.pageRefsForCurrentSelection(including: pageRef).count
+            Text(count == 1 ? "This removes the page and any page-bound signatures, stamps, and anchors." : "This removes \(count) pages and their page-bound signatures, stamps, and anchors.")
+        }
+    }
+
+    private func openFiles(insertingAfter ref: PageRef) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = WorkspaceDocument.importableContentTypes
+        if panel.runModal() == .OK {
+            viewModel.importFiles(urls: panel.urls, insertingAfter: ref.id)
         }
     }
 }
