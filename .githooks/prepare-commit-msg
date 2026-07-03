@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+message_file="$1"
+commit_source="${2:-}"
+
+case "$commit_source" in
+merge|squash)
+    exit 0
+    ;;
+esac
+
+trailer="Co-authored-by: OpenAI Codex <codex@openai.com>"
+
+if grep -Fqx "$trailer" "$message_file"; then
+    exit 0
+fi
+
+{
+    printf '\n'
+    printf '%s\n' "$trailer"
+} >> "$message_file"
