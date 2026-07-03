@@ -120,6 +120,8 @@ brew tap udhawan97/pdfold https://github.com/udhawan97/PDFold
 brew install --cask udhawan97/pdfold/pdfold
 ```
 
+The cask clears download quarantine after installation, matching the one-line installer. Release builds are fully Gatekeeper-trusted once the release workflow is configured with Apple Developer ID signing and notarization secrets.
+
 ---
 
 ## Update
