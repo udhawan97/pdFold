@@ -1928,31 +1928,13 @@ final class WorkspaceDocumentTests: XCTestCase {
     }
 
     func testAppInfoPlistAdvertisesExpandedImportFormats() throws {
-        let debugLogURL = URL(fileURLWithPath: "/tmp/pdfold-ci-debug.log")
-        func debugLog(_ message: String) {
-            guard let data = "CI-DEBUG \(message)\n".data(using: .utf8) else { return }
-            if let handle = try? FileHandle(forWritingTo: debugLogURL) {
-                handle.seekToEndOfFile()
-                handle.write(data)
-                try? handle.synchronize()
-                try? handle.close()
-            } else {
-                try? data.write(to: debugLogURL)
-            }
-        }
-        debugLog("start")
         let plistURL = try appInfoPlistURL(sourceFile: #filePath)
-        debugLog("resolved plistURL = \(plistURL.path)")
         let plistData = try Data(contentsOf: plistURL)
-        debugLog("read plistData, \(plistData.count) bytes")
         let plist = try XCTUnwrap(
             PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? [String: Any]
         )
-        debugLog("parsed plist, \(plist.count) top-level keys")
         let documentTypes = try XCTUnwrap(plist["CFBundleDocumentTypes"] as? [[String: Any]])
-        debugLog("documentTypes count = \(documentTypes.count)")
         let advertisedExtensions = Set(documentTypes.flatMap { $0["CFBundleTypeExtensions"] as? [String] ?? [] })
-        debugLog("advertisedExtensions count = \(advertisedExtensions.count)")
 
         let expectedExtensions = [
             "xlsx", "pptx", "epub", "rtfd", "svg", "txt", "text", "log", "rtf", "md", "markdown",
@@ -1962,15 +1944,12 @@ final class WorkspaceDocumentTests: XCTestCase {
             "bash", "sql", "ini", "conf", "env"
         ]
         for pathExtension in expectedExtensions {
-            debugLog("checking extension: \(pathExtension)")
             XCTAssertTrue(advertisedExtensions.contains(pathExtension), pathExtension)
             let type = try XCTUnwrap(UTType(filenameExtension: pathExtension), pathExtension)
-            debugLog("resolved \(pathExtension) -> \(type.identifier)")
             XCTAssertTrue(
                 WorkspaceDocument.importableContentTypes.contains { type.conforms(to: $0) },
                 pathExtension
             )
-            debugLog("done with extension: \(pathExtension)")
         }
     }
 
@@ -3681,25 +3660,30 @@ final class V6IntegratedFlowTests: XCTestCase {
     }
 }
 
+/// Walks up from `sourceFile` using plain string path components (rather than
+/// repeated `URL.deletingLastPathComponent()` calls) to locate the repo root
+/// and find `PDFold/Resources/Info.plist`. The walk is bounded by the fixed,
+/// finite number of path components in `sourceFile`, so it cannot loop
+/// unboundedly even if a `URL` path-reduction edge case on a given
+/// Foundation/OS version fails to converge as expected.
 private func appInfoPlistURL(sourceFile: String) throws -> URL {
     let environment = ProcessInfo.processInfo.environment
-    let sourceRoot = URL(fileURLWithPath: sourceFile)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-    var candidateRoots = ["SRCROOT", "PROJECT_DIR"]
-        .compactMap { environment[$0] }
-        .map(URL.init(fileURLWithPath:)) + [sourceRoot]
-    var parent = sourceRoot
-    while parent.path != parent.deletingLastPathComponent().path {
-        parent = parent.deletingLastPathComponent()
-        candidateRoots.append(parent)
-    }
+    var pathComponents = sourceFile.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+    // Drop the file name and its two enclosing directories (PDFoldTests, Tests) to reach the repo root.
+    pathComponents.removeLast(min(3, pathComponents.count))
 
-    for root in candidateRoots {
-        let plistURL = root.appendingPathComponent("PDFold/Resources/Info.plist")
-        if FileManager.default.fileExists(atPath: plistURL.path) {
-            return plistURL
+    var candidatePaths = ["SRCROOT", "PROJECT_DIR"].compactMap { environment[$0] }
+    var remaining = pathComponents
+    while !remaining.isEmpty {
+        candidatePaths.append("/" + remaining.joined(separator: "/"))
+        remaining.removeLast()
+    }
+    candidatePaths.append("/")
+
+    for root in candidatePaths {
+        let plistPath = (root as NSString).appendingPathComponent("PDFold/Resources/Info.plist")
+        if FileManager.default.fileExists(atPath: plistPath) {
+            return URL(fileURLWithPath: plistPath)
         }
     }
 
