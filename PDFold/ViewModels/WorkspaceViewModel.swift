@@ -250,6 +250,7 @@ final class WorkspaceViewModel {
     var draggedPageRefID: UUID? = nil
     var selectedCommentID: UUID? = nil
     var commentFilter: CommentFilter = .open
+    private(set) var commentRevision = 0
     var editingStatus: EditingStatus? = nil
     var operationProgress = WorkspaceOperationProgress()
     var formSummary = PDFFormSummary()
@@ -389,6 +390,7 @@ final class WorkspaceViewModel {
     }
 
     var pdfNoteComments: [PDFNoteComment] {
+        _ = commentRevision
         var notes: [PDFNoteComment] = []
         for (member, pdf) in loadedPDFs {
             for localPageIndex in 0..<pdf.pageCount {
@@ -415,10 +417,24 @@ final class WorkspaceViewModel {
     }
 
     var totalCommentCount: Int {
-        document.workspace.comments.count + pdfNoteComments.count
+        _ = commentRevision
+        return document.workspace.comments.count + pdfNoteComments.count
+    }
+
+    var currentPageCommentCount: Int {
+        _ = commentRevision
+        if currentPageNumber > 0,
+           document.workspace.pageOrder.indices.contains(currentPageNumber - 1) {
+            return commentCount(for: document.workspace.pageOrder[currentPageNumber - 1].id)
+        }
+        if let selectedPageRefID {
+            return commentCount(for: selectedPageRefID)
+        }
+        return 0
     }
 
     var filteredWorkspaceComments: [WorkspaceComment] {
+        _ = commentRevision
         switch commentFilter {
         case .open:
             return document.workspace.comments.filter { !$0.isResolved }
@@ -430,6 +446,7 @@ final class WorkspaceViewModel {
     }
 
     var usedCommentTags: [String] {
+        _ = commentRevision
         let tags = document.workspace.tags + document.workspace.comments.flatMap(\.tags)
         return tags.reduce(into: [String]()) { result, tag in
             guard !tag.isEmpty,
@@ -899,6 +916,7 @@ final class WorkspaceViewModel {
         }
         document.workspace.tags.append(tag)
         markWorkspaceModified()
+        commentRevision += 1
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
             vm.removeTag(tag)
@@ -912,10 +930,12 @@ final class WorkspaceViewModel {
         guard let index = document.workspace.tags.firstIndex(of: tag) else { return }
         let removed = document.workspace.tags.remove(at: index)
         markWorkspaceModified()
+        commentRevision += 1
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
             vm.document.workspace.tags.insert(removed, at: min(index, vm.document.workspace.tags.count))
             vm.markWorkspaceModified()
+            vm.commentRevision += 1
         }
         undoManager?.setActionName("Remove Tag")
     }
@@ -926,7 +946,7 @@ final class WorkspaceViewModel {
         guard !body.isEmpty else { return }
         let comment = WorkspaceComment(body: body)
         document.workspace.comments.insert(comment, at: 0)
-        markWorkspaceModified()
+        markCommentsModified()
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
             vm.removeComment(comment)
@@ -945,7 +965,7 @@ final class WorkspaceViewModel {
         )
         document.workspace.comments.insert(comment, at: 0)
         selectedCommentID = comment.id
-        markWorkspaceModified()
+        markCommentsModified()
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
             vm.removeComment(comment)
@@ -979,11 +999,20 @@ final class WorkspaceViewModel {
         guard canPerformMutatingAction() else { return }
         guard let index = document.workspace.comments.firstIndex(where: { $0.id == comment.id }) else { return }
         let removed = document.workspace.comments.remove(at: index)
-        markWorkspaceModified()
+        let previousSelection = selectedCommentID
+        if selectedCommentID == removed.id {
+            if document.workspace.comments.isEmpty {
+                selectedCommentID = nil
+            } else {
+                selectedCommentID = document.workspace.comments[min(index, document.workspace.comments.count - 1)].id
+            }
+        }
+        markCommentsModified()
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
             vm.document.workspace.comments.insert(removed, at: min(index, vm.document.workspace.comments.count))
-            vm.markWorkspaceModified()
+            vm.selectedCommentID = previousSelection
+            vm.markCommentsModified()
         }
         undoManager?.setActionName("Remove Comment")
     }
@@ -1052,7 +1081,7 @@ final class WorkspaceViewModel {
         guard document.workspace.comments.indices.contains(index) else { return }
         let previous = document.workspace.comments[index]
         document.workspace.comments[index] = updated
-        markWorkspaceModified()
+        markCommentsModified()
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
             vm.restoreComment(previous, actionName: actionName)
@@ -1064,7 +1093,7 @@ final class WorkspaceViewModel {
         guard let index = document.workspace.comments.firstIndex(where: { $0.id == comment.id }) else { return }
         let inverse = document.workspace.comments[index]
         document.workspace.comments[index] = comment
-        markWorkspaceModified()
+        markCommentsModified()
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
             vm.restoreComment(inverse, actionName: actionName)
@@ -1114,9 +1143,8 @@ final class WorkspaceViewModel {
     }
 
     func commentCount(for pageRefID: UUID) -> Int {
-        let anchored = document.workspace.comments.filter { $0.anchor?.pageRefID == pageRefID }.count
-        let notes = pdfNoteComments.filter { $0.pageRef.id == pageRefID }.count
-        return anchored + notes
+        _ = commentRevision
+        return document.workspace.comments.filter { $0.anchor?.pageRefID == pageRefID }.count
     }
 
     func isCommentVisibleOnPage(_ comment: WorkspaceComment) -> Bool {
@@ -1145,7 +1173,7 @@ final class WorkspaceViewModel {
             didChange = true
         }
         if didChange {
-            markWorkspaceModified()
+            markCommentsModified()
         }
     }
 
@@ -1216,6 +1244,11 @@ final class WorkspaceViewModel {
         document.workspace.modifiedAt = Date()
     }
 
+    private func markCommentsModified() {
+        commentRevision += 1
+        markWorkspaceModified()
+    }
+
     private func canPerformMutatingAction() -> Bool {
         guard !isImporting else {
             editingStatus = .warning("Finish importing before making more changes.")
@@ -1245,6 +1278,7 @@ final class WorkspaceViewModel {
 
     func markAnnotationsModified(warnAboutSignatureInvalidation: Bool = true) {
         markWorkspaceModified()
+        commentRevision += 1
         if warnAboutSignatureInvalidation {
             warnIfEditingWouldInvalidateSignatures()
         }

@@ -37,7 +37,7 @@ struct ContentView: View {
                     HStack(spacing: 0) {
                         ReadingCanvas(viewModel: viewModel)
                             .overlay(alignment: .topTrailing) {
-                                DocumentCommentsIndicator(count: viewModel.totalCommentCount) {
+                                DocumentCommentsIndicator(count: viewModel.currentPageCommentCount) {
                                     inspectorTab = .comments
                                     showInspector = true
                                 }

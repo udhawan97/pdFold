@@ -1,163 +1,169 @@
-<svg width="1280" height="940" viewBox="0 0 1280 940" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+<svg width="1280" height="980" viewBox="0 0 1280 980" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">pdFold Technical Architecture</title>
-  <desc id="desc">Dark-mode technical architecture diagram showing the pdFold SwiftUI app surface, workspace state, PDFium processing backend, PDFKit services, local persistence, exports, automatic update launcher, clean uninstall command, and release guardrails.</desc>
+  <desc id="desc">Architecture diagram showing the SwiftUI app surface, workspace state, PDFKit, PDFium, OCR, forms, decorations, compression, encryption, exports, installer, and release guardrails.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#070B14"/>
+      <stop offset="0" stop-color="#06111F"/>
       <stop offset="0.58" stop-color="#0B1220"/>
-      <stop offset="1" stop-color="#071713"/>
+      <stop offset="1" stop-color="#081B16"/>
     </linearGradient>
     <pattern id="grid" width="56" height="56" patternUnits="userSpaceOnUse">
-      <path d="M 56 0 L 0 0 0 56" stroke="#1F3147" stroke-width="1" opacity="0.20"/>
+      <path d="M 56 0 L 0 0 0 56" stroke="#274155" stroke-width="1" opacity="0.20"/>
     </pattern>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
       <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.34"/>
     </filter>
     <style>
-      .title { font: 800 32px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #F8FAFC; }
-      .subtitle { font: 500 15px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #B6C3D4; }
-      .layerTitle { font: 800 17px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #F8FAFC; }
-      .body { font: 500 13px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #A8B6C8; }
-      .chip { font: 800 11.5px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-      .tag { font: 800 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; letter-spacing: 1.5px; }
-      .layer { fill: #101827; stroke: #2B3F5C; stroke-width: 1.25; }
-      .stateLayer { fill: #08251F; stroke: #0F766E; stroke-width: 1.25; }
-      .engineLayer { fill: #111A34; stroke: #6366F1; stroke-width: 1.25; }
-      .artifactLayer { fill: #1B1430; stroke: #A78BFA; stroke-width: 1.25; }
-      .exportLayer { fill: #241609; stroke: #F59E0B; stroke-width: 1.25; }
-      .rail { fill: #08251C; stroke: #22C55E; stroke-width: 1.25; }
-      .flow { fill: none; stroke: #44597A; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+      .title { font: 800 34px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #F8FAFC; }
+      .subtitle { font: 500 15px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #B8C5D6; }
+      .body { font: 500 13px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #AAB8CA; }
+      .chip { font: 800 11.5px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .tag { font: 800 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; letter-spacing: 1.2px; }
+      .layer { fill: #101827; stroke: #2B405C; stroke-width: 1.25; }
+      .state { fill: #08251F; stroke: #0F766E; stroke-width: 1.25; }
+      .engine { fill: #111A34; stroke: #818CF8; stroke-width: 1.25; }
+      .export { fill: #241609; stroke: #F59E0B; stroke-width: 1.25; }
+      .artifact { fill: #1B1430; stroke: #A78BFA; stroke-width: 1.25; }
+      .guard { fill: #08251C; stroke: #22C55E; stroke-width: 1.25; }
+      .flow { fill: none; stroke: #506789; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
     </style>
   </defs>
 
-  <rect width="1280" height="940" rx="28" fill="#020617"/>
-  <rect x="32" y="32" width="1216" height="876" rx="26" fill="url(#bg)"/>
-  <rect x="32" y="32" width="1216" height="876" rx="26" fill="url(#grid)"/>
-  <rect x="32" y="32" width="1216" height="876" rx="26" stroke="#1F3147"/>
+  <rect width="1280" height="980" rx="28" fill="#020617"/>
+  <rect x="32" y="32" width="1216" height="916" rx="26" fill="url(#bg)"/>
+  <rect x="32" y="32" width="1216" height="916" rx="26" fill="url(#grid)"/>
+  <rect x="32" y="32" width="1216" height="916" rx="26" stroke="#1F3147"/>
 
   <text x="640" y="78" text-anchor="middle" class="title">pdFold Technical Architecture</text>
-  <text x="640" y="108" text-anchor="middle" class="subtitle">SwiftUI document app, local PDFium validation, PDFKit composition, persistence, exports, and install lifecycle commands.</text>
+  <text x="640" y="108" text-anchor="middle" class="subtitle">SwiftUI workspace, local PDF services, export finishing pipeline, and release tooling.</text>
 
   <g>
-    <path d="M496 256 V272" class="flow"/>
-    <path d="M490 268 L496 276 L502 268" class="flow"/>
-    <path d="M496 396 V412" class="flow"/>
-    <path d="M490 408 L496 416 L502 408" class="flow"/>
-    <path d="M496 536 V552" class="flow"/>
-    <path d="M490 548 L496 556 L502 548" class="flow"/>
-    <path d="M496 692 V710" class="flow"/>
-    <path d="M281 710 H711" class="flow"/>
-    <path d="M281 710 V728" class="flow"/>
-    <path d="M275 722 L281 730 L287 722" class="flow"/>
-    <path d="M711 710 V728" class="flow"/>
-    <path d="M705 722 L711 730 L717 722" class="flow"/>
+    <path d="M500 245 V266" class="flow"/>
+    <path d="M494 262 L500 270 L506 262" class="flow"/>
+    <path d="M500 386 V406" class="flow"/>
+    <path d="M494 402 L500 410 L506 402" class="flow"/>
+    <path d="M500 536 V558" class="flow"/>
+    <path d="M494 554 L500 562 L506 554" class="flow"/>
+    <path d="M500 708 V728" class="flow"/>
+    <path d="M494 724 L500 732 L506 724" class="flow"/>
+    <path d="M500 842 V864" class="flow"/>
+    <path d="M494 860 L500 868 L506 860" class="flow"/>
   </g>
 
-  <g transform="translate(86 148)" filter="url(#shadow)">
-    <rect width="820" height="104" rx="16" class="layer"/>
-    <rect width="5" height="104" rx="2.5" fill="#38BDF8"/>
-    <text x="30" y="34" class="tag" fill="#67E8F9">APP SHELL</text>
-    <text x="30" y="62" class="body">DocumentGroup app entry, command wiring, and user-facing workspace window.</text>
+  <g transform="translate(82 148)" filter="url(#shadow)">
+    <rect width="836" height="98" rx="16" class="layer"/>
+    <rect width="5" height="98" rx="2.5" fill="#38BDF8"/>
+    <text x="30" y="34" class="tag" fill="#67E8F9">APP SURFACE</text>
+    <text x="30" y="61" class="body">DocumentGroup entry, commands, import surfaces, toolbar, reader, inspector, search, and password prompts.</text>
     <g transform="translate(30 70)">
-      <rect x="0" y="0" width="104" height="28" rx="14" fill="#082F49" stroke="#38BDF8"/>
-      <text x="52" y="19" text-anchor="middle" class="chip" fill="#BAE6FD">pdFoldApp</text>
-      <rect x="116" y="0" width="132" height="28" rx="14" fill="#082F49" stroke="#38BDF8"/>
-      <text x="182" y="19" text-anchor="middle" class="chip" fill="#BAE6FD">DocumentGroup</text>
+      <rect width="104" height="26" rx="13" fill="#082F49" stroke="#38BDF8"/>
+      <text x="52" y="18" text-anchor="middle" class="chip" fill="#BAE6FD">pdFoldApp</text>
+      <rect x="116" width="118" height="26" rx="13" fill="#082F49" stroke="#38BDF8"/>
+      <text x="175" y="18" text-anchor="middle" class="chip" fill="#BAE6FD">ContentView</text>
+      <rect x="246" width="128" height="26" rx="13" fill="#082F49" stroke="#38BDF8"/>
+      <text x="310" y="18" text-anchor="middle" class="chip" fill="#BAE6FD">ReadingCanvas</text>
+      <rect x="386" width="118" height="26" rx="13" fill="#082F49" stroke="#38BDF8"/>
+      <text x="445" y="18" text-anchor="middle" class="chip" fill="#BAE6FD">Inspector</text>
     </g>
   </g>
 
-  <g transform="translate(86 282)" filter="url(#shadow)">
-    <rect width="820" height="110" rx="16" class="layer"/>
-    <rect width="5" height="110" rx="2.5" fill="#0EA5E9"/>
-    <text x="30" y="34" class="tag" fill="#7DD3FC">SWIFTUI VIEWS</text>
-    <text x="30" y="62" class="body">Sidebar, reader, inspector, search, toolbar, guide, and export actions.</text>
-    <g transform="translate(30 74)">
-      <rect x="0" y="0" width="104" height="28" rx="14" fill="#082F49" stroke="#0EA5E9"/>
-      <text x="52" y="19" text-anchor="middle" class="chip" fill="#BAE6FD">ContentView</text>
-      <rect x="116" y="0" width="120" height="28" rx="14" fill="#082F49" stroke="#0EA5E9"/>
-      <text x="176" y="19" text-anchor="middle" class="chip" fill="#BAE6FD">ReadingCanvas</text>
-      <rect x="248" y="0" width="112" height="28" rx="14" fill="#082F49" stroke="#0EA5E9"/>
-      <text x="304" y="19" text-anchor="middle" class="chip" fill="#BAE6FD">InspectorView</text>
-    </g>
-  </g>
-
-  <g transform="translate(86 422)" filter="url(#shadow)">
-    <rect width="820" height="110" rx="16" class="stateLayer"/>
-    <rect width="5" height="110" rx="2.5" fill="#2DD4BF"/>
+  <g transform="translate(82 286)" filter="url(#shadow)">
+    <rect width="836" height="104" rx="16" class="state"/>
+    <rect width="5" height="104" rx="2.5" fill="#2DD4BF"/>
     <text x="30" y="34" class="tag" fill="#5EEAD4">WORKSPACE STATE</text>
-    <text x="30" y="62" class="body">Loaded PDFs, page order, metadata, annotations, search, undo, and export state.</text>
+    <text x="30" y="61" class="body">Documents, page order, undo snapshots, comments, tags, forms, signatures, page edits, and decorations.</text>
     <g transform="translate(30 74)">
-      <rect x="0" y="0" width="158" height="28" rx="14" fill="#064E3B" stroke="#2DD4BF"/>
-      <text x="79" y="19" text-anchor="middle" class="chip" fill="#CCFBF1">WorkspaceViewModel</text>
-      <rect x="170" y="0" width="154" height="28" rx="14" fill="#064E3B" stroke="#2DD4BF"/>
-      <text x="247" y="19" text-anchor="middle" class="chip" fill="#CCFBF1">WorkspaceDocument</text>
-      <rect x="336" y="0" width="88" height="28" rx="14" fill="#064E3B" stroke="#2DD4BF"/>
-      <text x="380" y="19" text-anchor="middle" class="chip" fill="#CCFBF1">PageRef</text>
+      <rect width="162" height="26" rx="13" fill="#064E3B" stroke="#2DD4BF"/>
+      <text x="81" y="18" text-anchor="middle" class="chip" fill="#CCFBF1">WorkspaceViewModel</text>
+      <rect x="174" width="164" height="26" rx="13" fill="#064E3B" stroke="#2DD4BF"/>
+      <text x="256" y="18" text-anchor="middle" class="chip" fill="#CCFBF1">WorkspaceDocument</text>
+      <rect x="350" width="134" height="26" rx="13" fill="#064E3B" stroke="#2DD4BF"/>
+      <text x="417" y="18" text-anchor="middle" class="chip" fill="#CCFBF1">ExportOptions</text>
+      <rect x="496" width="134" height="26" rx="13" fill="#064E3B" stroke="#2DD4BF"/>
+      <text x="563" y="18" text-anchor="middle" class="chip" fill="#CCFBF1">Decorations</text>
     </g>
   </g>
 
-  <g transform="translate(86 562)" filter="url(#shadow)">
-    <rect width="820" height="126" rx="16" class="engineLayer"/>
-    <rect width="5" height="126" rx="2.5" fill="#818CF8"/>
-    <text x="30" y="34" class="tag" fill="#C4B5FD">PDF PROCESSING BACKEND</text>
-    <text x="30" y="62" class="body">PDFium validates first; PDFKit remains the fallback, composition, markup, and artifact writer path.</text>
-    <g transform="translate(30 88)">
-      <rect x="0" y="0" width="158" height="28" rx="14" fill="#1E1B4B" stroke="#818CF8"/>
-      <text x="79" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFProcessingEngine</text>
-      <path d="M170 14 H188" stroke="#818CF8" stroke-width="2" stroke-linecap="round"/>
-      <path d="M184 9 L190 14 L184 19" stroke="#818CF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      <rect x="204" y="0" width="154" height="28" rx="14" fill="#4338CA" stroke="#A5B4FC"/>
-      <text x="281" y="19" text-anchor="middle" class="chip" fill="#EEF2FF">PDFium validate</text>
-      <rect x="370" y="0" width="142" height="28" rx="14" fill="#241B56" stroke="#818CF8"/>
-      <text x="441" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFKit fallback</text>
-      <rect x="524" y="0" width="132" height="28" rx="14" fill="#241B56" stroke="#818CF8"/>
-      <text x="590" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFKit compose</text>
+  <g transform="translate(82 426)" filter="url(#shadow)">
+    <rect width="836" height="132" rx="16" class="engine"/>
+    <rect width="5" height="132" rx="2.5" fill="#818CF8"/>
+    <text x="30" y="34" class="tag" fill="#C4B5FD">LOCAL PDF SERVICES</text>
+    <text x="30" y="61" class="body">PDFKit composes and annotates; PDFium validates and rewrites; Vision OCR recognizes scans; signing helpers stay local.</text>
+    <g transform="translate(30 84)">
+      <rect width="96" height="28" rx="14" fill="#1E1B4B" stroke="#818CF8"/>
+      <text x="48" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFKit</text>
+      <rect x="108" width="98" height="28" rx="14" fill="#1E1B4B" stroke="#818CF8"/>
+      <text x="157" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">PDFium</text>
+      <rect x="218" width="104" height="28" rx="14" fill="#172554" stroke="#818CF8"/>
+      <text x="270" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">Vision OCR</text>
+      <rect x="334" width="96" height="28" rx="14" fill="#3F1727" stroke="#FB7185"/>
+      <text x="382" y="19" text-anchor="middle" class="chip" fill="#FFE4E6">Signing</text>
+      <rect x="442" width="126" height="28" rx="14" fill="#1E1B4B" stroke="#818CF8"/>
+      <text x="505" y="19" text-anchor="middle" class="chip" fill="#E0E7FF">Text Analysis</text>
     </g>
   </g>
 
-  <g transform="translate(86 734)" filter="url(#shadow)">
-    <rect width="390" height="76" rx="16" class="artifactLayer"/>
-    <rect width="5" height="76" rx="2.5" fill="#A78BFA"/>
-    <text x="30" y="31" class="tag" fill="#C4B5FD">LOCAL DOCUMENT STATE</text>
-    <text x="30" y="54" class="body">Workspace metadata and member PDF data</text>
+  <g transform="translate(82 594)" filter="url(#shadow)">
+    <rect width="836" height="118" rx="16" class="export"/>
+    <rect width="5" height="118" rx="2.5" fill="#F59E0B"/>
+    <text x="30" y="34" class="tag" fill="#FDBA74">EXPORT FINISHING PIPELINE</text>
+    <text x="30" y="61" class="body">Strict snapshots move through form flattening, stamp baking, compression, encryption, validation, and final write.</text>
+    <g transform="translate(30 82)">
+      <rect width="116" height="28" rx="14" fill="#3B1E08" stroke="#F59E0B"/>
+      <text x="58" y="19" text-anchor="middle" class="chip" fill="#FED7AA">Flatten forms</text>
+      <rect x="128" width="116" height="28" rx="14" fill="#3B1E08" stroke="#F59E0B"/>
+      <text x="186" y="19" text-anchor="middle" class="chip" fill="#FED7AA">Bake stamps</text>
+      <rect x="256" width="104" height="28" rx="14" fill="#3B1E08" stroke="#F59E0B"/>
+      <text x="308" y="19" text-anchor="middle" class="chip" fill="#FED7AA">Compress</text>
+      <rect x="372" width="98" height="28" rx="14" fill="#3F1727" stroke="#FB7185"/>
+      <text x="421" y="19" text-anchor="middle" class="chip" fill="#FFE4E6">Protect</text>
+      <rect x="482" width="102" height="28" rx="14" fill="#3B1E08" stroke="#F59E0B"/>
+      <text x="533" y="19" text-anchor="middle" class="chip" fill="#FED7AA">Validate</text>
+    </g>
   </g>
 
-  <g transform="translate(516 734)" filter="url(#shadow)">
-    <rect width="390" height="76" rx="16" class="exportLayer"/>
-    <rect width="5" height="76" rx="2.5" fill="#F59E0B"/>
-    <text x="30" y="31" class="tag" fill="#FDBA74">EXPORT ARTIFACTS</text>
-    <text x="30" y="54" class="body">PDF, DOCX, MD, TXT, HTML, PNG, and JPEG</text>
+  <g transform="translate(82 748)" filter="url(#shadow)">
+    <rect width="398" height="96" rx="16" class="artifact"/>
+    <rect width="5" height="96" rx="2.5" fill="#A78BFA"/>
+    <text x="30" y="34" class="tag" fill="#C4B5FD">LOCAL STATE</text>
+    <text x="30" y="61" class="body">Workspace metadata, source payloads, PDF bytes, comments, signatures, and page edit state.</text>
   </g>
 
-  <g transform="translate(954 148)" filter="url(#shadow)">
-    <rect width="240" height="662" rx="18" class="rail"/>
-    <rect width="240" height="5" rx="2.5" fill="#22C55E"/>
-    <text x="32" y="44" class="tag" fill="#86EFAC">RELEASE GUARDRAILS</text>
+  <g transform="translate(520 748)" filter="url(#shadow)">
+    <rect width="398" height="96" rx="16" class="artifact"/>
+    <rect width="5" height="96" rx="2.5" fill="#A78BFA"/>
+    <text x="30" y="34" class="tag" fill="#C4B5FD">EXPORT ARTIFACTS</text>
+    <text x="30" y="61" class="body">PDF, DOCX, Markdown, text, HTML, PNG, JPEG, and print output.</text>
+  </g>
 
-    <rect x="24" y="64" width="192" height="340" rx="14" fill="#0B1220" stroke="#166534"/>
-    <g transform="translate(46 110)">
+  <g transform="translate(962 148)" filter="url(#shadow)">
+    <rect width="236" height="696" rx="18" class="guard"/>
+    <rect width="236" height="5" rx="2.5" fill="#22C55E"/>
+    <text x="28" y="44" class="tag" fill="#86EFAC">RELEASE GUARDRAILS</text>
+    <g transform="translate(28 76)">
       <circle cx="6" cy="0" r="5" fill="#22C55E"/>
-      <text x="22" y="4" class="body">Import size limits</text>
-      <circle cx="6" cy="62" r="5" fill="#22C55E"/>
-      <text x="22" y="66" class="body">Ink annotation repair</text>
-      <circle cx="6" cy="124" r="5" fill="#22C55E"/>
-      <text x="22" y="128" class="body">Serialization fallback</text>
-      <circle cx="6" cy="186" r="5" fill="#22C55E"/>
-      <text x="22" y="190" class="body">Bounded image export</text>
-      <circle cx="6" cy="248" r="5" fill="#22C55E"/>
-      <text x="22" y="252" class="body">Write-error reporting</text>
+      <text x="22" y="4" class="body">SwiftPM and Xcode gates</text>
+      <circle cx="6" cy="54" r="5" fill="#22C55E"/>
+      <text x="22" y="58" class="body">Plist and shell lint</text>
+      <circle cx="6" cy="108" r="5" fill="#22C55E"/>
+      <text x="22" y="112" class="body">Import size limits</text>
+      <circle cx="6" cy="162" r="5" fill="#22C55E"/>
+      <text x="22" y="166" class="body">Protected PDF unlock flow</text>
+      <circle cx="6" cy="216" r="5" fill="#22C55E"/>
+      <text x="22" y="220" class="body">OCR cancellation checks</text>
+      <circle cx="6" cy="270" r="5" fill="#22C55E"/>
+      <text x="22" y="274" class="body">Compression validation</text>
+      <circle cx="6" cy="324" r="5" fill="#22C55E"/>
+      <text x="22" y="328" class="body">Encryption verification</text>
+      <circle cx="6" cy="378" r="5" fill="#22C55E"/>
+      <text x="22" y="382" class="body">Decoration export tests</text>
+      <circle cx="6" cy="432" r="5" fill="#22C55E"/>
+      <text x="22" y="436" class="body">Package-only release zip</text>
     </g>
-
-    <rect x="24" y="428" width="192" height="206" rx="14" fill="#0B1220" stroke="#166534"/>
-    <text x="46" y="468" class="tag" fill="#86EFAC">INSTALL LIFECYCLE</text>
-    <text x="46" y="494" class="body">One-line install,</text>
-    <text x="46" y="516" class="body">launch update checks,</text>
-    <text x="46" y="538" class="body">and clean uninstall.</text>
-    <g transform="translate(46 562)">
-      <rect x="0" y="0" width="116" height="26" rx="13" fill="#08251C" stroke="#166534"/>
-      <text x="58" y="18" text-anchor="middle" class="chip" fill="#86EFAC">pdFold.command</text>
-      <rect x="0" y="36" width="116" height="26" rx="13" fill="#08251C" stroke="#166534"/>
-      <text x="58" y="54" text-anchor="middle" class="chip" fill="#86EFAC">Uninstall</text>
-    </g>
+    <rect x="24" y="552" width="188" height="112" rx="14" fill="#0B1220" stroke="#166534"/>
+    <text x="42" y="586" class="tag" fill="#86EFAC">INSTALL LIFECYCLE</text>
+    <text x="42" y="614" class="body">install.sh downloads</text>
+    <text x="42" y="636" class="body">pdFold.zip, updates,</text>
+    <text x="42" y="658" class="body">or uninstalls cleanly.</text>
   </g>
 </svg>

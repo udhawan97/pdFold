@@ -54,7 +54,7 @@ targets:
       properties:
         CFBundleDisplayName: pdFold
         CFBundleShortVersionString: "3.0"
-        CFBundleVersion: "5"
+        CFBundleVersion: "6"
         NSHumanReadableCopyright: "Copyright © 2026. MIT License."
         NSPrincipalClass: NSApplication
         CFBundleIconFile: AppIcon

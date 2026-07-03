@@ -207,15 +207,16 @@ private struct TagChip: View {
                 .lineLimit(1)
             Button(action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
-                    .frame(width: 12, height: 12)
+                    .font(.system(size: 9, weight: .bold))
+                    .frame(width: 20, height: 20)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
             .foregroundStyle(Color.dsTextTertiary)
             .help("Remove tag")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.leading, 8)
+        .padding(.trailing, 4)
+        .padding(.vertical, 3)
         .background(Color.dsAccentSoft, in: Capsule())
     }
 }
@@ -384,67 +385,73 @@ private struct WorkspaceCommentRow: View {
     ]
 
     private var displayedBody: String {
-        isEditing ? draftBody : comment.body
+        isEditing ? draftBody : liveComment.body
+    }
+
+    private var liveComment: WorkspaceComment {
+        _ = viewModel.commentRevision
+        return viewModel.document.workspace.comments.first { $0.id == comment.id } ?? comment
     }
 
     var body: some View {
+        let current = liveComment
         VStack(alignment: .leading, spacing: .dsSM) {
             HStack(alignment: .firstTextBaseline) {
-                Text(relativeTimestamp(for: comment.createdAt))
+                Text(relativeTimestamp(for: current.createdAt))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.dsTextTertiary)
-                    .help(comment.createdAt.formatted(date: .complete, time: .shortened))
+                    .help(current.createdAt.formatted(date: .complete, time: .shortened))
                 Spacer()
                 Toggle(isOn: Binding(
-                    get: { comment.isResolved },
-                    set: { viewModel.updateCommentResolved(comment, isResolved: $0) }
+                    get: { liveComment.isResolved },
+                    set: { viewModel.updateCommentResolved(liveComment, isResolved: $0) }
                 )) {
-                    Image(systemName: comment.isResolved ? "checkmark.circle.fill" : "circle")
-                        .frame(width: 16, height: 16)
+                    Image(systemName: current.isResolved ? "checkmark.circle.fill" : "circle")
+                        .frame(width: 24, height: 24)
                 }
                 .toggleStyle(.button)
-                .buttonStyle(.plain)
-                .foregroundStyle(comment.isResolved ? Color.dsAccent : Color.dsTextTertiary)
-                .help(comment.isResolved ? "Mark open" : "Mark resolved")
+                .buttonStyle(.borderless)
+                .foregroundStyle(current.isResolved ? Color.dsAccent : Color.dsTextTertiary)
+                .help(current.isResolved ? "Mark open" : "Mark resolved")
 
                 Button {
-                    draftBody = comment.body
+                    draftBody = liveComment.body
                     isEditing.toggle()
                 } label: {
                     Image(systemName: isEditing ? "xmark" : "square.and.pencil")
-                        .frame(width: 16, height: 16)
+                        .frame(width: 24, height: 24)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
                 .foregroundStyle(Color.dsTextTertiary)
                 .help(isEditing ? "Cancel edit" : "Edit comment")
 
                 Button {
-                    viewModel.removeComment(comment)
+                    viewModel.removeComment(liveComment)
                 } label: {
                     Image(systemName: "trash")
-                        .frame(width: 16, height: 16)
+                        .frame(width: 24, height: 24)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
                 .foregroundStyle(Color.dsTextTertiary)
                 .help("Delete comment")
             }
 
-            if let subtitle = viewModel.anchorSubtitle(for: comment) {
+            if let subtitle = viewModel.anchorSubtitle(for: current) {
                 Button {
-                    viewModel.jumpToComment(comment)
+                    viewModel.jumpToComment(liveComment)
                 } label: {
                     HStack(spacing: .dsXS) {
-                        Image(systemName: comment.anchor == nil ? "exclamationmark.circle" : "arrowshape.turn.up.right")
+                        Image(systemName: current.anchor == nil ? "exclamationmark.circle" : "arrowshape.turn.up.right")
                             .frame(width: 14, height: 14)
                         Text(subtitle)
                             .lineLimit(1)
                     }
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(comment.anchor == nil ? Color.dsTextTertiary : Color.dsAccent)
+                    .foregroundStyle(current.anchor == nil ? Color.dsTextTertiary : Color.dsAccent)
                 }
                 .buttonStyle(.plain)
-                .disabled(comment.anchor == nil)
-                .help(comment.anchor == nil ? "The anchored page was removed" : "Jump to anchor")
+                .disabled(current.anchor == nil)
+                .help(current.anchor == nil ? "The anchored page was removed" : "Jump to anchor")
             }
 
             if isEditing {
@@ -453,12 +460,12 @@ private struct WorkspaceCommentRow: View {
                     placeholder: "Edit comment...",
                     minHeight: 76,
                     background: Color.dsSurface,
-                    font: .system(size: commentFontSize(for: comment.style.textSize)),
-                    focusOnAppear: viewModel.selectedCommentID == comment.id
+                    font: .system(size: commentFontSize(for: current.style.textSize)),
+                    focusOnAppear: viewModel.selectedCommentID == current.id
                 )
                 .accessibilityLabel("Edit comment")
                 Button {
-                    viewModel.updateCommentBody(comment, body: draftBody)
+                    viewModel.updateCommentBody(liveComment, body: draftBody)
                     isEditing = false
                 } label: {
                     Label("Save", systemImage: "checkmark")
@@ -470,12 +477,16 @@ private struct WorkspaceCommentRow: View {
             } else {
                 Text(displayedBody)
                     .font(.system(
-                        size: commentFontSize(for: comment.style.textSize),
-                        weight: comment.style.isBold ? .semibold : .regular
+                        size: commentFontSize(for: current.style.textSize),
+                        weight: current.style.isBold ? .semibold : .regular
                     ))
-                    .italic(comment.style.isItalic)
-                    .foregroundStyle(displayColor(fromHex: comment.style.colorHex))
+                    .italic(current.style.isItalic)
+                    .foregroundStyle(displayColor(fromHex: current.style.colorHex))
                     .fixedSize(horizontal: false, vertical: true)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        viewModel.selectedCommentID = liveComment.id
+                    }
             }
 
             commentFormatControls
@@ -485,21 +496,17 @@ private struct WorkspaceCommentRow: View {
         .background(Color.dsCard, in: RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
-                .strokeBorder(viewModel.selectedCommentID == comment.id ? Color.dsAccent : Color.dsSeparator, lineWidth: viewModel.selectedCommentID == comment.id ? 1.5 : 1)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
-        .onTapGesture {
-            viewModel.selectedCommentID = comment.id
+                .strokeBorder(viewModel.selectedCommentID == current.id ? Color.dsAccent : Color.dsSeparator, lineWidth: viewModel.selectedCommentID == current.id ? 1.5 : 1)
         }
         .onAppear {
             if draftBody.isEmpty {
-                draftBody = comment.body
+                draftBody = liveComment.body
             }
-            if comment.body.isEmpty && viewModel.selectedCommentID == comment.id {
+            if liveComment.body.isEmpty && viewModel.selectedCommentID == liveComment.id {
                 isEditing = true
             }
         }
-        .onChange(of: comment.body) { _, newValue in
+        .onChange(of: liveComment.body) { _, newValue in
             if !isEditing {
                 draftBody = newValue
             }
@@ -509,40 +516,40 @@ private struct WorkspaceCommentRow: View {
     private var commentFormatControls: some View {
         HStack(spacing: .dsSM) {
             Button {
-                var style = comment.style
+                var style = liveComment.style
                 style.isBold.toggle()
-                viewModel.updateCommentStyle(comment, style: style)
+                viewModel.updateCommentStyle(liveComment, style: style)
             } label: {
                 Image(systemName: "bold")
-                    .frame(width: 18, height: 18)
+                    .frame(width: 24, height: 24)
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(comment.style.isBold ? Color.dsAccent : Color.dsTextTertiary)
+            .foregroundStyle(liveComment.style.isBold ? Color.dsAccent : Color.dsTextTertiary)
             .help("Bold")
 
             Button {
-                var style = comment.style
+                var style = liveComment.style
                 style.isItalic.toggle()
-                viewModel.updateCommentStyle(comment, style: style)
+                viewModel.updateCommentStyle(liveComment, style: style)
             } label: {
                 Image(systemName: "italic")
-                    .frame(width: 18, height: 18)
+                    .frame(width: 24, height: 24)
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(comment.style.isItalic ? Color.dsAccent : Color.dsTextTertiary)
+            .foregroundStyle(liveComment.style.isItalic ? Color.dsAccent : Color.dsTextTertiary)
             .help("Italic")
 
             Menu {
                 ForEach(WorkspaceCommentTextSize.allCases) { size in
                     Button(commentTextSizeLabel(size)) {
-                        var style = comment.style
+                        var style = liveComment.style
                         style.textSize = size
-                        viewModel.updateCommentStyle(comment, style: style)
+                        viewModel.updateCommentStyle(liveComment, style: style)
                     }
                 }
             } label: {
                 Image(systemName: "textformat.size")
-                    .frame(width: 18, height: 18)
+                    .frame(width: 24, height: 24)
             }
             .menuStyle(.borderlessButton)
             .help("Text size")
@@ -550,17 +557,17 @@ private struct WorkspaceCommentRow: View {
             Menu {
                 ForEach(colorChoices, id: \.hex) { choice in
                     Button(choice.label) {
-                        var style = comment.style
+                        var style = liveComment.style
                         style.colorHex = choice.hex
-                        viewModel.updateCommentStyle(comment, style: style)
+                        viewModel.updateCommentStyle(liveComment, style: style)
                     }
                 }
             } label: {
                 Circle()
-                    .fill(color(fromHex: comment.style.colorHex))
+                    .fill(color(fromHex: liveComment.style.colorHex))
                     .frame(width: 14, height: 14)
                     .overlay(Circle().strokeBorder(Color.dsSeparator, lineWidth: 1))
-                    .frame(width: 18, height: 18)
+                    .frame(width: 24, height: 24)
             }
             .menuStyle(.borderlessButton)
             .help("Text color")
@@ -571,11 +578,11 @@ private struct WorkspaceCommentRow: View {
 
     private var commentTags: some View {
         VStack(alignment: .leading, spacing: .dsSM) {
-            if !comment.tags.isEmpty {
+            if !liveComment.tags.isEmpty {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(comment.tags, id: \.self) { tag in
+                    ForEach(liveComment.tags, id: \.self) { tag in
                         TagChip(tag: tag) {
-                            viewModel.removeTag(tag, from: comment)
+                            viewModel.removeTag(tag, from: liveComment)
                         }
                     }
                 }
@@ -589,13 +596,13 @@ private struct WorkspaceCommentRow: View {
                 Menu {
                     ForEach(tagSuggestions, id: \.self) { tag in
                         Button(tag) {
-                            viewModel.addTag(tag, to: comment)
+                            viewModel.addTag(tag, to: liveComment)
                             draftTag = ""
                         }
                     }
                 } label: {
                     Image(systemName: "tag")
-                        .frame(width: 16, height: 16)
+                        .frame(width: 24, height: 24)
                 }
                 .menuStyle(.borderlessButton)
                 .disabled(tagSuggestions.isEmpty)
@@ -603,7 +610,7 @@ private struct WorkspaceCommentRow: View {
 
                 Button(action: addCommentTag) {
                     Image(systemName: "plus")
-                        .frame(width: 16, height: 16)
+                        .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.bordered)
                 .disabled(draftTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -614,14 +621,14 @@ private struct WorkspaceCommentRow: View {
 
     private var tagSuggestions: [String] {
         viewModel.usedCommentTags.filter { suggestion in
-            !comment.tags.contains { existing in
+            !liveComment.tags.contains { existing in
                 existing.localizedCaseInsensitiveCompare(suggestion) == .orderedSame
             }
         }
     }
 
     private func addCommentTag() {
-        viewModel.addTag(draftTag, to: comment)
+        viewModel.addTag(draftTag, to: liveComment)
         draftTag = ""
     }
 

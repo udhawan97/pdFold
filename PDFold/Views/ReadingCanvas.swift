@@ -398,6 +398,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
             name: .PDFViewScaleChanged, object: view)
 
         context.coordinator.pdfView = view
+        context.coordinator.observePDFViewBounds(view)
         context.coordinator.setupInkOverlay()
         context.coordinator.setupSignatureOverlay()
         context.coordinator.setupCommentRegionOverlay()
@@ -434,6 +435,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
         private weak var inlineEditor: InlineTextEditorOverlay?
         private var notePopover: NSPopover?
         private let decorationOverlays = NSHashTable<PageDecorationOverlayView>.weakObjects()
+        private weak var observedClipView: NSClipView?
 
         init(viewModel: WorkspaceViewModel) {
             self.viewModel = viewModel
@@ -441,6 +443,28 @@ struct PDFViewRepresentable: NSViewRepresentable {
 
         deinit {
             NotificationCenter.default.removeObserver(self)
+        }
+
+        func observePDFViewBounds(_ pdfView: PDFoldPDFView) {
+            if let observedClipView {
+                NotificationCenter.default.removeObserver(
+                    self,
+                    name: NSView.boundsDidChangeNotification,
+                    object: observedClipView
+                )
+            }
+            guard let clipView = pdfView.findEnclosingScrollView()?.contentView else {
+                observedClipView = nil
+                return
+            }
+            clipView.postsBoundsChangedNotifications = true
+            observedClipView = clipView
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(pdfViewGeometryChanged(_:)),
+                name: NSView.boundsDidChangeNotification,
+                object: clipView
+            )
         }
 
         func finishInlineEditingIfNeeded() {
@@ -3197,5 +3221,19 @@ final class InkOverlayView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         isHidden ? nil : super.hitTest(point)
+    }
+}
+
+private extension NSView {
+    func findEnclosingScrollView() -> NSScrollView? {
+        if let scrollView = self as? NSScrollView {
+            return scrollView
+        }
+        for subview in subviews {
+            if let scrollView = subview.findEnclosingScrollView() {
+                return scrollView
+            }
+        }
+        return enclosingScrollView
     }
 }

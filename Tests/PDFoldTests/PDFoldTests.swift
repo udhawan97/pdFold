@@ -1807,6 +1807,81 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.document.workspace.comments[0].style, style)
     }
 
+    func testRemovingSelectedWorkspaceCommentDeletesItAndClearsSelection() {
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument())
+
+        viewModel.addComment("Delete me")
+        let comment = viewModel.document.workspace.comments[0]
+        viewModel.selectedCommentID = comment.id
+
+        viewModel.removeComment(comment)
+
+        XCTAssertTrue(viewModel.document.workspace.comments.isEmpty)
+        XCTAssertNil(viewModel.selectedCommentID)
+    }
+
+    func testRemovingSelectedWorkspaceCommentAdvancesSelectionToNeighbor() {
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument())
+
+        viewModel.addComment("Older")
+        viewModel.addComment("Newer")
+        let removed = viewModel.document.workspace.comments[0]
+        let remaining = viewModel.document.workspace.comments[1]
+        viewModel.selectedCommentID = removed.id
+
+        viewModel.removeComment(removed)
+
+        XCTAssertEqual(viewModel.document.workspace.comments.map(\.body), ["Older"])
+        XCTAssertEqual(viewModel.selectedCommentID, remaining.id)
+    }
+
+    func testWorkspaceCommentControlsMutateLiveCommentStateAndRevision() {
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument())
+
+        viewModel.addComment("Original")
+        let comment = viewModel.document.workspace.comments[0]
+        let initialRevision = viewModel.commentRevision
+
+        viewModel.updateCommentBody(comment, body: "Updated")
+        viewModel.updateCommentResolved(comment, isResolved: true)
+        var style = WorkspaceCommentStyle()
+        style.isBold = true
+        style.isItalic = true
+        style.textSize = .large
+        style.colorHex = "#B42318"
+        viewModel.updateCommentStyle(comment, style: style)
+        viewModel.addTag("urgent", to: comment)
+        viewModel.removeTag("urgent", from: comment)
+
+        let updated = viewModel.document.workspace.comments[0]
+        XCTAssertEqual(updated.body, "Updated")
+        XCTAssertTrue(updated.isResolved)
+        XCTAssertEqual(updated.style, style)
+        XCTAssertTrue(updated.tags.isEmpty)
+        XCTAssertGreaterThan(viewModel.commentRevision, initialRevision)
+    }
+
+    func testPageCommentBadgeIgnoresPDFStickyNotes() throws {
+        let fixture = try makeMemberWithPDF(name: "Notes", pageTexts: ["Sticky note target"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(
+            document: document,
+            processingEngine: PDFKitProcessingEngineFallback()
+        )
+        let page = try XCTUnwrap(viewModel.combinedPDF.page(at: 1))
+
+        let annotation = try XCTUnwrap(viewModel.addNote(at: CGPoint(x: 120, y: 120), on: page))
+        annotation.contents = "Imported-style sticky note"
+        annotation.setValue(false, forAnnotationKey: WorkspaceViewModel.draftTextAnnotationKey)
+
+        XCTAssertEqual(viewModel.pdfNoteComments.count, 1)
+        XCTAssertEqual(viewModel.totalCommentCount, 1)
+        XCTAssertEqual(viewModel.commentCount(for: fixture.refs[0].id), 0)
+    }
+
     func testPageOperationsKeepWorkspaceAndPDFInSync() throws {
         let document = WorkspaceDocument()
         let first = try makeMemberWithPDF(name: "First", pageTexts: ["one", "two", "three"])
