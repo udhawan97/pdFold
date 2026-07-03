@@ -133,23 +133,26 @@ private struct GuidePopover: View {
     @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: .dsXL) {
-            AppBrandLockup(iconSize: 40, titleSize: 15, subtitle: "A calmer way to assemble PDFs.")
-
-            VStack(alignment: .leading, spacing: .dsMD) {
-                GuideStep(icon: "plus.circle",
-                          title: "Add files",
-                          detail: "Drop documents into the window or use the add button.")
-                GuideStep(icon: "square.stack.3d.down.right",
-                          title: "Arrange pages",
-                          detail: "Expand a source file, select pages, then drag thumbnails up or down.")
-                GuideStep(icon: "highlighter",
-                          title: "Annotate",
-                          detail: "Highlight, add notes, draw, or place your signature.")
-                GuideStep(icon: "square.and.arrow.up",
-                          title: "Export",
-                          detail: "Export a clean PDF or save the editable workspace.")
+        VStack(alignment: .leading, spacing: .dsLG) {
+            VStack(alignment: .leading, spacing: .dsSM) {
+                AppBrandLockup(iconSize: 40, titleSize: 15, subtitle: "A calmer way to finish PDFs.")
+                Text("Bring scattered files together, clean them up, and send out the version people actually need.")
+                    .font(.dsCaption())
+                    .foregroundStyle(Color.dsTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 40 + .dsSM)
             }
+
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: .dsMD), GridItem(.flexible(), spacing: .dsMD)], spacing: .dsMD) {
+                    ForEach(GuideFeature.all) { feature in
+                        GuideFeatureTile(feature: feature)
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .scrollIndicators(.hidden)
+            .frame(maxHeight: 420)
 
             HStack {
                 Spacer()
@@ -160,31 +163,77 @@ private struct GuidePopover: View {
             }
         }
         .padding(.dsLG)
-        .frame(width: 310)
+        .frame(width: 430)
         .background(Color.dsSurface)
     }
 }
 
-private struct GuideStep: View {
+private struct GuideFeature: Identifiable {
+    var id: String { title }
     var icon: String
     var title: String
     var detail: String
 
+    static let all = [
+        GuideFeature(icon: "doc.badge.plus",
+                     title: "Import",
+                     detail: "Drop in PDFs, Word, HTML, Markdown, text, data files, and images."),
+        GuideFeature(icon: "square.stack.3d.down.right",
+                     title: "Assemble",
+                     detail: "Combine files, reorder pages, rotate, delete, and reshape the packet."),
+        GuideFeature(icon: "text.cursor",
+                     title: "Edit text",
+                     detail: "Adjust detected PDF text or add new text boxes directly on the page."),
+        GuideFeature(icon: "highlighter",
+                     title: "Mark up",
+                     detail: "Highlight, underline, strike out, draw ink, erase marks, and add notes."),
+        GuideFeature(icon: "bubble.left.and.text.bubble.right",
+                     title: "Review",
+                     detail: "Track workspace comments, anchored notes, tags, metadata, and search results."),
+        GuideFeature(icon: "signature",
+                     title: "Sign",
+                     detail: "Place visual signatures or create cryptographically signed PDF output."),
+        GuideFeature(icon: "seal",
+                     title: "Decorate",
+                     detail: "Add stamps, watermarks, page numbers, and Bates-style numbering."),
+        GuideFeature(icon: "checklist",
+                     title: "Forms",
+                     detail: "Fill forms and optionally lock answers into the final PDF."),
+        GuideFeature(icon: "doc.text.viewfinder",
+                     title: "OCR",
+                     detail: "Make scanned pages searchable before sharing or archiving."),
+        GuideFeature(icon: "arrow.down.circle",
+                     title: "Compress",
+                     detail: "Reduce PDF size with export-time validation."),
+        GuideFeature(icon: "lock.shield",
+                     title: "Protect",
+                     detail: "Password-protect compatible exports and control copy or print permissions."),
+        GuideFeature(icon: "square.and.arrow.up",
+                     title: "Export",
+                     detail: "Save PDF workspaces or export PDF, DOCX, Markdown, text, HTML, PNG, and JPEG.")
+    ]
+}
+
+private struct GuideFeatureTile: View {
+    var feature: GuideFeature
+
     var body: some View {
         HStack(alignment: .top, spacing: .dsSM) {
-            Image(systemName: icon)
+            Image(systemName: feature.icon)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.dsAccent)
                 .frame(width: 20, height: 20)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(feature.title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.dsTextPrimary)
-                Text(detail)
+                Text(feature.detail)
                     .font(.dsCaption())
                     .foregroundStyle(Color.dsTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
