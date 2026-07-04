@@ -737,6 +737,63 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertEqual(reopened.block.alignment, sourceBlock.alignment ?? .left)
     }
 
+    /// When a fresh text-analysis pass can't re-locate the edited paragraph at all
+    /// (nothing within the matching radius — e.g. the original sat somewhere a later
+    /// layout pass can no longer confirm), Match/Restore must fall back to the format
+    /// captured once when this edit was first created, not to this operation's own
+    /// current/edited styling. Regression test for a bug where reopening an edit and
+    /// pressing Match/Restore reapplied the edit's own (already wrong) formatting
+    /// instead of ever recovering the true original.
+    func testReopenedInlineTextEditFallsBackToStoredOriginalFormatWhenAnalysisFindsNoNearbyMatch() throws {
+        let fixture = try makeMemberWithPDF(name: "Editable", pageTexts: ["Nearby styled text"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+
+        // Far from the fixture's real analyzed text (around y=690-704), so a fresh
+        // analysis pass has nothing within the matching radius to find.
+        let isolatedBounds = CGRect(x: 72, y: 200, width: 140, height: 16)
+        let sourceBlock = EditableTextBlock(
+            pageRefID: fixture.refs[0].id,
+            text: "Isolated original",
+            bounds: isolatedBounds,
+            lines: [],
+            fontName: "Courier",
+            fontSize: 11,
+            textColor: .documentText,
+            alignment: .center,
+            rotation: 0,
+            baseline: isolatedBounds.minY,
+            confidence: .high
+        )
+
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: sourceBlock,
+            replacementText: "Replacement with different styling",
+            editedBounds: isolatedBounds,
+            fontName: "Helvetica-Bold",
+            fontSize: 18,
+            textColor: .systemRed,
+            alignment: .right
+        ))
+
+        let editedPage = try XCTUnwrap(viewModel.loadedPDFs.first?.1.page(at: 0))
+        let reopened = try XCTUnwrap(viewModel.editableTextBlock(
+            at: CGPoint(x: isolatedBounds.midX, y: isolatedBounds.midY),
+            on: editedPage,
+            in: viewModel.loadedPDFs.first?.1
+        ))
+
+        XCTAssertEqual(reopened.sourceFormat.fontName, "Courier")
+        XCTAssertEqual(reopened.sourceFormat.fontSize, 11, accuracy: 0.01)
+        XCTAssertEqual(reopened.sourceFormat.alignment, .center)
+        XCTAssertEqual(reopened.block.fontName, "Courier")
+        XCTAssertEqual(reopened.block.alignment, .center)
+    }
+
     func testRestoreOriginalStyleClearsExistingManualStyleFlag() throws {
         let fixture = try makeMemberWithPDF(name: "Editable", pageTexts: ["Nearby styled text"])
         let document = WorkspaceDocument()
@@ -879,6 +936,30 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         )
 
         XCTAssertEqual(PDFEditedPageRenderer.eraseBounds(for: operation), [sourceBounds])
+    }
+
+    /// Match/Copy/Restore Style can move an edit to a different paragraph's margins or
+    /// column without a manual drag ever happening, so `didManuallyResizeWidth`/
+    /// `didManuallyReposition` stay false. Without also erasing the destination in that
+    /// case, replacement text drawn at the new location would bleed over whatever
+    /// original content already sat there (nothing at that spot was ever erased).
+    func testInlineTextEditErasesDestinationWhenMatchedGeometryMovedTheBoxWithoutManualFlags() throws {
+        let sourceBounds = CGRect(x: 72, y: 686, width: 42, height: 18)
+        let matchedDestination = CGRect(x: 200, y: 686, width: 180, height: 18)
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: sourceBounds,
+            editedBounds: matchedDestination,
+            replacementText: "Replacement",
+            fontName: "Helvetica",
+            fontSize: 14,
+            textColor: .documentText,
+            alignment: .left,
+            didApplyMatchedGeometry: true
+        )
+
+        XCTAssertEqual(PDFEditedPageRenderer.eraseBounds(for: operation), [sourceBounds, matchedDestination])
     }
 
     func testMeasuredBoundsGrowsDownwardFromAFixedTopEdge() throws {

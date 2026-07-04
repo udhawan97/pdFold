@@ -1956,10 +1956,10 @@ final class WorkspaceViewModel {
             let syntheticBounds = reopenedBounds(for: existingOp)
             let sourceFormat = originalFormat(for: existingOp, in: analysis)
             let shouldPreserveReplacementStyle = existingOp.didManuallyChangeStyle
-            let reopenedFontName = shouldPreserveReplacementStyle ? existingOp.fontName : (sourceFormat?.fontName ?? existingOp.fontName)
-            let reopenedFontSize = shouldPreserveReplacementStyle ? existingOp.fontSize : (sourceFormat?.fontSize ?? existingOp.fontSize)
-            let reopenedTextColor = shouldPreserveReplacementStyle ? existingOp.textColor : (sourceFormat?.textColor ?? existingOp.textColor)
-            let reopenedAlignment = shouldPreserveReplacementStyle ? existingOp.alignment : (sourceFormat?.alignment ?? existingOp.alignment)
+            let reopenedFontName = shouldPreserveReplacementStyle ? existingOp.fontName : sourceFormat.fontName
+            let reopenedFontSize = shouldPreserveReplacementStyle ? existingOp.fontSize : sourceFormat.fontSize
+            let reopenedTextColor = shouldPreserveReplacementStyle ? existingOp.textColor : sourceFormat.textColor
+            let reopenedAlignment = shouldPreserveReplacementStyle ? existingOp.alignment : sourceFormat.alignment
             let syntheticBlock = EditableTextBlock(
                 id: existingOp.sourceBlockID,
                 pageRefID: ref.id,
@@ -1975,7 +1975,7 @@ final class WorkspaceViewModel {
                 baseline: syntheticBounds.minY,
                 confidence: .high
             )
-            return (ref, syntheticBlock, sourceFormat ?? PDFTextEditFormat(block: syntheticBlock))
+            return (ref, syntheticBlock, sourceFormat)
         }
         let block = textAnalysisEngine.hitTest(pagePoint, in: analysis) ??
             insertionTextBlock(at: pagePoint, pageRefID: ref.id, page: page, nearbyBlocks: analysis.blocks)
@@ -1999,20 +1999,25 @@ final class WorkspaceViewModel {
         )
     }
 
-    private func originalFormat(for operation: PDFTextEditOperation, in analysis: PDFTextPageAnalysis) -> PDFTextEditFormat? {
+    /// Resolves the true original formatting for a reopened edit. A fresh text-analysis
+    /// pass over the pristine original page is the most accurate source when it can
+    /// confidently re-locate the same paragraph (exact id match, or — since re-analysis
+    /// assigns every block a brand-new random id, see `PDFTextAnalysisEngine` — the
+    /// closest block to where this operation's original text sat). When no analysis
+    /// block can be found nearby at all (e.g. the page was reordered, or analysis
+    /// otherwise can't re-derive a match), fall back to the format captured once at this
+    /// edit's creation (`operation.originalFormat`) rather than silently reusing the
+    /// operation's own current/edited styling as if it were the original — that fallback
+    /// is what previously let Match/Copy/Restore "restore" an edit right back to its own
+    /// already-wrong formatting.
+    private func originalFormat(for operation: PDFTextEditOperation, in analysis: PDFTextPageAnalysis) -> PDFTextEditFormat {
         if let exact = analysis.blocks.first(where: { $0.id == operation.sourceBlockID }) {
             return PDFTextEditFormat(block: exact)
         }
         let sourceBounds = operation.sourceBounds.standardized
         let sourceCenter = CGPoint(x: sourceBounds.midX, y: sourceBounds.midY)
-        let nearest = analysis.blocks
-            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .min { lhs, rhs in
-                distanceSquared(from: sourceCenter, to: lhs.bounds) < distanceSquared(from: sourceCenter, to: rhs.bounds)
-            }
-        guard let nearest,
-              distanceSquared(from: sourceCenter, to: nearest.bounds) <= 80 * 80 else {
-            return nil
+        guard let nearest = closestTextBlock(to: sourceCenter, in: analysis.blocks, maxDistance: 80) else {
+            return operation.originalFormat
         }
         return PDFTextEditFormat(block: nearest)
     }
@@ -2057,12 +2062,31 @@ final class WorkspaceViewModel {
     }
 
     private func nearbyTextStyle(near point: CGPoint, in blocks: [EditableTextBlock]) -> EditableTextBlock? {
-        blocks
-            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .min { lhs, rhs in
-                distanceSquared(from: point, to: lhs.bounds) < distanceSquared(from: point, to: rhs.bounds)
-            }
-            .flatMap { distanceSquared(from: point, to: $0.bounds) <= 160 * 160 ? $0 : nil }
+        closestTextBlock(to: point, in: blocks, maxDistance: 160)
+    }
+
+    /// Finds the closest candidate block to `point` for "match the nearby style"
+    /// purposes. Prefers blocks whose reading column actually contains `point` over
+    /// whatever block is merely nearest by raw center-to-point distance, so a caption in
+    /// an adjacent column or a table cell in the next row over never wins against the
+    /// paragraph directly above/below in the same column — the case a plain nearest-rect
+    /// search gets wrong most often in dense, multi-column layouts.
+    private func closestTextBlock(to point: CGPoint, in blocks: [EditableTextBlock], maxDistance: CGFloat) -> EditableTextBlock? {
+        let candidates = blocks.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !candidates.isEmpty else { return nil }
+
+        func isSameColumn(_ block: EditableTextBlock) -> Bool {
+            guard let column = block.columnBounds else { return false }
+            return point.x >= column.minX - 4 && point.x <= column.maxX + 4
+        }
+
+        let sameColumnCandidates = candidates.filter(isSameColumn)
+        let pool = sameColumnCandidates.isEmpty ? candidates : sameColumnCandidates
+        guard let nearest = pool.min(by: { distanceSquared(from: point, to: $0.bounds) < distanceSquared(from: point, to: $1.bounds) }),
+              distanceSquared(from: point, to: nearest.bounds) <= maxDistance * maxDistance else {
+            return nil
+        }
+        return nearest
     }
 
     private func distanceSquared(from point: CGPoint, to rect: CGRect) -> CGFloat {
@@ -2100,6 +2124,7 @@ final class WorkspaceViewModel {
         didManuallyResizeWidth: Bool = false,
         didManuallyResizeHeight: Bool = false,
         didManuallyChangeStyle: Bool = false,
+        didApplyMatchedGeometry: Bool = false,
         didRestoreOriginalStyle: Bool = false
     ) -> Bool {
         guard canPerformMutatingAction() else { return false }
@@ -2122,11 +2147,24 @@ final class WorkspaceViewModel {
             fontSize: fontSize,
             textColor: CodableColor(nsColor: textColor),
             alignment: CodableTextAlignment(alignment),
+            // `sourceBlock.alignment` is nil when detection couldn't determine one — in
+            // that case trust the alignment actually being committed (which, whenever
+            // `didManuallyChangeStyle` is false, is exactly what the original showed)
+            // rather than silently defaulting to `.left` and losing it on next reopen.
+            originalFormat: PDFTextEditFormat(
+                fontName: sourceBlock.fontName,
+                fontSize: sourceBlock.fontSize,
+                textColor: sourceBlock.textColor,
+                alignment: sourceBlock.alignment ?? CodableTextAlignment(alignment),
+                bounds: sourceBlock.bounds,
+                columnBounds: sourceBlock.columnBounds
+            ),
             isInsertion: sourceBlock.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && sourceBlock.lines.isEmpty,
             didManuallyReposition: didManuallyReposition,
             didManuallyResizeWidth: didManuallyResizeWidth,
             didManuallyResizeHeight: didManuallyResizeHeight,
-            didManuallyChangeStyle: didManuallyChangeStyle
+            didManuallyChangeStyle: didManuallyChangeStyle,
+            didApplyMatchedGeometry: didApplyMatchedGeometry
         )
         // When updating an existing op (same sourceBlockID), preserve the original
         // sourceBounds so erase targeting and edit identity remain tied to the
@@ -2135,8 +2173,14 @@ final class WorkspaceViewModel {
            let existingOp = document.workspace.pageEditStates[stateIndex].operations.first(where: { $0.sourceBlockID == sourceBlock.id }) {
             operation.sourceBounds = existingOp.sourceBounds
             operation.sourceLineBounds = existingOp.sourceLineBounds
+            operation.didApplyMatchedGeometry = operation.didApplyMatchedGeometry || existingOp.didApplyMatchedGeometry
             operation.sourceText = existingOp.sourceText.isEmpty ? operation.sourceText : existingOp.sourceText
             operation.columnBounds = operation.columnBounds ?? existingOp.columnBounds
+            // Never re-derive: `sourceBlock` here may itself be the synthetic
+            // reopened-edit stand-in (already-edited font/color/bounds), not the true
+            // original PDF text, so the *only* trustworthy source is whatever was
+            // captured the first time this block was edited.
+            operation.originalFormat = existingOp.originalFormat
             operation.isInsertion = operation.isInsertion || existingOp.isInsertion
             operation.didManuallyReposition = operation.didManuallyReposition || existingOp.didManuallyReposition
             operation.didManuallyResizeWidth = operation.didManuallyResizeWidth || existingOp.didManuallyResizeWidth

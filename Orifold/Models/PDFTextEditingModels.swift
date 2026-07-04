@@ -57,6 +57,15 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
     var fontSize: CGFloat
     var textColor: CodableColor
     var alignment: CodableTextAlignment
+    /// The true formatting of the original PDF text this operation replaced, captured
+    /// once at creation and preserved verbatim across every re-edit (see
+    /// `applyInlineTextEdit`'s existingOp merge). Match/Copy/Restore read this directly
+    /// instead of re-deriving it from a fresh text-analysis pass — re-analysis assigns
+    /// brand-new random `EditableTextBlock.id`s every time (see `PDFTextAnalysisEngine`),
+    /// so any lookup keyed on `sourceBlockID` would silently fail after the very first
+    /// edit and fall back to a "nearest block" guess that could resolve to the wrong
+    /// paragraph in dense layouts.
+    var originalFormat: PDFTextEditFormat
     /// True when this operation inserts brand-new text at an empty spot rather than
     /// replacing existing PDF text. Insertions must not paint erase patches — there is
     /// nothing to erase, and patching would stamp an opaque rectangle over whatever
@@ -66,13 +75,20 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
     var didManuallyResizeWidth: Bool = false
     var didManuallyResizeHeight: Bool = false
     var didManuallyChangeStyle: Bool = false
+    /// True when Match/Copy/Apply/Restore Style adopted a different paragraph's bounds
+    /// or column margins for this edit. That destination can land anywhere on the page —
+    /// not just within the original text's footprint — so `PDFEditedPageRenderer` must
+    /// erase the destination box too, the same as it does for a manual drag/resize,
+    /// or the replacement text can bleed over whatever original content sat there.
+    var didApplyMatchedGeometry: Bool = false
     var createdAt: Date = Date()
     var modifiedAt: Date = Date()
 
     enum CodingKeys: String, CodingKey {
         case id, pageRefID, sourceBlockID, sourceBounds, sourceLineBounds, sourceText, editedBounds, columnBounds
-        case replacementText, fontName, fontSize, textColor, alignment, isInsertion
+        case replacementText, fontName, fontSize, textColor, alignment, originalFormat, isInsertion
         case didManuallyReposition, didManuallyResizeWidth, didManuallyResizeHeight, didManuallyChangeStyle
+        case didApplyMatchedGeometry
         case createdAt, modifiedAt
     }
 
@@ -90,11 +106,13 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
         fontSize: CGFloat,
         textColor: CodableColor,
         alignment: CodableTextAlignment,
+        originalFormat: PDFTextEditFormat? = nil,
         isInsertion: Bool = false,
         didManuallyReposition: Bool = false,
         didManuallyResizeWidth: Bool = false,
         didManuallyResizeHeight: Bool = false,
         didManuallyChangeStyle: Bool = false,
+        didApplyMatchedGeometry: Bool = false,
         createdAt: Date = Date(),
         modifiedAt: Date = Date()
     ) {
@@ -111,10 +129,19 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
         self.fontSize = fontSize
         self.textColor = textColor
         self.alignment = alignment
+        self.originalFormat = originalFormat ?? PDFTextEditFormat(
+            fontName: fontName,
+            fontSize: fontSize,
+            textColor: textColor,
+            alignment: alignment,
+            bounds: sourceBounds,
+            columnBounds: columnBounds
+        )
         self.isInsertion = isInsertion
         self.didManuallyReposition = didManuallyReposition
         self.didManuallyResizeWidth = didManuallyResizeWidth
         self.didManuallyResizeHeight = didManuallyResizeHeight
+        self.didApplyMatchedGeometry = didApplyMatchedGeometry
         self.didManuallyChangeStyle = didManuallyChangeStyle
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
@@ -135,11 +162,23 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
         fontSize = try c.decode(CGFloat.self, forKey: .fontSize)
         textColor = try c.decode(CodableColor.self, forKey: .textColor)
         alignment = try c.decode(CodableTextAlignment.self, forKey: .alignment)
+        // Older saved workspaces (pre-dating stored original formatting) have no
+        // `originalFormat` payload — best-effort fall back to this operation's own
+        // replacement styling/bounds rather than losing Match/Restore for those edits.
+        originalFormat = try c.decodeIfPresent(PDFTextEditFormat.self, forKey: .originalFormat) ?? PDFTextEditFormat(
+            fontName: fontName,
+            fontSize: fontSize,
+            textColor: textColor,
+            alignment: alignment,
+            bounds: sourceBounds,
+            columnBounds: columnBounds
+        )
         isInsertion = try c.decodeIfPresent(Bool.self, forKey: .isInsertion) ?? false
         didManuallyReposition = try c.decodeIfPresent(Bool.self, forKey: .didManuallyReposition) ?? false
         didManuallyResizeWidth = try c.decodeIfPresent(Bool.self, forKey: .didManuallyResizeWidth) ?? false
         didManuallyResizeHeight = try c.decodeIfPresent(Bool.self, forKey: .didManuallyResizeHeight) ?? false
         didManuallyChangeStyle = try c.decodeIfPresent(Bool.self, forKey: .didManuallyChangeStyle) ?? false
+        didApplyMatchedGeometry = try c.decodeIfPresent(Bool.self, forKey: .didApplyMatchedGeometry) ?? false
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         modifiedAt = try c.decodeIfPresent(Date.self, forKey: .modifiedAt) ?? createdAt
     }
@@ -163,7 +202,7 @@ struct PDFTextEditSession: Equatable {
     var alignment: CodableTextAlignment
 }
 
-struct PDFTextEditFormat: Equatable {
+struct PDFTextEditFormat: Codable, Equatable {
     var fontName: String
     var fontSize: CGFloat
     var textColor: CodableColor

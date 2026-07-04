@@ -731,6 +731,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
                             didManuallyResizeWidth: edit.didManuallyResizeWidth,
                             didManuallyResizeHeight: edit.didManuallyResizeHeight,
                             didManuallyChangeStyle: edit.didManuallyChangeStyle,
+                            didApplyMatchedGeometry: edit.didApplyMatchedGeometry,
                             didRestoreOriginalStyle: edit.didRestoreOriginalStyle
                         )
                     }
@@ -2241,6 +2242,7 @@ final class NoteEditorViewController: NSViewController {
         var didManuallyResizeWidth: Bool
         var didManuallyResizeHeight: Bool
         var didManuallyChangeStyle: Bool
+        var didApplyMatchedGeometry: Bool
         var didRestoreOriginalStyle: Bool
     }
 
@@ -2302,6 +2304,12 @@ final class NoteEditorViewController: NSViewController {
     private var matchedFormatColumnBounds: CGRect?
     private var didChangeStyle = false
     private var didRestoreOriginalStyle = false
+    /// True once Match/Copy/Apply/Restore Style has adopted another paragraph's bounds
+    /// or column margins for this edit — the destination box may then sit somewhere
+    /// other than the original text's footprint, so the renderer needs to erase that
+    /// destination too instead of only the original location (see `didApplyMatchedGeometry`
+    /// on `PDFTextEditOperation`).
+    private var didApplyMatchedGeometry = false
     private let originalText: String
     private let originalFontFamily: String
     private let originalFontSize: CGFloat
@@ -2630,7 +2638,7 @@ final class NoteEditorViewController: NSViewController {
 
         matchFormatButton.target = self
         matchFormatButton.action = #selector(matchNearbyFormat)
-        matchFormatButton.image = NSImage(systemSymbolName: "textformat", accessibilityDescription: "Match nearby style")
+        matchFormatButton.image = NSImage(systemSymbolName: "textformat.size", accessibilityDescription: "Match nearby style")
         matchFormatButton.imagePosition = .imageOnly
         matchFormatButton.bezelStyle = .rounded
         matchFormatButton.toolTip = "Match this edit to the nearby PDF text, including font, color, alignment, margins, and wrapping."
@@ -3063,6 +3071,7 @@ final class NoteEditorViewController: NSViewController {
         guard !didManuallyResizeWidth else { return }
         matchedFormatBounds = format.bounds
         matchedFormatColumnBounds = format.columnBounds
+        didApplyMatchedGeometry = true
         if !didManuallyReposition {
             manualEditorPageOrigin = nil
         }
@@ -3454,6 +3463,7 @@ final class NoteEditorViewController: NSViewController {
             didManuallyResizeWidth: didManuallyResizeWidth,
             didManuallyResizeHeight: didManuallyResizeHeight,
             didManuallyChangeStyle: didChangeStyle,
+            didApplyMatchedGeometry: didApplyMatchedGeometry,
             didRestoreOriginalStyle: didRestoreOriginalStyle
         )
         if formattingDiffersFromSource {

@@ -53,8 +53,14 @@ enum PDFEditedPageRenderer {
             .map { $0.standardized }
         // Automatic width/height growth is only layout help for the replacement text.
         // It should not stamp a background-colored rectangle over nearby content. Only
-        // explicit manual geometry changes erase the destination box.
-        guard operation.didManuallyReposition || operation.didManuallyResizeWidth || operation.didManuallyResizeHeight else {
+        // explicit geometry changes — a manual drag/resize, or Match/Copy/Restore Style
+        // adopting a different paragraph's margins/column (`didApplyMatchedGeometry`) —
+        // erase the destination box too, so the replacement never bleeds into whatever
+        // original content sat at that new location.
+        guard operation.didManuallyReposition ||
+            operation.didManuallyResizeWidth ||
+            operation.didManuallyResizeHeight ||
+            operation.didApplyMatchedGeometry else {
             return sourceBounds
         }
         return sourceBounds + [operation.editedBounds]
