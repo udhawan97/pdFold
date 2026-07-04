@@ -2687,10 +2687,33 @@ final class WorkspaceDocumentTests: XCTestCase {
             return provider
         }
 
-        let urls = await resolvedImportURLs(from: providers)
+        let result = await resolvedImportURLResult(from: providers)
+        let urls = result.urls
 
         XCTAssertEqual(urls.count, maximumImportBatchSize)
         XCTAssertEqual(urls.last?.lastPathComponent, "drop-\(maximumImportBatchSize - 1).pdf")
+        XCTAssertTrue(result.wasLimited)
+    }
+
+    func testDropResolverSkipsUnsupportedProvidersBeforeCountingSupportedFiles() async {
+        let unsupportedProviders = (0..<3).map { _ in NSItemProvider() }
+        let supportedProviders = (0..<3).map { index in
+            let url = URL(fileURLWithPath: "/tmp/supported-\(index).pdf")
+            let provider = NSItemProvider()
+            provider.registerDataRepresentation(
+                forTypeIdentifier: UTType.fileURL.identifier,
+                visibility: .all
+            ) { completion in
+                completion(url.dataRepresentation, nil)
+                return nil
+            }
+            return provider
+        }
+
+        let result = await resolvedImportURLResult(from: unsupportedProviders + supportedProviders, maxCount: 2)
+
+        XCTAssertEqual(result.urls.map(\.lastPathComponent), ["supported-0.pdf", "supported-1.pdf"])
+        XCTAssertTrue(result.wasLimited)
     }
 
     func testAppInfoPlistDoesNotAdvertiseWorkspaceSaveFormat() throws {
@@ -5408,10 +5431,14 @@ private extension String {
     }
 }
 
-private func resolvedImportURLs(from providers: [NSItemProvider]) async -> [URL] {
+private func resolvedImportURLs(from providers: [NSItemProvider], maxCount: Int = maximumImportBatchSize) async -> [URL] {
+    await resolvedImportURLResult(from: providers, maxCount: maxCount).urls
+}
+
+private func resolvedImportURLResult(from providers: [NSItemProvider], maxCount: Int = maximumImportBatchSize) async -> (urls: [URL], wasLimited: Bool) {
     await withCheckedContinuation { continuation in
-        resolveImportURLs(from: providers) { urls in
-            continuation.resume(returning: urls)
+        resolveImportURLs(from: providers, maxCount: maxCount) { urls, wasLimited in
+            continuation.resume(returning: (urls, wasLimited))
         }
     }
 }

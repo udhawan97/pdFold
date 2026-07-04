@@ -250,13 +250,19 @@ struct ContentView: View {
     }
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        resolveImportURLs(from: providers, maxCount: maximumImportBatchSize) { urls in
+        resolveImportURLs(from: providers, maxCount: maximumImportBatchSize) { urls, wasLimited in
             guard !urls.isEmpty else {
                 viewModel.importError = WorkspaceViewModel.ImportError(
                     fileName: "Dropped Files",
                     message: "Orifold could not find a supported document in that drop."
                 )
                 return
+            }
+            if wasLimited {
+                viewModel.importError = WorkspaceViewModel.ImportError(
+                    fileName: "Dropped Files",
+                    message: importDropProviderLimitMessage
+                )
             }
             importFilesWithBatchLimit(urls: urls, into: viewModel, sourceName: "Dropped Files")
         }
@@ -879,6 +885,7 @@ let maximumImportBatchSize = 50
 let importDropContentTypes = WorkspaceDocument.importableContentTypes + [.fileURL, .url]
 let importBatchPanelMessage = "Select up to 50 files. Larger batches can be added after this import finishes."
 let importBatchLimitMessage = "Only 50 files can be added at a time. The first 50 from this selection will be added. To add more, run Add Files again after this import finishes."
+let importDropProviderLimitMessage = "Orifold prepared 50 files from this drop. If you expected more, run another import after this one finishes."
 
 func configureImportOpenPanel(_ panel: NSOpenPanel) {
     panel.allowsMultipleSelection = true
@@ -909,28 +916,46 @@ func limitedImportBatch(from urls: [URL]) -> (urls: [URL], wasLimited: Bool) {
     (Array(urls.prefix(maximumImportBatchSize)), urls.count > maximumImportBatchSize)
 }
 
-func resolveImportURLs(from providers: [NSItemProvider], maxCount: Int = maximumImportBatchSize, completion: @escaping ([URL]) -> Void) {
-    var resolvedURLs: [(index: Int, url: URL)] = []
-    let lock = DispatchQueue(label: "Orifold.importURLs")
-    let group = DispatchGroup()
-    let providersToResolve = Array(providers.prefix(max(0, maxCount)))
+func resolveImportURLs(from providers: [NSItemProvider], maxCount: Int = maximumImportBatchSize, completion: @escaping ([URL], Bool) -> Void) {
+    let effectiveMaxCount = max(0, maxCount)
+    guard effectiveMaxCount > 0 else {
+        DispatchQueue.main.async {
+            completion([], !providers.isEmpty)
+        }
+        return
+    }
 
-    for (index, provider) in providersToResolve.enumerated() {
-        group.enter()
+    var resolvedURLs: [URL] = []
+    var seenURLs: Set<String> = []
+    var nextProviderIndex = 0
 
+    func resolveNextProvider() {
+        guard resolvedURLs.count < effectiveMaxCount else {
+            completion(resolvedURLs, nextProviderIndex < providers.count)
+            return
+        }
+        guard nextProviderIndex < providers.count else {
+            completion(resolvedURLs, false)
+            return
+        }
+
+        let provider = providers[nextProviderIndex]
+        nextProviderIndex += 1
         loadImportURL(from: provider) { url in
-            defer { group.leave() }
-            guard let url, isSupportedImportURL(url) else { return }
-            lock.sync { resolvedURLs.append((index, url)) }
+            if let url, isSupportedImportURL(url) {
+                let key = url.fileURLIdentityKey
+                if seenURLs.insert(key).inserted {
+                    resolvedURLs.append(url)
+                }
+            }
+            DispatchQueue.main.async {
+                resolveNextProvider()
+            }
         }
     }
 
-    group.notify(queue: .main) {
-        let urls = resolvedURLs
-            .sorted { $0.index < $1.index }
-            .map(\.url)
-            .uniquedByFileURL()
-        completion(urls)
+    DispatchQueue.main.async {
+        resolveNextProvider()
     }
 }
 
@@ -1105,9 +1130,14 @@ private extension Array where Element == URL {
     func uniquedByFileURL() -> [URL] {
         var seen: Set<String> = []
         return filter { url in
-            let key = url.isFileURL ? url.standardizedFileURL.path : url.absoluteString
-            return seen.insert(key).inserted
+            seen.insert(url.fileURLIdentityKey).inserted
         }
+    }
+}
+
+private extension URL {
+    var fileURLIdentityKey: String {
+        isFileURL ? standardizedFileURL.path : absoluteString
     }
 }
 
