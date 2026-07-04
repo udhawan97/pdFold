@@ -1,39 +1,49 @@
-<p align="center">
-  <img src="docs/assets/orifold-icon.png" alt="Orifold app icon" width="160">
-</p>
+<div align="center">
 
-<h1 align="center">Orifold</h1>
+<img src="docs/assets/orifold-icon.png" alt="Orifold app icon" width="140">
 
-<p align="center">
-  <em>Designed from necessity. Built for privacy. Refined for focus</em>
-</p>
+# Orifold
 
-<p align="center">
-  <strong>Drop in up to 50 messy files. Walk away with one polished, searchable, password-protected PDF.</strong><br>
-  No account. No upload. No subscription.
-</p>
+### Drop in up to 50 messy files.<br>Walk away with one polished, searchable, password-protected PDF.
 
-<p align="center">
-  <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">
-  &nbsp;
-  <img alt="Release v6" src="https://img.shields.io/badge/release-v6-2563EB?style=for-the-badge&logo=github&logoColor=white">
-  &nbsp;
-  <img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">
-  &nbsp;
-  <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
-</p>
+<em>Designed from necessity &nbsp;·&nbsp; Built for privacy &nbsp;·&nbsp; Refined for focus</em>
 
-<p align="center">
-  <a href="#-install-in-30-seconds"><strong>Install</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#-what-it-does"><strong>Features</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#-privacy"><strong>Privacy</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#%EF%B8%8F-under-the-hood"><strong>Under the Hood</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#-troubleshooting"><strong>Help</strong></a>
-</p>
+<br>
+
+<table>
+  <tr>
+    <td align="center" width="220">
+      <h3>👤</h3>
+      <strong>No account</strong><br>
+      <sub>Nothing to sign up for,<br>ever</sub>
+    </td>
+    <td align="center" width="220">
+      <h3>🔒</h3>
+      <strong>No upload</strong><br>
+      <sub>Your files never<br>leave your Mac</sub>
+    </td>
+    <td align="center" width="220">
+      <h3>💸</h3>
+      <strong>No subscription</strong><br>
+      <sub>Free and open source,<br>MIT licensed</sub>
+    </td>
+  </tr>
+</table>
+
+<br>
+
+<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Release v6" src="https://img.shields.io/badge/release-v6-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
+
+<br>
+<br>
+
+<a href="#-install-in-30-seconds"><kbd> &nbsp;⚡ Install&nbsp; </kbd></a>&ensp;
+<a href="#-what-it-does"><kbd> &nbsp;✨ Features&nbsp; </kbd></a>&ensp;
+<a href="#-privacy"><kbd> &nbsp;🔒 Privacy&nbsp; </kbd></a>&ensp;
+<a href="#%EF%B8%8F-under-the-hood"><kbd> &nbsp;⚙️ Under the Hood&nbsp; </kbd></a>&ensp;
+<a href="#-troubleshooting"><kbd> &nbsp;🆘 Help&nbsp; </kbd></a>
+
+</div>
 
 ---
 
