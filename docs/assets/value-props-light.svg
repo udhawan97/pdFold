@@ -1,0 +1,46 @@
+<svg viewBox="0 0 1000 190" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" role="img" aria-label="No account: nothing to sign up for, ever. No upload: your files never leave your Mac. No subscription: free and open source, MIT licensed.">
+  <defs>
+    <linearGradient id="vpGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(166,0)" text-anchor="middle">
+    <circle cx="0" cy="34" r="30" fill="url(#vpGrad)" fill-opacity="0.10"/>
+    <g transform="translate(-14,20)" stroke="#60A5FA" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="14" cy="7" r="6.5"/>
+      <path d="M2 28 c0 -8 5.5 -13 12 -13 s12 5 12 13"/>
+    </g>
+    <text x="0" y="86" font-size="17" font-weight="700" fill="#1f2328">No account</text>
+    <text x="0" y="109" font-size="12.5" fill="#57606a">Nothing to sign up</text>
+    <text x="0" y="126" font-size="12.5" fill="#57606a">for, ever</text>
+  </g>
+
+  <line x1="333" y1="20" x2="333" y2="150" stroke="#d0d7de"/>
+
+  <g transform="translate(500,0)" text-anchor="middle">
+    <circle cx="0" cy="34" r="30" fill="url(#vpGrad)" fill-opacity="0.10"/>
+    <g transform="translate(-11,17)" stroke="#34D399" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="0" y="12" width="22" height="17" rx="3"/>
+      <path d="M4 12 v-4 a7 7 0 0 1 14 0 v4"/>
+    </g>
+    <text x="0" y="86" font-size="17" font-weight="700" fill="#1f2328">No upload</text>
+    <text x="0" y="109" font-size="12.5" fill="#57606a">Your files never</text>
+    <text x="0" y="126" font-size="12.5" fill="#57606a">leave your Mac</text>
+  </g>
+
+  <line x1="667" y1="20" x2="667" y2="150" stroke="#d0d7de"/>
+
+  <g transform="translate(834,0)" text-anchor="middle">
+    <circle cx="0" cy="34" r="30" fill="url(#vpGrad)" fill-opacity="0.10"/>
+    <g transform="translate(0,20)" stroke="#A78BFA" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="0" y1="1" x2="0" y2="27"/>
+      <path d="M-7 20 a7 5 0 0 0 14 0 a7 5 0 0 0 -14 -6 a7 5 0 0 0 14 -6"/>
+      <line x1="-11" y1="24" x2="11" y2="4" stroke="#A78BFA" stroke-width="2.6"/>
+    </g>
+    <text x="0" y="86" font-size="17" font-weight="700" fill="#1f2328">No subscription</text>
+    <text x="0" y="109" font-size="12.5" fill="#57606a">Free and open</text>
+    <text x="0" y="126" font-size="12.5" fill="#57606a">source, MIT licensed</text>
+  </g>
+</svg>
