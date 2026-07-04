@@ -10,6 +10,11 @@
 
 <br>
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-banner-dark.svg">
+  <img src="docs/assets/hero-banner-light.svg" alt="50 messy files go in, one polished, searchable, password-protected PDF comes out — 100% native Swift, 0 network calls, ~24k lines of Swift, 2 sandbox entitlements" width="920">
+</picture>
+
 <table>
   <tr>
     <td align="center" width="220">
@@ -33,6 +38,14 @@
 <br>
 
 <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Release v6" src="https://img.shields.io/badge/release-v6-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
+
+<sub><strong>Built with</strong></sub><br>
+<img alt="Swift" src="https://img.shields.io/badge/Swift_5.9-F05138?style=flat-square&logo=swift&logoColor=white">
+<img alt="SwiftUI" src="https://img.shields.io/badge/SwiftUI-0A84FF?style=flat-square&logo=swift&logoColor=white">
+<img alt="PDFKit" src="https://img.shields.io/badge/PDFKit-111111?style=flat-square&logo=apple&logoColor=white">
+<img alt="PDFium" src="https://img.shields.io/badge/PDFium-4285F4?style=flat-square&logo=googlechrome&logoColor=white">
+<img alt="Vision OCR" src="https://img.shields.io/badge/Vision_OCR-111111?style=flat-square&logo=apple&logoColor=white">
+<img alt="App Sandbox" src="https://img.shields.io/badge/App_Sandbox-10B981?style=flat-square&logo=apple&logoColor=white">
 
 <br>
 <br>
