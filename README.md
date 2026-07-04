@@ -7,7 +7,7 @@
 <h1 align="center">Orifold</h1>
 
 <p align="center">
-  <em>The PDF workspace that never phones home.</em>
+  <em>Designed from necessity. Built for privacy. Refined for focus</em>
 </p>
 
 <p align="center">
