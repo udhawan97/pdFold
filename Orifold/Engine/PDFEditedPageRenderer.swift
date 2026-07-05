@@ -416,14 +416,15 @@ private struct ReplacementTextLayout {
             alignment: operation.alignment.ctTextAlignment,
             lineBreakMode: .byWordWrapping
         )
-        attributedString = NSAttributedString(
-            string: operation.replacementText,
-            attributes: [
-                NSAttributedString.Key(kCTFontAttributeName as String): ctFont,
-                NSAttributedString.Key(kCTForegroundColorAttributeName as String): operation.textColor.nsColor.cgColor,
-                NSAttributedString.Key(kCTParagraphStyleAttributeName as String): paragraph
-            ]
-        )
+        var attributes: [NSAttributedString.Key: Any] = [
+            NSAttributedString.Key(kCTFontAttributeName as String): ctFont,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): operation.textColor.nsColor.cgColor,
+            NSAttributedString.Key(kCTParagraphStyleAttributeName as String): paragraph
+        ]
+        if operation.underline {
+            attributes[NSAttributedString.Key(kCTUnderlineStyleAttributeName as String)] = CTUnderlineStyle.single.rawValue
+        }
+        attributedString = NSAttributedString(string: operation.replacementText, attributes: attributes)
         framesetter = CTFramesetterCreateWithAttributedString(attributedString)
     }
 
