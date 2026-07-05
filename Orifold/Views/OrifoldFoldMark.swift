@@ -457,20 +457,25 @@ private enum FoldMarkRenderer {
             opaqueFacets.append((path, min(1, eased * 1.6), shadeTop, shadeBottom, at(from), at(to)))
         }
 
-        // Body.
-        addFacet(SwanGeometry.bodyBack, progress: state.bloomBody, shadeTop: 0.84, shadeBottom: 0.76,
+        // Body. Shading pulled from pixel samples of the real app icon
+        // (AppIcon-512.png): its lit facets read ~245-255 and its shaded facets fall
+        // as low as ~162 — a wider, more contrasty range than a flat paper-white
+        // look. The lit half of each part stays near the icon's bright end; the
+        // shaded/back half is pulled down toward its dark end for the same tactile
+        // depth at the icon hand-off.
+        addFacet(SwanGeometry.bodyBack, progress: state.bloomBody, shadeTop: 0.80, shadeBottom: 0.66,
                  from: SwanGeometry.bodyTopL, to: SwanGeometry.bodyLeft)
-        addFacet(SwanGeometry.bodyFront, progress: state.bloomBody, shadeTop: 0.99, shadeBottom: 0.92,
+        addFacet(SwanGeometry.bodyFront, progress: state.bloomBody, shadeTop: 0.99, shadeBottom: 0.90,
                  from: SwanGeometry.bodyTopL, to: SwanGeometry.bodyBottom)
 
         // Tail.
-        addFacet(SwanGeometry.tail, progress: state.bloomTail, shadeTop: 0.90, shadeBottom: 0.84,
+        addFacet(SwanGeometry.tail, progress: state.bloomTail, shadeTop: 0.90, shadeBottom: 0.78,
                  from: SwanGeometry.tailRoot, to: SwanGeometry.tailTip)
 
         // Wing.
-        addFacet(SwanGeometry.wingBack, progress: state.bloomWing, shadeTop: 0.80, shadeBottom: 0.73,
+        addFacet(SwanGeometry.wingBack, progress: state.bloomWing, shadeTop: 0.76, shadeBottom: 0.65,
                  from: SwanGeometry.wingRoot, to: SwanGeometry.wingTip)
-        addFacet(SwanGeometry.wingFront, progress: state.bloomWing, shadeTop: 0.99, shadeBottom: 0.91,
+        addFacet(SwanGeometry.wingFront, progress: state.bloomWing, shadeTop: 0.99, shadeBottom: 0.90,
                  from: SwanGeometry.wingFold, to: SwanGeometry.wingRoot)
 
         // Neck: segments cascade in one after another rather than revealing together.
@@ -485,14 +490,14 @@ private enum FoldMarkRenderer {
                 a: SwanGeometry.neckLine[i], b: SwanGeometry.neckLine[i + 1],
                 widthA: SwanGeometry.neckWidths[i], widthB: SwanGeometry.neckWidths[i + 1]
             )
-            addFacet(quad, progress: local, shadeTop: SwanGeometry.neckShades[i], shadeBottom: SwanGeometry.neckShades[i] - 0.05,
+            addFacet(quad, progress: local, shadeTop: SwanGeometry.neckShades[i], shadeBottom: SwanGeometry.neckShades[i] - 0.08,
                       from: SwanGeometry.neckLine[i], to: SwanGeometry.neckLine[i + 1])
         }
 
         // Head + beak.
-        addFacet(SwanGeometry.head, progress: state.bloomHead, shadeTop: 0.94, shadeBottom: 0.87,
+        addFacet(SwanGeometry.head, progress: state.bloomHead, shadeTop: 0.94, shadeBottom: 0.82,
                  from: SwanGeometry.headBase, to: SwanGeometry.headTip)
-        addFacet(SwanGeometry.beak, progress: state.bloomHead, shadeTop: 0.90, shadeBottom: 0.82,
+        addFacet(SwanGeometry.beak, progress: state.bloomHead, shadeTop: 0.88, shadeBottom: 0.74,
                  from: SwanGeometry.headTip, to: SwanGeometry.beakTip)
 
         guard !opaqueFacets.isEmpty else { return }
@@ -534,8 +539,8 @@ private enum FoldMarkRenderer {
             line.move(to: at(a)); line.addLine(to: at(b))
             context.stroke(line, with: .color(.black.opacity(opacity * min(1, progress * 1.6))), lineWidth: 0.7)
         }
-        crease(SwanGeometry.bodyTopL, SwanGeometry.bodyBottom, state.bloomBody, opacity: 0.10)
-        crease(SwanGeometry.wingRoot, SwanGeometry.wingFold, state.bloomWing, opacity: 0.08)
+        crease(SwanGeometry.bodyTopL, SwanGeometry.bodyBottom, state.bloomBody, opacity: 0.13)
+        crease(SwanGeometry.wingRoot, SwanGeometry.wingFold, state.bloomWing, opacity: 0.11)
     }
 
     /// Unfolds a facet's points from their nearest anchor on the folded packet's
@@ -586,8 +591,10 @@ private enum FoldMarkRenderer {
             )
         )
 
-        // Soft teal glow toward the top-right, as in the icon.
-        let glowRadius = rect.width * 0.75
+        // Soft teal glow toward the top-right, as in the icon. Radius tuned against
+        // AppIcon-512's actual falloff, which reads as a tighter hotspot than a
+        // broad wash.
+        let glowRadius = rect.width * 0.62
         let glowCenter = CGPoint(x: rect.minX + rect.width * 0.82, y: rect.minY + rect.height * 0.20)
         context.fill(
             path,
