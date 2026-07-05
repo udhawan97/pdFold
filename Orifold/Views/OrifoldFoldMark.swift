@@ -538,15 +538,17 @@ private enum FoldMarkRenderer {
 
         // Facets — warm-ivory paper shaded against cool light, with a crisp hairline
         // at each facet's own edge so adjoining panels read as distinct planes.
+        // Opacity is baked into the fill/stroke colors rather than a `drawLayer`
+        // wrapper: with up to ten-odd facets animating in the same frame, that
+        // many offscreen layer allocations every frame was a real cost sitting
+        // right in the busiest part of the animation. A plain fill/stroke with
+        // pre-multiplied alpha produces identical pixels without it.
         for entry in visible {
-            context.drawLayer { layer in
-                layer.opacity = entry.opacity
-                layer.fill(entry.path, with: .linearGradient(
-                    Gradient(colors: [paperTone(entry.facet.hi), paperTone(entry.facet.lo)]),
-                    startPoint: at(entry.facet.gradFrom), endPoint: at(entry.facet.gradTo)
-                ))
-                layer.stroke(entry.path, with: .color(.black.opacity(0.05)), lineWidth: max(0.5, side * 0.0022))
-            }
+            context.fill(entry.path, with: .linearGradient(
+                Gradient(colors: [paperTone(entry.facet.hi).opacity(entry.opacity), paperTone(entry.facet.lo).opacity(entry.opacity)]),
+                startPoint: at(entry.facet.gradFrom), endPoint: at(entry.facet.gradTo)
+            ))
+            context.stroke(entry.path, with: .color(.black.opacity(0.05 * entry.opacity)), lineWidth: max(0.5, side * 0.0022))
         }
 
         // One quiet specular streak where the light catches the paper most directly,
@@ -610,28 +612,20 @@ private enum FoldMarkRenderer {
                            style: StrokeStyle(lineWidth: max(0.5, side * 0.0028), lineCap: .round))
         }
 
-        // Washi paper grain + top-light sheen, clipped to the bird. The grain is
-        // hashed from its index (deterministic across frames → never shimmers), and
-        // fades in with the overall bloom.
+        // Washi paper grain + top-light sheen, clipped to the bird. The grain's
+        // fiber positions are hashed from their index and never change once
+        // computed, so `grainFibers` builds the two fiber paths (in unit tile
+        // space) exactly once and this just maps them into canvas space with a
+        // single affine transform per color — not 100+ hash/trig calls and Path
+        // allocations every single animation frame.
         context.drawLayer { layer in
             layer.clip(to: silhouette)
             layer.opacity = overall
 
-            let fibers = max(60, Int(side * 1.6))
-            for i in 0..<fibers {
-                let fi = Double(i)
-                let hx = abs(hash(fi * 12.9898))
-                let hy = abs(hash(fi * 78.233))
-                let angle = hash(fi * 3.17) * 0.5   // near-horizontal fibers
-                let px = tileRect.minX + hx * side
-                let py = tileRect.minY + hy * side
-                let len = side * 0.02 * (0.5 + abs(hash(fi * 5.1)))
-                var seg = Path()
-                seg.move(to: CGPoint(x: px, y: py))
-                seg.addLine(to: CGPoint(x: px + cos(angle) * len, y: py + sin(angle) * len))
-                let dark = i % 3 == 0
-                layer.stroke(seg, with: .color(dark ? .black.opacity(0.05) : .white.opacity(0.07)), lineWidth: max(0.5, side * 0.0016))
-            }
+            let transform = CGAffineTransform(a: side, b: 0, c: 0, d: side, tx: tileRect.minX, ty: tileRect.minY)
+            let lineWidth = max(0.5, side * 0.0016)
+            layer.stroke(grainFibers.dark.applying(transform), with: .color(.black.opacity(0.05)), lineWidth: lineWidth)
+            layer.stroke(grainFibers.light.applying(transform), with: .color(.white.opacity(0.07)), lineWidth: lineWidth)
 
             layer.fill(
                 Path(CGRect(x: at(.zero).x, y: at(.zero).y, width: side, height: side)),
@@ -643,6 +637,32 @@ private enum FoldMarkRenderer {
             )
         }
     }
+
+    /// Grain fiber segments in unit tile space (0...1), split into two combined
+    /// paths by tint. Built once on first use and reused for the process's
+    /// lifetime — the hash-based positions are deterministic, so recomputing
+    /// them (with multiple hash calls and trig per fiber) every frame was pure
+    /// waste in the single most frequently redrawn layer of the animation.
+    private static let grainFibers: (dark: Path, light: Path) = {
+        let fiberCount = 128
+        var dark = Path()
+        var light = Path()
+        for i in 0..<fiberCount {
+            let fi = Double(i)
+            let hx = abs(hash(fi * 12.9898))
+            let hy = abs(hash(fi * 78.233))
+            let angle = hash(fi * 3.17) * 0.5   // near-horizontal fibers
+            let len = 0.02 * (0.5 + abs(hash(fi * 5.1)))
+            let start = CGPoint(x: hx, y: hy)
+            let end = CGPoint(x: hx + cos(angle) * len, y: hy + sin(angle) * len)
+            if i % 3 == 0 {
+                dark.move(to: start); dark.addLine(to: end)
+            } else {
+                light.move(to: start); light.addLine(to: end)
+            }
+        }
+        return (dark, light)
+    }()
 
     /// Warm-ivory paper tone. `v` in 0…1: 1 = brightest lit paper, 0 = deepest fold
     /// shadow. Highlights lean warm, shadows lean cool, as real paper does under a
