@@ -65,6 +65,24 @@ extension Color {
         light: NSColor(srgbRed: 0.047, green: 0.404, blue: 0.651, alpha: 0.17),
         dark:  NSColor(srgbRed: 0.310, green: 0.765, blue: 0.910, alpha: 0.24))
 
+    /// Amber accent for non-error cautions (toast/banner warning state) — distinct from
+    /// both the error and success tints below.
+    static let dsWarningAccent = Color(
+        light: NSColor(srgbRed: 0.702, green: 0.494, blue: 0.039, alpha: 1),   // #B37E0A
+        dark:  NSColor(srgbRed: 0.976, green: 0.769, blue: 0.322, alpha: 1))   // #F9C452
+
+    /// Adaptive success/error accents for toast/banner states, kept distinct from
+    /// `dsAnnotationSage`/`dsAnnotationCoral` — those are fixed annotation-swatch colors
+    /// (meant to look the same over a page regardless of app appearance), not tuned for
+    /// legibility as caption-sized text/icon tint in both light and dark UI chrome.
+    static let dsSuccessAccent = Color(
+        light: NSColor(srgbRed: 0.220, green: 0.500, blue: 0.365, alpha: 1),   // #38805D
+        dark:  NSColor(srgbRed: 0.455, green: 0.804, blue: 0.643, alpha: 1))   // #74CDA4
+
+    static let dsErrorAccent = Color(
+        light: NSColor(srgbRed: 0.749, green: 0.196, blue: 0.153, alpha: 1),   // #BF3227
+        dark:  NSColor(srgbRed: 0.976, green: 0.478, blue: 0.427, alpha: 1))   // #F97A6D
+
     /// Shu-iro — the vermillion of a hanko seal stamp. Reserved for signing/stamping.
     static let dsSignatureAccent = Color(
         light: NSColor(srgbRed: 0.749, green: 0.267, blue: 0.173, alpha: 1),   // #BF442C

@@ -80,7 +80,7 @@ private struct UndoRedoCommandButtons: View {
             viewModel?.performUndoCommand()
         }
         .keyboardShortcut("z", modifiers: .command)
-        .disabled(importInProgress || viewModel == nil)
+        .disabled(importInProgress || viewModel == nil || undoManager?.canUndo != true)
 
         Button(L10n.string("appCommands.redo.button")) {
             viewModel?.performRedoCommand()

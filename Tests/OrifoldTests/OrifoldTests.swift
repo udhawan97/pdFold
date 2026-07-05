@@ -597,6 +597,129 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertFalse(pageTextAfterRedo.contains("edit-three"), "redo() must not also restore the edit still further ahead")
     }
 
+    /// Standard `UndoManager` semantics: performing a brand-new action after undoing
+    /// must discard the redo stack, so a step that was undone-then-still-redoable
+    /// becomes permanently unreachable once a new edit is registered. This proves that
+    /// invariant holds for `WorkspaceViewModel`'s inline-text-edit undo registration
+    /// despite `registerIsolatedUndo` toggling `groupsByEvent` on each call (see
+    /// `registerIsolatedUndo` and `restoreInlineTextEditSnapshot` in WorkspaceViewModel.swift).
+    func testNewEditAfterUndoRedoDiscardsStaleRedoStack() throws {
+        let pdf = makeStackedParagraphsPDF()
+        let fixture = try makeMemberFixture(name: "Stacked", pdf: pdf)
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+        let undoManager = UndoManager()
+        viewModel.undoManager = undoManager
+        let originalPage = try XCTUnwrap(PDFDocument(data: fixture.pdfData)?.page(at: 0))
+        let analysis = PDFTextAnalysisEngine().analyze(
+            data: fixture.pdfData,
+            pageIndex: 0,
+            pageRefID: fixture.refs[0].id,
+            fallbackPage: originalPage
+        )
+        let row0 = try XCTUnwrap(analysis.blocks.first { $0.text.contains("row-0") })
+        let row1 = try XCTUnwrap(analysis.blocks.first { $0.text.contains("row-1") })
+
+        // Edit #1: row-1
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: row1,
+            replacementText: row1.text + " edit-one",
+            editedBounds: row1.bounds,
+            fontName: row1.fontName,
+            fontSize: row1.fontSize,
+            textColor: row1.textColor.nsColor,
+            alignment: row1.alignment?.nsTextAlignment ?? .left
+        ))
+        // Edit #2: row-0
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: row0,
+            replacementText: row0.text + " edit-two",
+            editedBounds: row0.bounds,
+            fontName: row0.fontName,
+            fontSize: row0.fontSize,
+            textColor: row0.textColor.nsColor,
+            alignment: row0.alignment?.nsTextAlignment ?? .left
+        ))
+        let row1AfterFirstEdit = try XCTUnwrap(
+            viewModel.document.workspace.pageEditStates.first(where: { $0.pageRefID == fixture.refs[0].id })?
+                .operations.first(where: { $0.sourceBlockID == row1.id })
+        )
+        // Edit #3: row-1 again
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: row1,
+            replacementText: row1.text + " edit-three",
+            editedBounds: row1AfterFirstEdit.editedBounds,
+            fontName: row1.fontName,
+            fontSize: row1.fontSize,
+            textColor: row1.textColor.nsColor,
+            alignment: row1.alignment?.nsTextAlignment ?? .left
+        ))
+        XCTAssertEqual(viewModel.document.workspace.pageEditStates.first?.operations.count, 2)
+
+        // Undo x2: back to just edit-one.
+        undoManager.undo()
+        undoManager.undo()
+        let afterTwoUndos = viewModel.loadedPDFs.first?.1.page(at: 0)?.string ?? ""
+        XCTAssertTrue(afterTwoUndos.contains("edit-one"), "edit-one should remain applied after only two undos")
+        XCTAssertFalse(afterTwoUndos.contains("edit-two"), "edit-two must be undone")
+        XCTAssertFalse(afterTwoUndos.contains("edit-three"), "edit-three must be undone")
+        XCTAssertTrue(undoManager.canRedo, "edit-two should still be redoable at this point")
+
+        // Redo x1: restores edit-two.
+        undoManager.redo()
+        let afterRedo = viewModel.loadedPDFs.first?.1.page(at: 0)?.string ?? ""
+        XCTAssertTrue(afterRedo.contains("edit-one"), "edit-one should remain applied")
+        XCTAssertTrue(afterRedo.contains("edit-two"), "redo should restore edit-two")
+        XCTAssertFalse(afterRedo.contains("edit-three"), "edit-three must still be undone (not yet redone)")
+        XCTAssertTrue(undoManager.canRedo, "edit-three should still be redoable before any new edit is performed")
+
+        // New edit #4 (row-0 edited again) after undo/redo: this must discard the
+        // remaining redo stack (edit-three) per standard UndoManager semantics.
+        let row0AfterEditTwo = try XCTUnwrap(
+            viewModel.document.workspace.pageEditStates.first(where: { $0.pageRefID == fixture.refs[0].id })?
+                .operations.first(where: { $0.sourceBlockID == row0.id })
+        )
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: row0,
+            replacementText: row0.text + " edit-four",
+            editedBounds: row0AfterEditTwo.editedBounds,
+            fontName: row0.fontName,
+            fontSize: row0.fontSize,
+            textColor: row0.textColor.nsColor,
+            alignment: row0.alignment?.nsTextAlignment ?? .left
+        ))
+
+        let afterNewEdit = viewModel.loadedPDFs.first?.1.page(at: 0)?.string ?? ""
+        XCTAssertTrue(afterNewEdit.contains("edit-one"), "edit-one (never undone) should remain")
+        XCTAssertFalse(afterNewEdit.contains("edit-two"), "edit-two's replacement text was itself replaced by edit-four")
+        XCTAssertTrue(afterNewEdit.contains("edit-four"), "new edit-four should be applied")
+        XCTAssertFalse(afterNewEdit.contains("edit-three"), "edit-three must not reappear")
+
+        // The critical invariant: a new action after undo/redo discards the stale redo stack.
+        XCTAssertFalse(undoManager.canRedo, "performing a new edit after undo/redo must discard the previously-available redo (edit-three)")
+
+        // Confirm redo() is now a no-op / does not resurrect edit-three.
+        undoManager.redo()
+        let afterAttemptedStaleRedo = viewModel.loadedPDFs.first?.1.page(at: 0)?.string ?? ""
+        XCTAssertFalse(afterAttemptedStaleRedo.contains("edit-three"), "stale redo entry (edit-three) must never be resurrected after a new edit was performed")
+        XCTAssertTrue(afterAttemptedStaleRedo.contains("edit-four"), "edit-four must remain applied")
+
+        // Sanity: undoing from here should step back to edit-two (i.e. undo edit-four),
+        // confirming the undo stack now correctly ends at edit-four, not edit-three.
+        undoManager.undo()
+        let afterUndoingEditFour = viewModel.loadedPDFs.first?.1.page(at: 0)?.string ?? ""
+        XCTAssertTrue(afterUndoingEditFour.contains("edit-two"), "undoing edit-four should reveal edit-two underneath")
+        XCTAssertFalse(afterUndoingEditFour.contains("edit-four"), "edit-four should be undone")
+        XCTAssertFalse(afterUndoingEditFour.contains("edit-three"), "edit-three must remain absent")
+    }
+
     func testInlineTextEditPreservesImageBackedPDFBackground() throws {
         let pdfData = try makePhotoPDFData(text: "Original searchable text")
         let pdf = try XCTUnwrap(PDFDocument(data: pdfData))
@@ -644,6 +767,82 @@ final class PDFTextEditingRedesignTests: XCTestCase {
             "exporting an edited image-backed PDF must not flatten the page to white"
         )
         XCTAssertTrue(exportedPage.string?.contains("Edited searchable text") ?? false)
+    }
+
+    /// Regression coverage for removing the vestigial full-page raster-then-vector
+    /// double-draw from `regeneratedPage(from:applying:)`: confirms the remaining single
+    /// vector `drawPageBackground` draw is sufficient even for a page whose content
+    /// stream has NO explicit background fill at all (a genuinely transparent/blank
+    /// backdrop, as opposed to every other fixture in this file, which is built via
+    /// `NSView.dataWithPDF` and therefore always paints an explicit opaque white rect
+    /// first). Built directly via `CGContext`/`CGDataConsumer` — bypassing `NSView`
+    /// entirely — so the content stream truly contains only a text-drawing operator,
+    /// no fill/rect operator of any kind.
+    func testInlineTextEditOnPageWithNoExplicitBackgroundFillPreservesUntouchedText() throws {
+        // 612x792, matching every other fixture's page size in this file: `renderedBitmap`
+        // always rasterizes via `thumbnail(of: CGSize(width: 612, height: 792), for:)`, and
+        // `darkPixelCount` assumes a 1:1 PDF-point-to-pixel mapping against that fixed
+        // size — a differently-sized/aspect-ratio page would get scaled/letterboxed by
+        // PDFKit's thumbnail rendering, breaking that assumed 1:1 mapping.
+        let pageBounds = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let data = NSMutableData()
+        var mediaBox = pageBounds
+        let consumer = try XCTUnwrap(CGDataConsumer(data: data))
+        let context = try XCTUnwrap(CGContext(consumer: consumer, mediaBox: &mediaBox, nil))
+        context.beginPDFPage(nil)
+        // No fill/rect operator of any kind precedes this — the content stream is just
+        // a single text-showing operation over an otherwise untouched (transparent) page.
+        let font = CTFontCreateWithName("Helvetica" as CFString, 18, nil)
+        let attributed = NSAttributedString(string: "Untouched transparent text", attributes: [
+            NSAttributedString.Key(kCTFontAttributeName as String): font
+        ])
+        let line = CTLineCreateWithAttributedString(attributed)
+        context.textMatrix = .identity
+        context.textPosition = CGPoint(x: 20, y: 150)
+        CTLineDraw(line, context)
+        context.endPDFPage()
+        context.closePDF()
+
+        let sourceDoc = try XCTUnwrap(PDFDocument(data: data as Data))
+        let page = try XCTUnwrap(sourceDoc.page(at: 0))
+        XCTAssertTrue(page.string?.contains("Untouched transparent text") ?? false, "sanity check: fixture must contain this text before editing")
+
+        // An unrelated insertion far from the untouched text — same shape as the rotated
+        // non-square-page regression test above, just proving the untouched background
+        // text (here, drawn onto a page with no explicit fill) survives regeneration.
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: CGRect(x: 20, y: 20, width: 1, height: 1),
+            editedBounds: CGRect(x: 20, y: 20, width: 60, height: 16),
+            replacementText: "New",
+            fontName: "Helvetica",
+            fontSize: 12,
+            textColor: .documentText,
+            alignment: .left,
+            isInsertion: true
+        )
+
+        let regenerated = try XCTUnwrap(PDFEditedPageRenderer.regeneratedPage(from: page, applying: [operation]))
+        XCTAssertTrue(
+            regenerated.string?.contains("Untouched transparent text") ?? false,
+            "the original page's untouched text must survive regeneration even when the source content stream has no explicit background fill"
+        )
+
+        // PDFKit's `PDFPage` does not strongly retain its owning `PDFDocument` — the
+        // regenerated page is only safe to render/rasterize once re-hosted in a document
+        // we keep alive ourselves (the same reason the rotated-page regression test above
+        // only checks `regenerated.string`, never renders it directly).
+        let hostDocument = PDFDocument()
+        hostDocument.insert(regenerated, at: 0)
+        let hostedPage = try XCTUnwrap(hostDocument.page(at: 0))
+        let bitmap = try renderedBitmap(for: hostedPage)
+        let textSelection = try XCTUnwrap(hostedPage.selection(for: (hostedPage.string! as NSString).range(of: "Untouched transparent text")))
+        XCTAssertGreaterThan(
+            darkPixelCount(in: textSelection.bounds(for: hostedPage), bitmap: bitmap),
+            10,
+            "the untouched text must still render visibly, not vanish into an all-white or corrupted page"
+        )
     }
 
     func testPDFTextAnalysisUsesVisibleFontSizeForScaledContentStreams() throws {
@@ -1069,6 +1268,64 @@ final class PDFTextEditingRedesignTests: XCTestCase {
 
         XCTAssertEqual(viewModel.editingStatus?.message, "Nothing left to undo.")
         XCTAssertFalse(viewModel.editingStatus?.isError ?? true)
+    }
+
+    /// Regression test for a confirmed bug found during the format-painter audit: a format
+    /// copied via "Copy" (arming the painter to auto-apply to the next edit opened) stayed
+    /// armed across an unrelated undo — undo is a strong, explicit "back out of what I was
+    /// doing" signal, so stale armed formatting surviving it and silently auto-applying to
+    /// the next edit the user opens is more surprising than helpful.
+    func testUndoDisarmsFormatPainter() throws {
+        let fixture = try makeMemberWithPDF(name: "Undoable", pageTexts: ["Original text"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(
+            document: document,
+            processingEngine: PDFKitProcessingEngineFallback()
+        )
+        let undoManager = UndoManager()
+        viewModel.undoManager = undoManager
+
+        viewModel.rotatePage(fixture.refs[0], by: 90)
+        viewModel.copiedInlineTextFormat = PDFTextEditFormat(
+            fontName: "Helvetica",
+            fontSize: 12,
+            textColor: .documentText,
+            alignment: .left
+        )
+        viewModel.isInlineTextFormatPainterArmed = true
+
+        viewModel.performUndoCommand()
+
+        XCTAssertFalse(viewModel.isInlineTextFormatPainterArmed, "Undo must disarm a stale copied format")
+        XCTAssertNil(viewModel.copiedInlineTextFormat, "Undo must clear the stale copied format")
+    }
+
+    /// Regression test for a bug caught during the confirmation-severity audit: neutral
+    /// status messages ("Nothing to undo", "Back at the beginning") were reporting through
+    /// the legacy `isError: false` overload, which maps to `.warning` — rendering them with
+    /// the amber warning icon and a 4s linger instead of the intended quick `.info` toast.
+    func testUndoStatusMessagesReportInfoSeverityNotWarning() throws {
+        let fixture = try makeMemberWithPDF(name: "Undoable", pageTexts: ["Original text"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(
+            document: document,
+            processingEngine: PDFKitProcessingEngineFallback()
+        )
+        let undoManager = UndoManager()
+        viewModel.undoManager = undoManager
+
+        viewModel.performUndoCommand()
+        XCTAssertEqual(viewModel.editingStatus?.severity, .info, "'Nothing to undo' is a neutral status, not a warning")
+
+        viewModel.rotatePage(fixture.refs[0], by: 90)
+        viewModel.performUndoCommand()
+        XCTAssertEqual(viewModel.editingStatus?.severity, .info, "'Back at the beginning' is a neutral status, not a warning")
     }
 
     func testInlineTextEditDoesNotClipReplacementLongerThanOriginalWord() throws {
@@ -2902,6 +3159,170 @@ final class InlineTextEditPlacementTests: XCTestCase {
         XCTAssertEqual(committed.editedBounds.width, nearbyBounds.width, accuracy: 0.01)
     }
 
+    /// End-to-end: copy a MUCH larger font (48pt) from one block, open a DIFFERENT
+    /// block whose original text is small (8pt), leave its text completely
+    /// UNCHANGED, click "Paste style" (not Match), then press Done. This must not
+    /// clip the exported height to the original 8pt `sourceBounds.height` — the
+    /// `unchangedTextHasKnownHeight` branch in `PDFEditedPageRenderer.measuredBounds`
+    /// is supposed to detect the enlarged font (via `sourceHeight >= rawCoreTextHeight`)
+    /// and fall through to a fresh CoreText remeasurement instead of trusting the
+    /// stale small `sourceBounds.height`. This drives the real UI buttons
+    /// (`.performClick(nil)`) and reads the actually-committed operation out of
+    /// `document.workspace.pageEditStates`, then re-derives bounds via
+    /// `PDFEditedPageRenderer.measuredBounds` on that real operation — not a
+    /// synthetic `PDFTextEditOperation` built by hand.
+    func testInlineEditorPasteLargerFontOntoUnchangedTextGrowsExportedHeight() throws {
+        let pdf = makePDF(pageTexts: ["Small original text"])
+        let fixture = try makeMemberFixture(name: "PasteGrow", pdf: pdf)
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+        let pageRef = fixture.refs[0]
+        let basePage = try XCTUnwrap(PDFDocument(data: fixture.pdfData)?.page(at: 0))
+
+        let smallBlock = EditableTextBlock(
+            pageRefID: pageRef.id,
+            text: "Small original text",
+            bounds: CGRect(x: 72, y: 700, width: 140, height: 10),
+            lines: [],
+            columnBounds: CGRect(x: 72, y: 0, width: 300, height: 792),
+            fontName: "Helvetica",
+            fontSize: 8,
+            textColor: .documentText,
+            alignment: .left,
+            rotation: 0,
+            baseline: 700,
+            confidence: .high
+        )
+        let smallSourceFormat = PDFTextEditFormat(block: smallBlock)
+
+        let pdfView = OrifoldPDFView(frame: CGRect(x: 0, y: 0, width: 900, height: 1000))
+        pdfView.document = PDFDocument(data: fixture.pdfData)
+        pdfView.autoScales = false
+        pdfView.scaleFactor = 1
+        pdfView.layoutDocumentView()
+
+        // Step 1: open a DIFFERENT (larger-font) block and Copy its format — this is
+        // the source the user copies from before ever touching the small block.
+        let largeFormatSourceBlock = EditableTextBlock(
+            pageRefID: pageRef.id,
+            text: "Large heading text",
+            bounds: CGRect(x: 72, y: 60, width: 400, height: 60),
+            lines: [],
+            columnBounds: CGRect(x: 72, y: 0, width: 468, height: 792),
+            fontName: "Helvetica-Bold",
+            fontSize: 48,
+            textColor: .documentText,
+            alignment: .left,
+            rotation: 0,
+            baseline: 60,
+            confidence: .high
+        )
+        var largeOverlayCommit: InlineTextEditorOverlay.EditResult?
+        let largeOverlay = InlineTextEditorOverlay(
+            frame: pdfView.bounds,
+            viewModel: viewModel,
+            pdfView: pdfView,
+            page: basePage,
+            pageRef: pageRef,
+            block: largeFormatSourceBlock,
+            sourceFormat: PDFTextEditFormat(block: largeFormatSourceBlock)
+        ) { completion in
+            if case .commit(let edit) = completion { largeOverlayCommit = edit }
+        }
+        pdfView.addSubview(largeOverlay)
+        largeOverlay.layoutSubtreeIfNeeded()
+        let largeCopyButton = try XCTUnwrap(inlineEditorButton(in: largeOverlay, identifier: "inlineEditor.copyNearbyFormat"))
+        largeCopyButton.performClick(nil)
+        XCTAssertTrue(viewModel.isInlineTextFormatPainterArmed, "Copy should arm the format painter")
+        XCTAssertEqual(viewModel.copiedInlineTextFormat?.fontSize ?? -1, 48, accuracy: 0.01)
+        largeOverlay.cancel()
+        _ = largeOverlayCommit // never committed; only used to copy the format
+
+        // Step 2: open the SMALL block. Because the painter is armed, opening it will
+        // auto-apply the copied 48pt format (applyArmedFormatPainterIfNeeded) — but we
+        // explicitly exercise the "Paste style" button too, matching the described
+        // repro, and leave the text field completely untouched.
+        var committedSmall: InlineTextEditorOverlay.EditResult?
+        let smallOverlay = InlineTextEditorOverlay(
+            frame: pdfView.bounds,
+            viewModel: viewModel,
+            pdfView: pdfView,
+            page: basePage,
+            pageRef: pageRef,
+            block: smallBlock,
+            sourceFormat: smallSourceFormat
+        ) { completion in
+            if case .commit(let edit) = completion { committedSmall = edit }
+        }
+        pdfView.addSubview(smallOverlay)
+        smallOverlay.layoutSubtreeIfNeeded()
+
+        // Re-arm explicitly (defensive against auto-apply already having consumed it)
+        // and click "Paste style" via the real button, exactly as instructed.
+        viewModel.copiedInlineTextFormat = PDFTextEditFormat(block: largeFormatSourceBlock)
+        viewModel.isInlineTextFormatPainterArmed = true
+        let pasteButton = try XCTUnwrap(inlineEditorButton(in: smallOverlay, identifier: "inlineEditor.applyCopiedFormat"))
+        pasteButton.performClick(nil)
+
+        let doneButton = try XCTUnwrap(findSubview(in: smallOverlay) { (button: NSButton) in button.title == "Done" })
+        doneButton.performClick(nil)
+
+        let edit = try XCTUnwrap(committedSmall, "Done should commit even though text is unchanged, since style changed")
+        XCTAssertEqual(edit.text, smallBlock.text, "text content must remain completely unchanged")
+        XCTAssertEqual(edit.fontSize, 48, accuracy: 0.01, "pasted style should carry the 48pt font onto the commit")
+
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: pageRef,
+            sourceBlock: edit.block,
+            replacementText: edit.text,
+            editedBounds: edit.editedBounds,
+            fontName: edit.fontName,
+            fontSize: edit.fontSize,
+            textColor: edit.textColor,
+            alignment: edit.alignment,
+            underline: edit.underline,
+            didManuallyReposition: edit.didManuallyReposition,
+            didManuallyResizeWidth: edit.didManuallyResizeWidth,
+            didManuallyResizeHeight: edit.didManuallyResizeHeight,
+            didManuallyChangeStyle: edit.didManuallyChangeStyle,
+            didApplyMatchedGeometry: edit.didApplyMatchedGeometry,
+            didRestoreOriginalStyle: edit.didRestoreOriginalStyle
+        ))
+
+        let committedOperation = try XCTUnwrap(
+            document.workspace.pageEditStates.first(where: { $0.pageRefID == pageRef.id })?.operations
+                .first(where: { $0.sourceBlockID == smallBlock.id }),
+            "the real committed operation should be persisted in pageEditStates"
+        )
+        XCTAssertEqual(committedOperation.sourceText, smallBlock.text)
+        XCTAssertEqual(committedOperation.replacementText, smallBlock.text, "replacement text must be byte-identical to source (unchanged)")
+        XCTAssertEqual(committedOperation.fontSize, 48, accuracy: 0.01)
+
+        // This is the actual bug check: re-derive bounds via measuredBounds using the
+        // REAL committed operation (already stored with `editedBounds` computed once
+        // by `applyInlineTextEdit` — assert directly on it, and re-confirm via a fresh
+        // measuredBounds call for good measure).
+        let exportedBounds = PDFEditedPageRenderer.measuredBounds(
+            for: committedOperation,
+            pageBounds: basePage.bounds(for: .cropBox),
+            sourcePage: basePage
+        )
+        let minimumHeightFor48pt: CGFloat = 48 // a 48pt font needs at least ~48pt of line height
+        XCTAssertGreaterThanOrEqual(
+            exportedBounds.height,
+            minimumHeightFor48pt,
+            "exported height must accommodate the pasted 48pt font, not stay clipped to the original 8pt sourceBounds.height (\(smallBlock.bounds.height))"
+        )
+        XCTAssertGreaterThan(
+            committedOperation.editedBounds.height,
+            smallBlock.bounds.height,
+            "the committed operation's own editedBounds must already reflect the taller 48pt font"
+        )
+    }
+
     func testInlineEditorRestoreOriginalFormatClearsManualStyleChange() throws {
         let fixture = try makeInlineEditorFixture()
         let textView = try XCTUnwrap(findSubview(in: fixture.overlay) { (_: NSTextView) in true })
@@ -2989,6 +3410,309 @@ final class InlineTextEditPlacementTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(doneInOverlay.minX, fixture.overlay.bounds.minX - 0.5, "Done must not be pushed off the left edge")
         XCTAssertLessThanOrEqual(cancelInOverlay.maxX, fixture.overlay.bounds.maxX + 0.5, "Cancel must stay within the visible canvas")
         XCTAssertGreaterThan(doneInOverlay.minX, cancelInOverlay.minX, "Done should sit to the right of Cancel in the action group")
+    }
+
+    /// Regression test for a confirmed bug: at a narrow canvas width (inspector panel
+    /// open), the format-painter buttons previously landed entirely past the toolbar's own
+    /// clamped right edge — outside a view's own bounds is never hit-tested by AppKit, so
+    /// they were completely unclickable ("Match/Copy/Paste/Reset do nothing"). The color
+    /// popup, though technically in-bounds, was separately covered by the right-pinned
+    /// Cancel/Done buttons (added later, so higher in z-order), silently swallowing its
+    /// clicks too. The toolbar now wraps overflow onto additional rows instead.
+    func testInlineEditorFormatPainterButtonsReachableWhenCanvasIsNarrow() throws {
+        let fixture = try makeInlineEditorFixture(
+            text: "Editable paragraph text near the page edge",
+            pdfViewFrame: CGRect(x: 0, y: 0, width: 520, height: 900)
+        )
+        for identifier in [
+            "inlineEditor.matchNearbyFormat",
+            "inlineEditor.copyNearbyFormat",
+            "inlineEditor.applyCopiedFormat",
+            "inlineEditor.restoreOriginalFormat"
+        ] {
+            let button = try XCTUnwrap(inlineEditorButton(in: fixture.overlay, identifier: identifier), "\(identifier) not found in view hierarchy")
+            let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: fixture.overlay)
+            XCTAssertTrue(hitTest(fixture.overlay, at: point, reaches: button), "\(identifier) must be clickable when the canvas is narrow")
+        }
+        let color = try XCTUnwrap(findSubview(in: fixture.overlay, matching: { (popup: NSPopUpButton) in popup.toolTip == "Text color" }))
+        let colorPoint = color.convert(NSPoint(x: color.bounds.midX, y: color.bounds.midY), to: fixture.overlay)
+        XCTAssertTrue(hitTest(fixture.overlay, at: colorPoint, reaches: color), "Text color popup must not be covered by the action group when narrow")
+        let done = try XCTUnwrap(findSubview(in: fixture.overlay) { (button: NSButton) in button.title == "Done" })
+        let donePoint = done.convert(NSPoint(x: done.bounds.midX, y: done.bounds.midY), to: fixture.overlay)
+        XCTAssertTrue(hitTest(fixture.overlay, at: donePoint, reaches: done), "Done must still be reachable once the format controls wrap")
+    }
+
+    /// Stress-test finding: the row-wrapping fix (`layoutFormatControls`) only solves
+    /// controls not FITTING in the available toolbar width — it does nothing about a
+    /// control being individually too NARROW for its own (locale-dependent) title.
+    /// `setupToolbar()` places `restoreFormatButton` at a hardcoded `width: 52` regardless
+    /// of what `L10n.string("readingCanvas.formatting.resetFormat.button")` resolves to.
+    /// French resolves that key to "Réinitialiser" (~60.5pt of glyph width alone, before
+    /// NSButton's bezel padding) and Spanish to "Restablecer" (~62.2pt) — both wider than
+    /// the fixed 52pt frame regardless of canvas width or row count. This proves the title
+    /// no longer fits the button's own frame, i.e. AppKit must truncate it.
+    /// Regression test for a confirmed bug: toolbar buttons used hardcoded pixel widths
+    /// sized for their English titles (e.g. 50pt for "Reset"), which real shipped
+    /// translations overflow — French "Réinitialiser" measures ~60.5pt, Spanish
+    /// "Restablecer" ~62.2pt, at the toolbar's 11pt system font. Fixed via
+    /// `InlineTextEditorOverlay.measuredButtonWidth(title:font:minimum:)`, which grows
+    /// past the English-sized minimum whenever the actual title needs more room.
+    func testMeasuredButtonWidthAccommodatesLongerLocalizedTitles() throws {
+        // Read the compiled fr.lproj strings table directly rather than going through
+        // `L10n.string`'s locale override (which doesn't reliably apply inside the
+        // XCTest host, a separate, unrelated Foundation/xcstrings quirk). `L10n`'s own
+        // bundle anchor resolves to Orifold.app's bundle regardless of which process
+        // loaded this code, so the same lookup works here.
+        let bundle = Bundle(for: WorkspaceViewModel.self)
+        let frBundleURL = try XCTUnwrap(bundle.url(forResource: "fr", withExtension: "lproj"))
+        let frBundle = try XCTUnwrap(Bundle(url: frBundleURL))
+        let frTitle = frBundle.localizedString(forKey: "readingCanvas.formatting.resetFormat.button", value: nil, table: "Localizable")
+        XCTAssertEqual(frTitle, "Réinitialiser", "Sanity-check: fr.lproj actually contains the expected translation")
+
+        let font = NSFont.systemFont(ofSize: 11)
+        let textWidth = (frTitle as NSString).size(withAttributes: [.font: font]).width
+        let englishSizedMinimum: CGFloat = 50 // what setupToolbar() used before the fix
+
+        XCTAssertGreaterThan(textWidth, englishSizedMinimum, "Sanity-check: the English-sized minimum really is too narrow for the French title")
+
+        let measuredWidth = InlineTextEditorOverlay.measuredButtonWidth(title: frTitle, font: font, minimum: englishSizedMinimum)
+        XCTAssertGreaterThanOrEqual(measuredWidth, textWidth, "The button must be at least as wide as the French title needs")
+        XCTAssertGreaterThan(measuredWidth, englishSizedMinimum, "The fix must actually grow past the English-sized minimum for this locale")
+    }
+
+    /// Regression check: `containsInteractivePoint(_:)` is the dismiss/no-dismiss gate for
+    /// clicks near the inline editor — a point outside its reported interactive region is
+    /// treated as "outside the editor" and cancels/dismisses the edit. Once the toolbar
+    /// wraps onto a second row (narrow canvas), the toolbar's own `frame` grows taller via
+    /// `toolbarHeight(forRowCount:)`. A click on a second-row control (e.g. the wrapped
+    /// Match button) must still be reported as "inside" — if `containsInteractivePoint`
+    /// somehow used a stale/assumed single-row height instead of the live `toolbar.frame`,
+    /// this would incorrectly report "outside" and dismiss the edit out from under the user.
+    func testInlineEditorContainsInteractivePointCoversWrappedSecondRowControls() throws {
+        let fixture = try makeInlineEditorFixture(
+            text: "Editable paragraph text near the page edge",
+            pdfViewFrame: CGRect(x: 0, y: 0, width: 520, height: 900)
+        )
+        let match = try XCTUnwrap(inlineEditorButton(in: fixture.overlay, identifier: "inlineEditor.matchNearbyFormat"))
+
+        // Sanity-check the premise: the Match button must actually be wrapped onto a row
+        // above the toolbar's bottom (row 0) edge for this test to be meaningful.
+        let toolbar = try XCTUnwrap(match.superview)
+        XCTAssertGreaterThan(match.frame.minY, 8, "Match button should be wrapped onto a row above row 0 at this narrow width")
+
+        let matchCenterInOverlay = toolbar.convert(NSPoint(x: match.frame.midX, y: match.frame.midY), to: fixture.overlay)
+        let pdfViewPoint = fixture.pdfView.convert(matchCenterInOverlay, from: fixture.overlay)
+
+        XCTAssertTrue(
+            fixture.overlay.containsInteractivePoint(pdfViewPoint),
+            "A click on a wrapped second-row toolbar control must be treated as inside the editor, not as a dismiss-triggering outside click"
+        )
+    }
+
+    /// Regression test for a confirmed bug: committing, canceling, or reverting an inline
+    /// edit removed the editor overlay (and its textView) from the view hierarchy without
+    /// ever restoring first responder to the PDF view. Since SwiftUI's `\.undoManager` (read
+    /// by both `ContentView` and the Edit-menu commands) resolves from the key window's
+    /// CURRENT first-responder chain, leaving first responder dangling on a just-removed
+    /// view could make the next Undo attempt resolve a different (or no) undo manager than
+    /// the one that actually recorded the edit — surfacing as "nothing to undo" right after
+    /// making one. First responder must deterministically return to the PDF view.
+    func testInlineEditorRestoresFirstResponderToPDFViewAfterCommit() throws {
+        let fixture = try makeInlineEditorFixture(text: "Original text")
+        let window = NSWindow(
+            contentRect: fixture.pdfView.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = fixture.pdfView
+        let textView = try XCTUnwrap(findSubview(in: fixture.overlay) { (_: NSTextView) in true })
+        window.makeFirstResponder(textView)
+        XCTAssertTrue(window.firstResponder === textView)
+
+        let done = try XCTUnwrap(findSubview(in: fixture.overlay) { (button: NSButton) in button.title == "Done" })
+        textView.string = "Edited text"
+        done.performClick(nil)
+
+        XCTAssertTrue(
+            window.firstResponder === fixture.pdfView,
+            "First responder must return to the PDF view after Done so the document undo manager resolves correctly"
+        )
+    }
+
+    func testInlineEditorRestoresFirstResponderToPDFViewAfterCancel() throws {
+        let fixture = try makeInlineEditorFixture(text: "Original text")
+        let window = NSWindow(
+            contentRect: fixture.pdfView.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = fixture.pdfView
+        let textView = try XCTUnwrap(findSubview(in: fixture.overlay) { (_: NSTextView) in true })
+        window.makeFirstResponder(textView)
+
+        let cancel = try XCTUnwrap(findSubview(in: fixture.overlay) { (button: NSButton) in button.title == "Cancel" })
+        cancel.performClick(nil)
+
+        XCTAssertTrue(
+            window.firstResponder === fixture.pdfView,
+            "First responder must return to the PDF view after Cancel so the document undo manager resolves correctly"
+        )
+    }
+
+    /// Regression test for a confirmed bug: reopening an already-edited (but otherwise
+    /// untouched) text block re-derived its committed height from `ReplacementTextLayout`'s
+    /// CoreText measurement instead of the original PDFium-measured `sourceBounds.height` —
+    /// even though the replacement text was byte-identical to the source. CoreText and
+    /// PDFium don't necessarily agree on line height for the same font/size, so this could
+    /// commit a height a few points off from the original for text nobody actually edited.
+    func testMeasuredBoundsPreservesOriginalHeightWhenTextIsUnchanged() throws {
+        let sourceBounds = CGRect(x: 72, y: 700, width: 200, height: 14)
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: sourceBounds,
+            sourceText: "Unchanged text",
+            editedBounds: CGRect(x: 72, y: 690, width: 200, height: 24),
+            replacementText: "Unchanged text",
+            fontName: "Helvetica",
+            fontSize: 10,
+            textColor: .documentText,
+            alignment: .left
+        )
+        let measured = PDFEditedPageRenderer.measuredBounds(for: operation)
+        XCTAssertEqual(measured.height, sourceBounds.height, accuracy: 0.01)
+    }
+
+    func testMeasuredBoundsStillGrowsHeightWhenTextActuallyChanged() throws {
+        let sourceBounds = CGRect(x: 72, y: 700, width: 120, height: 14)
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: sourceBounds,
+            sourceText: "Short",
+            editedBounds: CGRect(x: 72, y: 690, width: 120, height: 14),
+            replacementText: "A much longer replacement that will not fit on the original single short line and must wrap",
+            fontName: "Helvetica",
+            fontSize: 10,
+            textColor: .documentText,
+            alignment: .left
+        )
+        let measured = PDFEditedPageRenderer.measuredBounds(for: operation)
+        XCTAssertGreaterThan(measured.height, sourceBounds.height, "Genuinely longer text must still be allowed to grow, not get pinned to the original height")
+    }
+
+    /// Regression test for a bug caught during review of the height-preservation fix above:
+    /// Match/Paste-format can restyle unchanged text (e.g. to a much larger font) without
+    /// changing the text content or setting `didManuallyResizeWidth`. Blindly trusting
+    /// `sourceBounds.height` (sized for the OLD, smaller font) in that case would clip the
+    /// new, taller text when rendered — the fix must never shrink below what the CURRENT
+    /// font actually needs.
+    func testMeasuredBoundsGrowsHeightWhenUnchangedTextGetsALargerFontViaMatchOrPaste() throws {
+        let sourceBounds = CGRect(x: 72, y: 700, width: 200, height: 14)
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: sourceBounds,
+            sourceText: "Unchanged text",
+            editedBounds: CGRect(x: 72, y: 690, width: 200, height: 14),
+            replacementText: "Unchanged text",
+            fontName: "Helvetica",
+            fontSize: 48,
+            textColor: .documentText,
+            alignment: .left
+        )
+        let measured = PDFEditedPageRenderer.measuredBounds(for: operation)
+        XCTAssertGreaterThan(measured.height, sourceBounds.height, "A much larger font applied to unchanged text must grow the box, not clip into the old font's height")
+    }
+
+    /// Regression coverage for the `unchangedTextHasKnownHeight` height-preservation
+    /// branch under font substitution: `operation.fontName` here is a bogus PostScript
+    /// name that does not resolve via `NSFont(name:size:)` on macOS, forcing
+    /// `ReplacementTextLayout.init` to fall back to `NSFont.systemFont(ofSize:)` (verified
+    /// directly: `NSFont(name: "TotallyBogusFontXYZ-NotReal-9999", size:)` returns nil).
+    /// `sourceBounds.height` here reflects a tiny original PDF font's metrics — nothing
+    /// like the substituted fallback's. The `sourceHeight >= rawCoreTextHeight` guard must
+    /// still catch this and fall through to the normal (fallback-font-driven) padded
+    /// re-measurement, rather than trusting a source height that is now far too short for
+    /// the substituted font and clipping it.
+    func testMeasuredBoundsDoesNotClipWhenFontNameFailsToResolveAndFallsBackToSystemFont() throws {
+        let unresolvedFontName = "TotallyBogusFontXYZ-NotReal-9999"
+        XCTAssertNil(NSFont(name: unresolvedFontName, size: 48), "sanity check: this name must not resolve to an installed font, to force ReplacementTextLayout's fallback path")
+
+        // A tiny source box, consistent with a small original font — the substituted
+        // fallback font drawn at a much larger size needs far more height than this.
+        let sourceBounds = CGRect(x: 72, y: 700, width: 200, height: 10)
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: sourceBounds,
+            sourceText: "Unchanged text",
+            editedBounds: CGRect(x: 72, y: 690, width: 200, height: 10),
+            replacementText: "Unchanged text",
+            fontName: unresolvedFontName,
+            fontSize: 60,
+            textColor: .documentText,
+            alignment: .left
+        )
+        let measured = PDFEditedPageRenderer.measuredBounds(for: operation)
+        XCTAssertGreaterThan(
+            measured.height,
+            sourceBounds.height,
+            "when the requested font fails to resolve and CoreText substitutes a fallback font whose metrics need more height than the original source box, measuredBounds must still grow to fit it, not clip using the stale source height"
+        )
+    }
+
+    /// Regression test for weak/ambiguous confirmations: Match/Copy/Paste/Reset previously
+    /// all reported through `.warning`, the same severity as genuine warnings/hints like
+    /// "Copy a format first" — indistinguishable in the UI. These are confirmations that
+    /// something the user asked for actually happened, so they must report `.success`.
+    func testFormatPainterActionsReportSuccessSeverity() throws {
+        let fixture = try makeInlineEditorFixture(text: "Original text")
+        let match = try XCTUnwrap(inlineEditorButton(in: fixture.overlay, identifier: "inlineEditor.matchNearbyFormat"))
+        match.performClick(nil)
+        XCTAssertEqual(fixture.viewModel.editingStatus?.severity, .success)
+
+        let copy = try XCTUnwrap(inlineEditorButton(in: fixture.overlay, identifier: "inlineEditor.copyNearbyFormat"))
+        copy.performClick(nil)
+        XCTAssertEqual(fixture.viewModel.editingStatus?.severity, .success)
+
+        let apply = try XCTUnwrap(inlineEditorButton(in: fixture.overlay, identifier: "inlineEditor.applyCopiedFormat"))
+        apply.performClick(nil)
+        XCTAssertEqual(fixture.viewModel.editingStatus?.severity, .success)
+
+        let restore = try XCTUnwrap(inlineEditorButton(in: fixture.overlay, identifier: "inlineEditor.restoreOriginalFormat"))
+        restore.performClick(nil)
+        XCTAssertEqual(fixture.viewModel.editingStatus?.severity, .success)
+    }
+
+    func testApplyCopiedFormatWithoutACopyReportsWarningSeverity() throws {
+        let fixture = try makeInlineEditorFixture(text: "Original text")
+        let apply = try XCTUnwrap(inlineEditorButton(in: fixture.overlay, identifier: "inlineEditor.applyCopiedFormat"))
+        apply.performClick(nil)
+        XCTAssertEqual(fixture.viewModel.editingStatus?.severity, .warning)
+    }
+
+    /// Regression test for the "black screen instead of live document rollback" bug: undo
+    /// mutates `combinedPDF` directly with no coordinator involvement, so the document swap
+    /// used to only ever happen via `PDFViewRepresentable.updateNSView`'s naive
+    /// `nsView.document = viewModel.combinedPDF` — no viewport capture/restore. Every
+    /// document swap must now be routed through `syncDocumentPreservingViewport`.
+    func testSyncDocumentPreservingViewportSwapsDocumentAndIsIdempotent() throws {
+        let pdfView = OrifoldPDFView(frame: CGRect(x: 0, y: 0, width: 600, height: 800))
+        let firstDoc = makePDF(pageTexts: ["Page one"])
+        pdfView.document = firstDoc
+        pdfView.layoutDocumentView()
+
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument())
+        let coordinator = PDFViewRepresentable.Coordinator(viewModel: viewModel)
+
+        XCTAssertFalse(coordinator.syncDocumentPreservingViewport(pdfView, newDocument: firstDoc), "Swapping to the SAME document must be a no-op")
+
+        let secondDoc = makePDF(pageTexts: ["Page one, replaced"])
+        XCTAssertTrue(coordinator.syncDocumentPreservingViewport(pdfView, newDocument: secondDoc))
+        XCTAssertTrue(pdfView.document === secondDoc)
     }
 
     func testInlineEditorCommitsParagraphBoundsWidthWhenTextIsShorter() throws {

@@ -46,8 +46,14 @@ struct ReadingCanvas: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .task(id: status.id) {
                         guard !viewModel.hasPendingSignaturePlacement else { return }
-                        guard !status.isError else { return }
-                        try? await Task.sleep(for: .seconds(4))
+                        let autoDismissDelay: Duration?
+                        switch status.severity {
+                        case .success, .info: autoDismissDelay = .seconds(1.75)
+                        case .warning: autoDismissDelay = .seconds(4)
+                        case .error: autoDismissDelay = nil
+                        }
+                        guard let autoDismissDelay else { return }
+                        try? await Task.sleep(for: autoDismissDelay)
                         guard !Task.isCancelled, viewModel.editingStatus?.id == status.id else { return }
                         viewModel.editingStatus = nil
                     }
@@ -178,10 +184,28 @@ private struct EditingStatusBanner: View {
     var status: WorkspaceViewModel.EditingStatus
     var dismiss: () -> Void
 
+    private var iconName: String {
+        switch status.severity {
+        case .success: "checkmark.circle.fill"
+        case .info: "info.circle.fill"
+        case .warning: "exclamationmark.triangle.fill"
+        case .error: "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch status.severity {
+        case .success: .dsSuccessAccent
+        case .info: .dsAccent
+        case .warning: .dsWarningAccent
+        case .error: .dsErrorAccent
+        }
+    }
+
     var body: some View {
         HStack(spacing: .dsSM) {
-            Image(systemName: status.isError ? "exclamationmark.triangle.fill" : "info.circle.fill")
-                .foregroundStyle(status.isError ? Color.dsAnnotationCoral : Color.dsAccent)
+            Image(systemName: iconName)
+                .foregroundStyle(tint)
             Text(status.message)
                 .font(.dsCaption())
                 .foregroundStyle(Color.dsTextPrimary)
@@ -198,11 +222,12 @@ private struct EditingStatusBanner: View {
         }
         .padding(.horizontal, .dsMD)
         .padding(.vertical, .dsSM)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: .dsRadiusMd, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
-                .strokeBorder(Color.dsSeparator, lineWidth: 1)
+            RoundedRectangle(cornerRadius: .dsRadiusMd, style: .continuous)
+                .strokeBorder(tint.opacity(0.35), lineWidth: 1)
         }
+        .shadow(color: .black.opacity(0.16), radius: 12, x: 0, y: 4)
         .frame(maxWidth: 520)
     }
 }
@@ -448,9 +473,11 @@ struct PDFViewRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: OrifoldPDFView, context: Context) {
-        if nsView.document !== viewModel.combinedPDF {
-            nsView.document = viewModel.combinedPDF
-        }
+        // Routed through the coordinator so a document swap triggered by undo/redo (which
+        // mutates `combinedPDF` directly, with no coordinator involvement) preserves the
+        // visible scroll position exactly like a direct inline-edit commit does — see
+        // `syncDocumentPreservingViewport`.
+        context.coordinator.syncDocumentPreservingViewport(nsView, newDocument: viewModel.combinedPDF)
         context.coordinator.viewModel = viewModel
         context.coordinator.inkOverlay.isHidden = (viewModel.currentTool != .ink)
         context.coordinator.inkOverlay.inkColor = viewModel.inkColor
@@ -756,32 +783,55 @@ struct PDFViewRepresentable: NSViewRepresentable {
         /// currentPage can be a different page than the mutation target, so page-based
         /// restoration alone can visibly jump after the document is regenerated.
         private func mutateDocumentPreservingViewport(in pdfView: OrifoldPDFView?, _ mutation: () -> Bool) {
+            guard mutation() else { return }
+            syncDocumentPreservingViewport(pdfView, newDocument: viewModel.combinedPDF)
+        }
+
+        /// Swaps `pdfView.document` to `newDocument` (if it actually changed) while
+        /// preserving the visible scroll position, the same way a direct inline-edit commit
+        /// already did via `mutateDocumentPreservingViewport`. Undo/redo previously bypassed
+        /// this: `WorkspaceViewModel.performUndoCommand()`/`performRedoCommand()` mutate
+        /// `combinedPDF` directly with no coordinator involvement, so the swap only ever
+        /// happened later via `PDFViewRepresentable.updateNSView`'s naive
+        /// `nsView.document = viewModel.combinedPDF` — no viewport capture/restore and no
+        /// explicit `layoutDocumentView()`/`needsDisplay`, which could leave PDFKit showing
+        /// a blank frame while it laid out the new document at its default origin instead of
+        /// the page the user was actually looking at. Routing every document swap (whatever
+        /// triggered it) through this same path fixes that for undo/redo too.
+        @discardableResult
+        func syncDocumentPreservingViewport(_ pdfView: OrifoldPDFView?, newDocument: PDFDocument?) -> Bool {
+            guard let pdfView, pdfView.document !== newDocument else { return false }
             let savedViewportOrigin = visibleDocumentOrigin(in: pdfView)
-            let savedDestination = pdfView?.currentDestination
+            let savedDestination = pdfView.currentDestination
             let savedPageIdx: Int? = {
-                guard let pv = pdfView,
-                      let pg = pv.currentPage,
-                      let doc = pv.document else { return nil }
+                guard let pg = pdfView.currentPage,
+                      let doc = pdfView.document else { return nil }
                 let idx = doc.index(for: pg)
                 return idx == NSNotFound ? nil : idx
             }()
 
-            guard mutation() else { return }
-
-            let newDoc = viewModel.combinedPDF
-            // Always assign; SwiftUI may not have fired updateNSView yet.
-            pdfView?.document = newDoc
-            pdfView?.layoutDocumentView()
+            pdfView.document = newDocument
+            pdfView.layoutDocumentView()
             if let origin = savedViewportOrigin {
                 restoreVisibleDocumentOrigin(origin, in: pdfView)
-            } else if let idx = savedPageIdx, let targetPage = newDoc.page(at: idx) {
+            } else if let idx = savedPageIdx, let newDocument, idx < newDocument.pageCount,
+                      let targetPage = newDocument.page(at: idx) {
+                // NOTE: this raw-index fallback only runs when no scroll/clip view could be
+                // found (rare — e.g. a layout race), and it assumes the page at `idx` in the
+                // OLD document is still "the same page" at `idx` in the NEW one. That holds
+                // for a text-edit-only swap, but not if an undo/redo ALSO changed page count
+                // or order (e.g. undoing a page delete as a separate step from a text edit) —
+                // there is no stable page-identity tracking to correct for that today. Known,
+                // narrow limitation: the bounds check above only prevents an out-of-range
+                // index, not landing on a genuinely different page at a still-valid index.
                 if let dest = savedDestination {
-                    pdfView?.go(to: PDFDestination(page: targetPage, at: dest.point))
+                    pdfView.go(to: PDFDestination(page: targetPage, at: dest.point))
                 } else {
-                    pdfView?.go(to: targetPage)
+                    pdfView.go(to: targetPage)
                 }
             }
-            pdfView?.needsDisplay = true
+            pdfView.needsDisplay = true
+            return true
         }
 
         private func visibleDocumentOrigin(in pdfView: PDFView?) -> CGPoint? {
@@ -2317,6 +2367,9 @@ final class NoteEditorViewController: NSViewController {
     /// past the clamped right edge and rendered off-canvas / unreachable.
     private var actionGroupItems: [(view: NSView, width: CGFloat, gapBefore: CGFloat)] = []
     private var actionGroupWidth: CGFloat = 0
+    /// Recorded so `layoutFormatControls(availableWidth:)` can re-flow these controls onto
+    /// additional rows whenever the toolbar is clamped narrower than its full content width.
+    private var formatLayoutItems: [ToolbarLayoutCursor.Item] = []
     private var editorFontFamily: String
     private var documentFontSize: CGFloat
     private var editorFontTraits: NSFontTraitMask
@@ -2427,6 +2480,14 @@ final class NoteEditorViewController: NSViewController {
         guard !didFinish else { return }
         didFinish = true
         removeFromSuperview()
+        // Without this, first responder is left dangling on this now-detached overlay's
+        // textView until AppKit's next natural responder resolution (often deferred until
+        // the next click/keydown). Since SwiftUI's `\.undoManager` — read fresh by both
+        // ContentView and the Edit-menu commands — resolves from the CURRENT key window's
+        // first-responder chain, a dangling responder right after closing an edit could
+        // make Undo see no undo manager (or a different one) than the one that actually
+        // recorded the edit, reporting "nothing to undo" even immediately after one.
+        pdfView?.window?.makeFirstResponder(pdfView)
         completion(.cancel)
     }
 
@@ -2576,11 +2637,26 @@ final class NoteEditorViewController: NSViewController {
     /// between logical groups so the toolbar reads as clusters of related actions rather
     /// than one long undifferentiated row.
     private final class ToolbarLayoutCursor {
+        enum ItemKind {
+            case control(NSView)
+            case divider(NSBox)
+        }
+        struct Item {
+            let kind: ItemKind
+            let width: CGFloat
+            let gapBefore: CGFloat
+            let gapAfter: CGFloat
+        }
+
         let toolbar: NSView
         var x: CGFloat
         private let edgeInset: CGFloat
         private let controlHeight: CGFloat
         private let controlY: CGFloat
+        /// Every control/divider placed, in order, so the overlay can later re-flow them
+        /// onto additional rows if the single-row layout doesn't fit the available width
+        /// (see `layoutFormatControls(availableWidth:)`).
+        private(set) var items: [Item] = []
 
         init(toolbar: NSView, edgeInset: CGFloat, controlHeight: CGFloat, controlY: CGFloat) {
             self.toolbar = toolbar
@@ -2596,6 +2672,7 @@ final class NoteEditorViewController: NSViewController {
             view.frame = frame
             toolbar.addSubview(view)
             x = frame.maxX + gapAfter
+            items.append(Item(kind: .control(view), width: width, gapBefore: 0, gapAfter: gapAfter))
             return frame
         }
 
@@ -2605,6 +2682,7 @@ final class NoteEditorViewController: NSViewController {
             divider.boxType = .separator
             toolbar.addSubview(divider)
             x += 1 + gapAfter
+            items.append(Item(kind: .divider(divider), width: 1, gapBefore: gapBefore, gapAfter: gapAfter))
         }
 
         var finalWidth: CGFloat { x + edgeInset - 6 }
@@ -2716,7 +2794,7 @@ final class NoteEditorViewController: NSViewController {
         matchFormatButton.bezelStyle = .rounded
         matchFormatButton.font = .systemFont(ofSize: 11)
         matchFormatButton.toolTip = L10n.string("readingCanvas.formatting.matchFormat.tooltip")
-        cursor.place(matchFormatButton, width: 52, gapAfter: 3)
+        cursor.place(matchFormatButton, width: Self.measuredButtonWidth(title: matchFormatButton.title, font: matchFormatButton.font ?? .systemFont(ofSize: 11), minimum: 52), gapAfter: 3)
 
         copyFormatButton.target = self
         copyFormatButton.action = #selector(copyNearbyFormat)
@@ -2726,7 +2804,7 @@ final class NoteEditorViewController: NSViewController {
         copyFormatButton.bezelStyle = .rounded
         copyFormatButton.font = .systemFont(ofSize: 11)
         copyFormatButton.toolTip = L10n.string("readingCanvas.formatting.copyFormat.tooltip")
-        cursor.place(copyFormatButton, width: 48, gapAfter: 3)
+        cursor.place(copyFormatButton, width: Self.measuredButtonWidth(title: copyFormatButton.title, font: copyFormatButton.font ?? .systemFont(ofSize: 11), minimum: 48), gapAfter: 3)
 
         applyFormatButton.target = self
         applyFormatButton.action = #selector(applyCopiedFormat)
@@ -2736,7 +2814,7 @@ final class NoteEditorViewController: NSViewController {
         applyFormatButton.bezelStyle = .rounded
         applyFormatButton.font = .systemFont(ofSize: 11)
         applyFormatButton.toolTip = L10n.string("readingCanvas.formatting.pasteFormat.tooltip")
-        cursor.place(applyFormatButton, width: 50, gapAfter: 3)
+        cursor.place(applyFormatButton, width: Self.measuredButtonWidth(title: applyFormatButton.title, font: applyFormatButton.font ?? .systemFont(ofSize: 11), minimum: 50), gapAfter: 3)
 
         restoreFormatButton.target = self
         restoreFormatButton.action = #selector(restoreOriginalFormat)
@@ -2746,7 +2824,7 @@ final class NoteEditorViewController: NSViewController {
         restoreFormatButton.bezelStyle = .rounded
         restoreFormatButton.font = .systemFont(ofSize: 11)
         restoreFormatButton.toolTip = L10n.string("readingCanvas.formatting.resetFormat.tooltip")
-        cursor.place(restoreFormatButton, width: 50)
+        cursor.place(restoreFormatButton, width: Self.measuredButtonWidth(title: restoreFormatButton.title, font: restoreFormatButton.font ?? .systemFont(ofSize: 11), minimum: 50))
 
         // Build the commit/cancel/delete group but DO NOT place it inline: record it so
         // `layoutActionGroup(inWidth:)` can pin it to the toolbar's right edge, keeping it
@@ -2769,7 +2847,7 @@ final class NoteEditorViewController: NSViewController {
         cancel.font = .systemFont(ofSize: 11)
         cancel.toolTip = L10n.string("readingCanvas.formatting.discardEdit.tooltip")
         toolbar.addSubview(cancel)
-        actionGroupItems.append((cancel, 58, 8))
+        actionGroupItems.append((cancel, Self.measuredButtonWidth(title: cancel.title, font: cancel.font ?? .systemFont(ofSize: 11), minimum: 58), 8))
 
         let done = NSButton(title: L10n.string("readingCanvas.formatting.doneEdit.button"), target: self, action: #selector(commitButton))
         done.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: L10n.string("readingCanvas.formatting.doneEdit.accessibilityDescription"))
@@ -2780,11 +2858,13 @@ final class NoteEditorViewController: NSViewController {
         done.keyEquivalent = "\r"
         done.toolTip = L10n.string("readingCanvas.formatting.saveEdit.tooltip")
         toolbar.addSubview(done)
-        actionGroupItems.append((done, 62, 6))
+        // Extra padding accounts for the leading checkmark icon this button also shows.
+        actionGroupItems.append((done, Self.measuredButtonWidth(title: done.title, font: done.font ?? .systemFont(ofSize: 11, weight: .semibold), minimum: 62, horizontalPadding: 34), 6))
 
         actionGroupWidth = actionGroupItems.reduce(0) { $0 + $1.gapBefore + $1.width }
         // Full intrinsic width: left/format group + a divider gap + the action group.
         toolbarContentWidth = cursor.finalWidth + 12 + actionGroupWidth
+        formatLayoutItems = cursor.items
         refreshColorPopup()
         refreshSizeControls()
     }
@@ -2801,12 +2881,70 @@ final class NoteEditorViewController: NSViewController {
         }
     }
 
-    private var toolbarSize: CGSize {
-        CGSize(width: toolbarContentWidth, height: 42)
+    /// Re-flows the family/size/bold/italic/underline/align/color/signature/match/copy/
+    /// paste/reset controls for the given available toolbar width, wrapping overflow onto
+    /// additional rows stacked above row 0 rather than letting them extend past the
+    /// toolbar's own (possibly clamped-narrower-than-content) bounds. Left uncapped, those
+    /// controls previously either rendered entirely off the visible/interactive toolbar (a
+    /// point beyond a view's own bounds is never hit-tested, per `NSView.hitTest`), or —
+    /// worse — landed underneath the right-pinned action group added later in z-order,
+    /// silently swallowing clicks meant for the control drawn beneath it. Both were
+    /// confirmed empirically: at a 520pt-wide canvas (inspector open), Match/Copy/Paste/
+    /// Reset sat entirely past the toolbar's right edge, and the color-family popup was
+    /// covered by the Cancel/Done buttons despite technically being in-bounds.
+    /// Row 0 (bottom row, y=8) is shared with the always-visible action group, so it only
+    /// gets the width left over after reserving that group's space; every additional row
+    /// has the toolbar's full width to itself. Returns the row count used, so the caller
+    /// can size the toolbar's height to fit.
+    @discardableResult
+    private func layoutFormatControls(availableWidth: CGFloat) -> Int {
+        let edgeInset: CGFloat = 8
+        let rowHeight: CGFloat = 26
+        let rowSlot: CGFloat = 32
+        let row0MaxWidth = max(edgeInset + 60, availableWidth - actionGroupWidth - 12)
+
+        var row = 0
+        var x = edgeInset
+        var rowMaxWidth = row0MaxWidth
+
+        for item in formatLayoutItems {
+            switch item.kind {
+            case .divider(let box):
+                // Never lead a row with a divider hairline, and wrap ahead of one that
+                // wouldn't fit rather than letting it (and whatever follows) overflow.
+                if x > edgeInset, x + item.gapBefore + 1 > rowMaxWidth {
+                    row += 1
+                    x = edgeInset
+                    rowMaxWidth = availableWidth
+                }
+                if x <= edgeInset {
+                    box.isHidden = true
+                    continue
+                }
+                box.isHidden = false
+                x += item.gapBefore
+                box.frame = CGRect(x: x, y: CGFloat(row) * rowSlot + 5, width: 1, height: rowHeight - 4)
+                x += 1 + item.gapAfter
+            case .control(let view):
+                if x > edgeInset, x + item.width > rowMaxWidth {
+                    row += 1
+                    x = edgeInset
+                    rowMaxWidth = availableWidth
+                }
+                view.frame = CGRect(x: x, y: CGFloat(row) * rowSlot + 8, width: item.width, height: rowHeight)
+                x = view.frame.maxX + item.gapAfter
+            }
+        }
+        return row + 1
+    }
+
+    private func toolbarHeight(forRowCount rowCount: Int) -> CGFloat {
+        10 + 32 * CGFloat(max(1, rowCount))
     }
 
     private func setToolbarFrame(_ frame: CGRect) {
         toolbar.frame = frame
+        layoutFormatControls(availableWidth: frame.width)
         layoutActionGroup(inWidth: frame.width)
     }
 
@@ -2861,9 +2999,9 @@ final class NoteEditorViewController: NSViewController {
     /// canvas — including the narrower canvas that results when the inspector panel is
     /// open, since `bounds` here already reflects that shrunk width.
     private func toolbarFrame(near editorRect: CGRect) -> CGRect {
-        let preferredSize = toolbarSize
-        let width = min(preferredSize.width, max(320, bounds.width - 16))
-        let size = CGSize(width: width, height: preferredSize.height)
+        let width = min(toolbarContentWidth, max(320, bounds.width - 16))
+        let rowCount = layoutFormatControls(availableWidth: width)
+        let size = CGSize(width: width, height: toolbarHeight(forRowCount: rowCount))
         let x = min(max(editorRect.midX - size.width / 2, 8), max(8, bounds.width - size.width - 8))
         let aboveY = editorRect.maxY + 8
         let y = aboveY + size.height < bounds.height ? aboveY : max(8, editorRect.minY - size.height - 8)
@@ -3118,7 +3256,7 @@ final class NoteEditorViewController: NSViewController {
 
     @objc private func matchNearbyFormat() {
         applySourceFormat(markStyleChange: true)
-        viewModel?.showEditMessage("Matched nearby text style, margins, and wrapping. Press Done to save it.", isError: false)
+        viewModel?.showEditMessage("Matched nearby text style, margins, and wrapping. Press Done to save it.", severity: .success)
         refocusEditor()
     }
 
@@ -3129,19 +3267,19 @@ final class NoteEditorViewController: NSViewController {
     @objc private func copyNearbyFormat() {
         viewModel?.copiedInlineTextFormat = sourceFormat
         viewModel?.isInlineTextFormatPainterArmed = true
-        viewModel?.showEditMessage("Copied nearby PDF text style. Click another text edit to paste it automatically, or press Paste style here.", isError: false)
+        viewModel?.showEditMessage("Copied nearby PDF text style. Click another text edit to paste it automatically, or press Paste style here.", severity: .success)
         refocusEditor()
     }
 
     @objc private func applyCopiedFormat() {
         guard let format = viewModel?.copiedInlineTextFormat else {
-            viewModel?.showEditMessage("Copy style first, then open another text edit and press Paste style.", isError: false)
+            viewModel?.showEditMessage("Copy a format first, then open another text edit and press Paste style.", severity: .warning)
             refocusEditor()
             return
         }
         apply(format: format, markStyleChange: true)
         viewModel?.isInlineTextFormatPainterArmed = false
-        viewModel?.showEditMessage("Pasted copied style. Press Done to save it.", isError: false)
+        viewModel?.showEditMessage("Pasted copied style. Press Done to save it.", severity: .success)
         refocusEditor()
     }
 
@@ -3151,7 +3289,7 @@ final class NoteEditorViewController: NSViewController {
               let format = viewModel.copiedInlineTextFormat else { return }
         apply(format: format, markStyleChange: true)
         viewModel.isInlineTextFormatPainterArmed = false
-        viewModel.showEditMessage("Pasted copied style onto this edit. Press Done to save it.", isError: false)
+        viewModel.showEditMessage("Pasted copied style onto this edit. Press Done to save it.", severity: .success)
     }
 
     @objc private func restoreOriginalFormat() {
@@ -3159,7 +3297,7 @@ final class NoteEditorViewController: NSViewController {
         didChangeStyle = false
         didRestoreOriginalStyle = true
         viewModel?.isInlineTextFormatPainterArmed = false
-        viewModel?.showEditMessage("Restored original text formatting. Press Done to save it.", isError: false)
+        viewModel?.showEditMessage("Text restored to original. Press Done to save it.", severity: .success)
         refocusEditor()
     }
 
@@ -3505,6 +3643,16 @@ final class NoteEditorViewController: NSViewController {
             abs(leftAlpha - rightAlpha) <= tolerance
     }
 
+    /// Toolbar button widths were hardcoded pixel constants sized for their English
+    /// titles (e.g. "Reset" at 50pt) — confirmed to overflow real shipped translations
+    /// (French "Réinitialiser" measures ~60.5pt, Spanish "Restablecer" ~62.2pt at the
+    /// toolbar's 11pt system font), clipping the localized label. Measure the actual
+    /// title and grow past the English-sized minimum when the current locale needs it.
+    static func measuredButtonWidth(title: String, font: NSFont, minimum: CGFloat, horizontalPadding: CGFloat = 16) -> CGFloat {
+        let measured = (title as NSString).size(withAttributes: [.font: font]).width
+        return max(minimum, ceil(measured) + horizontalPadding)
+    }
+
     static func editingFamilyName(for font: NSFont, fallback: String) -> String {
         if let family = font.familyName, !family.isEmpty {
             return family
@@ -3649,6 +3797,9 @@ final class NoteEditorViewController: NSViewController {
             )
         }
         removeFromSuperview()
+        // See the comment in `cancel()`: restores a stable first responder so the document
+        // undo manager resolves correctly right after committing.
+        pdfView.window?.makeFirstResponder(pdfView)
         completion(.commit(result))
     }
 
@@ -3721,6 +3872,9 @@ final class NoteEditorViewController: NSViewController {
         guard !didFinish else { return }
         didFinish = true
         removeFromSuperview()
+        // See the comment in `cancel()`: restores a stable first responder so the document
+        // undo manager resolves correctly right after reverting.
+        pdfView?.window?.makeFirstResponder(pdfView)
         completion(.revertToOriginal)
     }
 

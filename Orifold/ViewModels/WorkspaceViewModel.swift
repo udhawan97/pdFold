@@ -263,9 +263,9 @@ final class WorkspaceViewModel {
                 }
                 isShowingSignaturePalette = false
                 clearPendingSignaturePlacement()
-                showEditMessage(L10n.string("status.readerMode.on"), isError: false)
+                showEditMessage(L10n.string("status.readerMode.on"), severity: .info)
             } else {
-                showEditMessage(L10n.string("status.readerMode.off"), isError: false)
+                showEditMessage(L10n.string("status.readerMode.off"), severity: .info)
             }
         }
     }
@@ -386,22 +386,42 @@ final class WorkspaceViewModel {
     }
 
     struct EditingStatus: Identifiable, Equatable {
+        enum Severity: Equatable {
+            /// A confirmation that something the user asked for actually happened
+            /// ("Format copied", "Matched nearby formatting") — distinct from `.warning`
+            /// so it doesn't read as a caution/hint.
+            case success
+            case info
+            case warning
+            case error
+        }
+
         let id = UUID()
         var message: String
-        var isError: Bool
+        var severity: Severity
+
+        var isError: Bool { severity == .error }
+
+        static func success(_ message: String) -> EditingStatus {
+            EditingStatus(message: message, severity: .success)
+        }
+
+        static func info(_ message: String) -> EditingStatus {
+            EditingStatus(message: message, severity: .info)
+        }
 
         static func warning(_ message: String) -> EditingStatus {
-            EditingStatus(message: message, isError: false)
+            EditingStatus(message: message, severity: .warning)
         }
 
         static func error(_ message: String) -> EditingStatus {
-            EditingStatus(message: message, isError: true)
+            EditingStatus(message: message, severity: .error)
         }
 
         static func == (lhs: EditingStatus, rhs: EditingStatus) -> Bool {
             lhs.id == rhs.id &&
             lhs.message == rhs.message &&
-            lhs.isError == rhs.isError
+            lhs.severity == rhs.severity
         }
     }
 
@@ -1606,18 +1626,19 @@ final class WorkspaceViewModel {
     func performUndoCommand() {
         guard canPerformMutatingAction() else { return }
         guard let undoManager else {
-            showEditMessage(L10n.string("status.undo.nothingToUndo"), isError: false)
+            showEditMessage(L10n.string("status.undo.nothingToUndo"), severity: .info)
             return
         }
         guard undoManager.canUndo else {
-            showEditMessage(L10n.string("status.undo.nothingLeftToUndo"), isError: false)
+            showEditMessage(L10n.string("status.undo.nothingLeftToUndo"), severity: .info)
             return
         }
 
         undoManager.undo()
+        disarmFormatPainter()
 
         if !undoManager.canUndo {
-            showEditMessage(L10n.string("status.undo.backAtBeginning"), isError: false)
+            showEditMessage(L10n.string("status.undo.backAtBeginning"), severity: .info)
         }
     }
 
@@ -1625,6 +1646,18 @@ final class WorkspaceViewModel {
         guard canPerformMutatingAction() else { return }
         guard let undoManager, undoManager.canRedo else { return }
         undoManager.redo()
+        disarmFormatPainter()
+    }
+
+    /// Undo/redo is a strong, explicit signal the user is backing out of recent actions —
+    /// silently auto-applying a copied format (armed via "Copy" before the undo/redo) to
+    /// the next unrelated edit the user opens would be more surprising than helpful right
+    /// after rolling the document back or forward. Format-painter state armed BEFORE the
+    /// undo/redo is no longer meaningfully tied to what the user is looking at afterward.
+    private func disarmFormatPainter() {
+        guard isInlineTextFormatPainterArmed else { return }
+        isInlineTextFormatPainterArmed = false
+        copiedInlineTextFormat = nil
     }
 
     #if DEBUG
@@ -1801,7 +1834,7 @@ final class WorkspaceViewModel {
                         vm.restore(snapshot)
                     }
                     self.undoManager?.setActionName("Make searchable")
-                    self.editingStatus = .warning(L10n.string("status.ocr.searchableNow"))
+                    self.editingStatus = .success(L10n.string("status.ocr.searchableNow"))
                 }
             } catch {
                 await MainActor.run {
@@ -2688,6 +2721,10 @@ final class WorkspaceViewModel {
 
     func showEditWarning(_ warning: PDFTextEditWarning) {
         editingStatus = .warning(warning.message)
+    }
+
+    func showEditMessage(_ message: String, severity: EditingStatus.Severity) {
+        editingStatus = EditingStatus(message: message, severity: severity)
     }
 
     func showEditMessage(_ message: String, isError: Bool = false) {
@@ -3740,7 +3777,7 @@ final class WorkspaceViewModel {
                     self.activeCompressionTask = nil
                     self.activeCompressionCancellation = nil
                     self.activeCompressionID = nil
-                    self.editingStatus = .warning(self.compressionSummary(result))
+                    self.editingStatus = .success(self.compressionSummary(result))
                 }
             } catch {
                 await MainActor.run {
@@ -3834,7 +3871,7 @@ final class WorkspaceViewModel {
                     self.activeCompressionTask = nil
                     self.activeCompressionCancellation = nil
                     self.activeCompressionID = nil
-                    self.editingStatus = .warning(self.compressionSummary(output.compressionResult))
+                    self.editingStatus = .success(self.compressionSummary(output.compressionResult))
                 }
             } catch {
                 await MainActor.run {

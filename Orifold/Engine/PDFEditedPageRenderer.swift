@@ -35,7 +35,6 @@ enum PDFEditedPageRenderer {
         context.beginPDFPage([:] as CFDictionary)
         context.saveGState()
         context.translateBy(x: -mediaBox.minX, y: -mediaBox.minY)
-        drawRasterizedPageBackground(from: page, mediaBox: mediaBox, in: context)
         drawPageBackground(from: page, unrotatedPage: unrotatedPage, mediaBox: mediaBox, in: context)
 
         for operation in operations {
@@ -60,40 +59,6 @@ enum PDFEditedPageRenderer {
         }
         newPage.rotation = page.rotation
         return newPage
-    }
-
-    private static func drawRasterizedPageBackground(from page: PDFPage, mediaBox: CGRect, in context: CGContext) {
-        guard let image = renderedRawPageImage(from: page, mediaBox: mediaBox) else { return }
-
-        context.saveGState()
-        context.draw(image, in: mediaBox)
-        context.restoreGState()
-    }
-
-    private static func renderedRawPageImage(from page: PDFPage, mediaBox: CGRect) -> CGImage? {
-        guard mediaBox.width > 0, mediaBox.height > 0 else { return nil }
-
-        let scale: CGFloat = 2
-        let pixelWidth = max(1, Int(ceil(mediaBox.width * scale)))
-        let pixelHeight = max(1, Int(ceil(mediaBox.height * scale)))
-        guard let bitmap = CGContext(
-            data: nil,
-            width: pixelWidth,
-            height: pixelHeight,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            return nil
-        }
-
-        bitmap.setFillColor(NSColor.white.cgColor)
-        bitmap.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
-        bitmap.scaleBy(x: scale, y: scale)
-        bitmap.translateBy(x: -mediaBox.minX, y: -mediaBox.minY)
-        drawPageRef(page, mediaBox: mediaBox, in: bitmap)
-        return bitmap.makeImage()
     }
 
     private static func drawPageBackground(from page: PDFPage, unrotatedPage: PDFPage, mediaBox: CGRect, in context: CGContext) {
@@ -263,9 +228,33 @@ enum PDFEditedPageRenderer {
             }
         }
 
+        // When the replacement is byte-identical to the original PDF text, the original
+        // PDFium-measured height is normally the right answer to prefer over re-deriving
+        // one from `ReplacementTextLayout`'s CoreText-based measurement — CoreText and
+        // PDFium don't necessarily agree on line height/leading for the same font+size, so
+        // re-measuring unchanged text could commit a height a few points off from the
+        // source even though nothing about the content actually changed. But NEVER let this
+        // shrink the box below what CoreText says the CURRENT font/size actually needs:
+        // Match/Paste-format can restyle unchanged text (different font/size) without
+        // touching `didManuallyResizeWidth`, and `measured` above is always computed from
+        // the operation's current (possibly just-changed) font — trusting `sourceHeight`
+        // alone there could clip a newly-larger font into a box sized for the old one. Only
+        // trust it when it's already at least as tall as CoreText's UNPADDED measurement
+        // (comparing against the padded figure would almost always lose, since the source
+        // box is normally a tight fit around its own glyphs with no extra breathing room);
+        // otherwise fall through to the normal padded re-measurement. Genuine edits (text
+        // that actually changed) always fall through to the normal re-measurement below.
+        let sourceHeight = operation.sourceBounds.standardized.height
+        let rawCoreTextHeight = ceil(measured.height)
+        let coreTextHeight = min(max(1, rawCoreTextHeight + 4), heightPageLimit ?? .greatestFiniteMagnitude)
+        let unchangedTextHasKnownHeight = textUnchanged &&
+            sourceHeight >= rawCoreTextHeight &&
+            !operation.didManuallyResizeWidth
         let height = operation.didManuallyResizeHeight
             ? max(1, operation.editedBounds.height)
-            : min(max(1, ceil(measured.height) + 4), heightPageLimit ?? .greatestFiniteMagnitude)
+            : unchangedTextHasKnownHeight
+                ? sourceHeight
+                : coreTextHeight
 
         // Anchor to the box's TOP edge, matching the live inline editor — which grows
         // downward from a fixed top as text wraps (InlineTextEditorOverlay.resizeTextViewHeight).
