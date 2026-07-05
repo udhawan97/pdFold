@@ -289,6 +289,31 @@ remove_build_cache_path() {
     [[ ! -e "$path" && ! -L "$path" ]] || fail "Could not remove SwiftPM build cache: $path"
 }
 
+remove_stray_app_copies() {
+    # Beyond the canonical $INSTALL_DIR, sweep the other common macOS app
+    # locations for any older Orifold copy (current or legacy-named) so a
+    # fresh install never leaves duplicates behind — e.g. a copy dragged to
+    # /Applications by hand, or one left over from before this installer
+    # existed. Best-effort: a location we can't write to (no admin rights
+    # on /Applications) is skipped with a note rather than failing the install.
+    local other_locations=("/Applications")
+    local name candidate loc
+    for loc in "${other_locations[@]}"; do
+        [[ -d "$loc" ]] || continue
+        for name in "$APP_NAME" "${LEGACY_APP_NAMES[@]}"; do
+            candidate="$loc/$name.app"
+            [[ -d "$candidate" ]] || continue
+            print_step "Removing previous install: $candidate"
+            stop_running_app "$name"
+            if /bin/rm -rf "$candidate" 2>>"$LOG_FILE"; then
+                print_note "Removed $candidate"
+            else
+                print_note "Could not remove $candidate — remove it by hand if it's an old copy (may need admin rights)."
+            fi
+        done
+    done
+}
+
 install_staged_app() {
     [[ -d "$STAGED_APP" ]] || fail "No staged app bundle was prepared."
 
@@ -296,6 +321,7 @@ install_staged_app() {
     for legacy_app_name in "${LEGACY_APP_NAMES[@]}"; do
         stop_running_app "$legacy_app_name"
     done
+    remove_stray_app_copies
 
     print_step "Copying app to $INSTALLED_APP"
     /bin/mkdir -p "$INSTALL_DIR"
