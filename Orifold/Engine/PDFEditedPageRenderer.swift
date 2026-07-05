@@ -4,6 +4,13 @@ import Foundation
 import PDFKit
 
 enum PDFEditedPageRenderer {
+    #if DEBUG
+    /// Test hook for the line-pitch preservation logic that lives on `ReplacementTextLayout`.
+    static func testOriginalLinePitch(for operation: PDFTextEditOperation) -> CGFloat? {
+        ReplacementTextLayout.originalLinePitch(for: operation)
+    }
+    #endif
+
     static func regeneratedPage(from page: PDFPage, applying operations: [PDFTextEditOperation]) -> PDFPage? {
         guard !operations.isEmpty else { return page.copy() as? PDFPage }
         let mediaBox = page.bounds(for: .mediaBox)
@@ -444,7 +451,8 @@ private struct ReplacementTextLayout {
         let ctFont = CTFontCreateWithFontDescriptor(font.fontDescriptor as CTFontDescriptor, font.pointSize, nil)
         let paragraph = Self.paragraphStyle(
             alignment: operation.alignment.ctTextAlignment,
-            lineBreakMode: .byWordWrapping
+            lineBreakMode: .byWordWrapping,
+            lineHeight: Self.originalLinePitch(for: operation)
         )
         var attributes: [NSAttributedString.Key: Any] = [
             NSAttributedString.Key(kCTFontAttributeName as String): ctFont,
@@ -458,24 +466,73 @@ private struct ReplacementTextLayout {
         framesetter = CTFramesetterCreateWithAttributedString(attributedString)
     }
 
-    private static func paragraphStyle(alignment: CTTextAlignment, lineBreakMode: CTLineBreakMode) -> CTParagraphStyle {
+    /// The original PDF paragraph's line pitch (baseline-to-baseline distance), derived from
+    /// the operation's captured per-line bounds. CoreText otherwise lays wrapped lines out
+    /// with its own default leading, which rarely matches the document's — producing the
+    /// "line height / paragraph spacing looks different after an edit" mismatch. Returns nil
+    /// for single-line sources (nothing to preserve) or when the measured pitch is
+    /// implausible relative to the font size (so a mis-detected line grouping can't force a
+    /// pathological leading that clips glyphs).
+    fileprivate static func originalLinePitch(for operation: PDFTextEditOperation) -> CGFloat? {
+        let lines = operation.sourceLineBounds.map { $0.standardized }
+        guard lines.count >= 2, operation.fontSize > 0 else { return nil }
+        // Page space is y-up, so the topmost line has the largest minY. Sort top→bottom and
+        // measure successive top-edge gaps; the median absorbs an outlier row.
+        let tops = lines.map(\.maxY).sorted(by: >)
+        var gaps: [CGFloat] = []
+        for index in 1..<tops.count {
+            let gap = tops[index - 1] - tops[index]
+            if gap > 0 { gaps.append(gap) }
+        }
+        guard !gaps.isEmpty else { return nil }
+        let pitch = gaps.sorted()[gaps.count / 2]
+        // Guard against mis-grouped lines: a real single-spaced paragraph sits around
+        // 1.0–1.6× the font size. Reject anything outside a generous band rather than
+        // committing a leading that would visibly overlap or balloon the paragraph.
+        guard pitch >= operation.fontSize * 0.9, pitch <= operation.fontSize * 3 else { return nil }
+        return pitch
+    }
+
+    private static func paragraphStyle(
+        alignment: CTTextAlignment,
+        lineBreakMode: CTLineBreakMode,
+        lineHeight: CGFloat?
+    ) -> CTParagraphStyle {
         var alignment = alignment
         var lineBreakMode = lineBreakMode
+        var minHeight = lineHeight ?? 0
+        var maxHeight = lineHeight ?? 0
         return withUnsafeBytes(of: &alignment) { alignmentBytes in
             withUnsafeBytes(of: &lineBreakMode) { lineBreakBytes in
-                let settings = [
-                    CTParagraphStyleSetting(
-                        spec: .alignment,
-                        valueSize: MemoryLayout<CTTextAlignment>.size,
-                        value: alignmentBytes.baseAddress!
-                    ),
-                    CTParagraphStyleSetting(
-                        spec: .lineBreakMode,
-                        valueSize: MemoryLayout<CTLineBreakMode>.size,
-                        value: lineBreakBytes.baseAddress!
-                    )
-                ]
-                return CTParagraphStyleCreate(settings, settings.count)
+                withUnsafeBytes(of: &minHeight) { minBytes in
+                    withUnsafeBytes(of: &maxHeight) { maxBytes in
+                        var settings = [
+                            CTParagraphStyleSetting(
+                                spec: .alignment,
+                                valueSize: MemoryLayout<CTTextAlignment>.size,
+                                value: alignmentBytes.baseAddress!
+                            ),
+                            CTParagraphStyleSetting(
+                                spec: .lineBreakMode,
+                                valueSize: MemoryLayout<CTLineBreakMode>.size,
+                                value: lineBreakBytes.baseAddress!
+                            )
+                        ]
+                        if lineHeight != nil {
+                            settings.append(CTParagraphStyleSetting(
+                                spec: .minimumLineHeight,
+                                valueSize: MemoryLayout<CGFloat>.size,
+                                value: minBytes.baseAddress!
+                            ))
+                            settings.append(CTParagraphStyleSetting(
+                                spec: .maximumLineHeight,
+                                valueSize: MemoryLayout<CGFloat>.size,
+                                value: maxBytes.baseAddress!
+                            ))
+                        }
+                        return CTParagraphStyleCreate(settings, settings.count)
+                    }
+                }
             }
         }
     }
