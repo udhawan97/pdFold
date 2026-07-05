@@ -2286,6 +2286,12 @@ final class NoteEditorViewController: NSViewController {
     private let applyFormatButton = NSButton(title: "", target: nil, action: nil)
     private let restoreFormatButton = NSButton(title: "", target: nil, action: nil)
     private var toolbarContentWidth: CGFloat = 640
+    /// The commit/cancel/delete controls, recorded so they can be re-pinned to the
+    /// toolbar's right edge whenever it is clamped narrower than its full content width
+    /// (e.g. the inspector panel is open). Without this the action controls were laid out
+    /// past the clamped right edge and rendered off-canvas / unreachable.
+    private var actionGroupItems: [(view: NSView, width: CGFloat, gapBefore: CGFloat)] = []
+    private var actionGroupWidth: CGFloat = 0
     private var editorFontFamily: String
     private var documentFontSize: CGFloat
     private var editorFontTraits: NSFontTraitMask
@@ -2485,6 +2491,9 @@ final class NoteEditorViewController: NSViewController {
         textView.onUndoShortcut = { [weak self] in
             self?.performEditorUndo()
         }
+        textView.onRedoShortcut = { [weak self] in
+            self?.performEditorRedo()
+        }
         moveHandle.onDrag = { [weak self] delta in
             self?.moveEditor(by: delta)
         }
@@ -2635,76 +2644,112 @@ final class NoteEditorViewController: NSViewController {
         signature.bezelStyle = .rounded
         signature.toolTip = "Insert a signature box here"
         cursor.place(signature, width: 30)
+        cursor.addDivider()
 
+        // The four format-painter actions were four near-identical icon-only glyphs
+        // (eyedropper / paintbrush / paintbrush.fill / u-turn) that users could not tell
+        // apart. Plain text labels make each one self-explanatory; identifiers are kept so
+        // the actions remain individually addressable.
         matchFormatButton.target = self
         matchFormatButton.action = #selector(matchNearbyFormat)
         matchFormatButton.identifier = NSUserInterfaceItemIdentifier("inlineEditor.matchNearbyFormat")
-        matchFormatButton.image = NSImage(systemSymbolName: "eyedropper", accessibilityDescription: "Sample nearby style")
-        matchFormatButton.imagePosition = .imageOnly
+        matchFormatButton.title = "Match"
+        matchFormatButton.imagePosition = .noImage
         matchFormatButton.bezelStyle = .rounded
-        matchFormatButton.toolTip = "Sample the nearby PDF text's style (font, color, alignment, margins, wrapping) and apply it to this edit."
-        cursor.place(matchFormatButton, width: 30)
+        matchFormatButton.font = .systemFont(ofSize: 11)
+        matchFormatButton.toolTip = "Match the nearby PDF text's full style — font, size, color, alignment, margins and wrapping — for this edit."
+        cursor.place(matchFormatButton, width: 52, gapAfter: 3)
 
         copyFormatButton.target = self
         copyFormatButton.action = #selector(copyNearbyFormat)
         copyFormatButton.identifier = NSUserInterfaceItemIdentifier("inlineEditor.copyNearbyFormat")
-        copyFormatButton.image = NSImage(systemSymbolName: "paintbrush", accessibilityDescription: "Copy style")
-        copyFormatButton.imagePosition = .imageOnly
+        copyFormatButton.title = "Copy"
+        copyFormatButton.imagePosition = .noImage
         copyFormatButton.bezelStyle = .rounded
-        copyFormatButton.toolTip = "Copy the nearby PDF text's style to reuse elsewhere. Click another text edit to paste it, or press Paste style here."
-        cursor.place(copyFormatButton, width: 30)
+        copyFormatButton.font = .systemFont(ofSize: 11)
+        copyFormatButton.toolTip = "Copy the nearby PDF text's style so you can paste it onto another text edit."
+        cursor.place(copyFormatButton, width: 48, gapAfter: 3)
 
         applyFormatButton.target = self
         applyFormatButton.action = #selector(applyCopiedFormat)
         applyFormatButton.identifier = NSUserInterfaceItemIdentifier("inlineEditor.applyCopiedFormat")
-        applyFormatButton.image = NSImage(systemSymbolName: "paintbrush.fill", accessibilityDescription: "Paste copied style")
-        applyFormatButton.imagePosition = .imageOnly
+        applyFormatButton.title = "Paste"
+        applyFormatButton.imagePosition = .noImage
         applyFormatButton.bezelStyle = .rounded
-        applyFormatButton.toolTip = "Paste the copied style onto this edit."
-        cursor.place(applyFormatButton, width: 30)
+        applyFormatButton.font = .systemFont(ofSize: 11)
+        applyFormatButton.toolTip = "Paste the previously copied style onto this edit."
+        cursor.place(applyFormatButton, width: 50, gapAfter: 3)
 
         restoreFormatButton.target = self
         restoreFormatButton.action = #selector(restoreOriginalFormat)
         restoreFormatButton.identifier = NSUserInterfaceItemIdentifier("inlineEditor.restoreOriginalFormat")
-        restoreFormatButton.image = NSImage(systemSymbolName: "arrow.uturn.backward.circle", accessibilityDescription: "Restore original style")
-        restoreFormatButton.imagePosition = .imageOnly
+        restoreFormatButton.title = "Reset"
+        restoreFormatButton.imagePosition = .noImage
         restoreFormatButton.bezelStyle = .rounded
-        restoreFormatButton.toolTip = "Undo style changes and restore this edit's original detected formatting."
-        cursor.place(restoreFormatButton, width: 30)
-        cursor.addDivider()
+        restoreFormatButton.font = .systemFont(ofSize: 11)
+        restoreFormatButton.toolTip = "Reset this edit back to the original detected formatting."
+        cursor.place(restoreFormatButton, width: 50)
 
+        // Build the commit/cancel/delete group but DO NOT place it inline: record it so
+        // `layoutActionGroup(inWidth:)` can pin it to the toolbar's right edge, keeping it
+        // reachable even when the toolbar is clamped narrower than its full content.
+        actionGroupItems = []
         if isExistingEdit {
             let revert = NSButton(title: "", target: self, action: #selector(revertButton))
             revert.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Remove this edit")
             revert.imagePosition = .imageOnly
             revert.bezelStyle = .rounded
+            revert.contentTintColor = .systemRed
             revert.toolTip = "Remove this edit entirely and restore the original PDF text"
-            cursor.place(revert, width: 30)
+            toolbar.addSubview(revert)
+            actionGroupItems.append((revert, 30, 0))
         }
 
-        let cancel = NSButton(title: "", target: self, action: #selector(cancelButton))
-        cancel.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Cancel")
-        cancel.imagePosition = .imageOnly
+        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelButton))
+        cancel.imagePosition = .noImage
         cancel.bezelStyle = .rounded
-        cancel.toolTip = "Cancel (Esc)"
-        cursor.place(cancel, width: 30)
+        cancel.font = .systemFont(ofSize: 11)
+        cancel.toolTip = "Discard this edit (Esc)"
+        toolbar.addSubview(cancel)
+        actionGroupItems.append((cancel, 58, 8))
 
         let done = NSButton(title: "Done", target: self, action: #selector(commitButton))
         done.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "Done")
-        done.imagePosition = .imageOnly
+        done.imagePosition = .imageLeading
         done.bezelStyle = .rounded
         done.contentTintColor = .dsAccentNS
+        done.font = .systemFont(ofSize: 11, weight: .semibold)
         done.keyEquivalent = "\r"
-        done.toolTip = "Done — save this edit (⏎)"
-        cursor.place(done, width: 34, gapAfter: 0)
+        done.toolTip = "Save this edit (⏎)"
+        toolbar.addSubview(done)
+        actionGroupItems.append((done, 62, 6))
 
-        toolbarContentWidth = cursor.finalWidth
+        actionGroupWidth = actionGroupItems.reduce(0) { $0 + $1.gapBefore + $1.width }
+        // Full intrinsic width: left/format group + a divider gap + the action group.
+        toolbarContentWidth = cursor.finalWidth + 12 + actionGroupWidth
         refreshColorPopup()
         refreshSizeControls()
     }
 
+    /// Pins the commit/cancel/delete group to the right edge of the toolbar for the given
+    /// laid-out width. Called every time the toolbar frame is (re)positioned so the action
+    /// controls are always inside the visible strip, never pushed off-canvas.
+    private func layoutActionGroup(inWidth width: CGFloat) {
+        var rightEdge = width - 8
+        for item in actionGroupItems.reversed() {
+            let x = rightEdge - item.width
+            item.view.frame = CGRect(x: x, y: 8, width: item.width, height: 26)
+            rightEdge = x - item.gapBefore
+        }
+    }
+
     private var toolbarSize: CGSize {
         CGSize(width: toolbarContentWidth, height: 42)
+    }
+
+    private func setToolbarFrame(_ frame: CGRect) {
+        toolbar.frame = frame
+        layoutActionGroup(inWidth: frame.width)
     }
 
     private func layoutEditor() {
@@ -2749,7 +2794,7 @@ final class NoteEditorViewController: NSViewController {
         patchView.frame = originalSourceRect.insetBy(dx: -2, dy: -2)
         textView.frame = editorRect
         updateTextContainerWidth()
-        toolbar.frame = toolbarFrame(near: editorRect)
+        setToolbarFrame(toolbarFrame(near: editorRect))
         positionEditorChrome(for: editorRect)
         resizeTextViewHeight()
     }
@@ -2782,7 +2827,7 @@ final class NoteEditorViewController: NSViewController {
         }
         frame.origin.y = editorTopY - frame.height
         textView.frame = frame
-        toolbar.frame = toolbarFrame(near: frame)
+        setToolbarFrame(toolbarFrame(near: frame))
         positionEditorChrome(for: frame)
     }
 
@@ -2883,7 +2928,7 @@ final class NoteEditorViewController: NSViewController {
         frame.origin.y += delta.y
         textView.frame = frame
         editorTopY = frame.maxY
-        toolbar.frame = toolbarFrame(near: frame)
+        setToolbarFrame(toolbarFrame(near: frame))
         positionEditorChrome(for: frame)
         if let pdfView, let page {
             manualEditorPageOrigin = pdfView.convert(convert(frame, to: pdfView), to: page).standardized.origin
@@ -3092,6 +3137,15 @@ final class NoteEditorViewController: NSViewController {
         }
     }
 
+    private func performEditorRedo() {
+        if textView.undoManager?.canRedo == true {
+            textView.undoManager?.redo()
+            resizeTextViewHeight()
+        } else {
+            refocusEditor()
+        }
+    }
+
     private func refocusEditor() {
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.didFinish else { return }
@@ -3112,14 +3166,22 @@ final class NoteEditorViewController: NSViewController {
             .foregroundColor: editorTextColor
         ]
         if let storage = textView.textStorage {
+            // Reapplying font/color/alignment over the whole range on every keystroke and
+            // every format toggle would register spurious entries on the text view's undo
+            // stack, so ⌘Z would revert an attribute reapply instead of the user's last
+            // typed characters. Suppress undo registration for this programmatic restyle so
+            // the local undo stack holds only the user's own text edits (native TextEdit
+            // behaviour). The user's explicit format toggles are still committed at Done.
             let selectedRange = textView.selectedRange()
             let fullRange = NSRange(location: 0, length: storage.length)
+            textView.undoManager?.disableUndoRegistration()
             storage.setAttributes([
                 .font: font,
                 .foregroundColor: editorTextColor
             ], range: fullRange)
             textView.setAlignment(editorAlignment, range: fullRange)
             textView.setSelectedRange(selectedRange)
+            textView.undoManager?.enableUndoRegistration()
         }
         resizeTextViewHeight()
     }
@@ -3563,6 +3625,7 @@ final class InlineEditableTextView: NSTextView {
     var onMoveDrag: ((CGPoint) -> Void)?
     var onEscape: (() -> Void)?
     var onUndoShortcut: (() -> Void)?
+    var onRedoShortcut: (() -> Void)?
     private var isMoving = false
     private var lastPoint: CGPoint?
 
@@ -3573,7 +3636,14 @@ final class InlineEditableTextView: NSTextView {
     override func keyDown(with event: NSEvent) {
         if event.charactersIgnoringModifiers?.lowercased() == "z",
            !event.modifierFlags.intersection([.command, .control]).isEmpty {
-            onUndoShortcut?()
+            // ⌘⇧Z redoes, ⌘Z undoes — matching TextEdit/Word. Previously any "z" with a
+            // command/control modifier (including the redo chord) routed to undo, so redo
+            // was impossible inside the editor.
+            if event.modifierFlags.contains(.shift) {
+                onRedoShortcut?()
+            } else {
+                onUndoShortcut?()
+            }
             return
         }
         super.keyDown(with: event)

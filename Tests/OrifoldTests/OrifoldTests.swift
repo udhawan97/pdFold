@@ -277,6 +277,36 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertLessThan(leftColumn.maxX, rightBlock.bounds.minX)
     }
 
+    func testPDFTextAnalysisClampsWrappedParagraphColumnToItsOwnRightMargin() throws {
+        // Repro for the "text bleeds right after an edit" bug: a full-width body paragraph
+        // whose real right margin sits well inside the page edge (drawn in an x72 w468 box,
+        // so the margin is ~540 on a 612-wide page). Before the fix, assignColumnBounds
+        // defaulted the column right edge to the page edge (~600) when no right-neighbor
+        // existed, so edited text could re-wrap out into the original right margin.
+        let longParagraph = "This paragraph is intentionally searchable and wraps across several lines to establish a clear right margin that sits well inside the page edge so editing its words must never bleed past that margin."
+        let pdf = makePDF(pageTexts: [longParagraph])
+        let data = try pdf.dataRepresentation().unwrap()
+        let engine = PDFTextAnalysisEngine()
+        let page = try XCTUnwrap(pdf.page(at: 0))
+
+        let analysis = engine.analyze(data: data, pageIndex: 0, pageRefID: UUID(), fallbackPage: page)
+        let block = try XCTUnwrap(analysis.blocks.first { $0.text.contains("intentionally searchable") })
+        let column = try XCTUnwrap(block.columnBounds)
+
+        XCTAssertGreaterThanOrEqual(block.lines.count, 2, "fixture paragraph should wrap to multiple lines")
+        // The column must hug the paragraph's own right margin, not extend to the page edge.
+        XCTAssertLessThanOrEqual(
+            column.maxX,
+            block.bounds.maxX + block.fontSize + 2,
+            "wrapped paragraph column should clamp to its own right margin"
+        )
+        XCTAssertLessThan(
+            column.maxX,
+            page.bounds(for: .cropBox).maxX - 40,
+            "wrapped paragraph column must stay well inside the page's right edge"
+        )
+    }
+
     func testPDFTextAnalysisMergesWrappedLinesWithinInterleavedColumns() throws {
         let pdf = makeTwoColumnWrappedPDF()
         let data = try pdf.dataRepresentation().unwrap()
@@ -1091,6 +1121,74 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         let measured = PDFEditedPageRenderer.measuredBounds(for: operation)
 
         XCTAssertEqual(measured.width, paragraphBounds.width, accuracy: 0.01)
+    }
+
+    func testMeasuredBoundsKeepsEditedWrappedParagraphWithinItsColumn() throws {
+        // A genuinely wrapped paragraph (sourceLineBounds.count > 1) whose column has
+        // already been clamped to its own right margin. Editing its words must keep the
+        // box within that column (re-wrapping / adding lines), never grow out to the page
+        // edge. This is the render-side half of the right-margin-bleed fix.
+        let paragraphBounds = CGRect(x: 72, y: 620, width: 396, height: 48)
+        let lineBounds = [
+            CGRect(x: 72, y: 652, width: 396, height: 14),
+            CGRect(x: 72, y: 636, width: 390, height: 14),
+            CGRect(x: 72, y: 620, width: 300, height: 14)
+        ]
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: paragraphBounds,
+            sourceLineBounds: lineBounds,
+            sourceText: "Original wrapped paragraph text spanning three lines within its margin.",
+            editedBounds: paragraphBounds,
+            columnBounds: CGRect(x: 72, y: 0, width: 402, height: 792),
+            replacementText: "Original wrapped paragraph text spanning three lines within its margin, now with several additional edited words appended near the end.",
+            fontName: "Helvetica",
+            fontSize: 12,
+            textColor: .documentText,
+            alignment: .left
+        )
+
+        let measured = PDFEditedPageRenderer.measuredBounds(for: operation, pageBounds: CGRect(x: 0, y: 0, width: 612, height: 792))
+
+        XCTAssertLessThanOrEqual(measured.maxX, 474.01, "edited paragraph must stay within its detected column, not bleed to the page edge")
+        XCTAssertLessThanOrEqual(measured.width, 402.01, "width must stay within the column instead of growing to a single wide line")
+        XCTAssertGreaterThanOrEqual(measured.width, 390, "the box should fill the column and wrap, not shrink to a fragment")
+        XCTAssertGreaterThan(measured.height, 24, "appended text must wrap onto additional lines within the column")
+    }
+
+    func testMeasuredBoundsDoesNotCollapseUnchangedMultiLineParagraphToOneLine() throws {
+        // Reopening an unchanged multi-line paragraph and changing only style commits with
+        // replacementText == sourceText. The single-line width of the whole paragraph is
+        // huge; without the multi-line guard measuredBounds would grow the box to a single
+        // page-wide line, collapsing the paragraph.
+        let paragraphBounds = CGRect(x: 72, y: 620, width: 396, height: 48)
+        let lineBounds = [
+            CGRect(x: 72, y: 652, width: 396, height: 14),
+            CGRect(x: 72, y: 636, width: 390, height: 14),
+            CGRect(x: 72, y: 620, width: 300, height: 14)
+        ]
+        let text = "Original wrapped paragraph text spanning three lines within its established right margin."
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: paragraphBounds,
+            sourceLineBounds: lineBounds,
+            sourceText: text,
+            editedBounds: paragraphBounds,
+            columnBounds: CGRect(x: 72, y: 0, width: 402, height: 792),
+            replacementText: text,
+            fontName: "Helvetica",
+            fontSize: 12,
+            textColor: .documentText,
+            alignment: .left
+        )
+
+        let measured = PDFEditedPageRenderer.measuredBounds(for: operation, pageBounds: CGRect(x: 0, y: 0, width: 612, height: 792))
+
+        XCTAssertLessThanOrEqual(measured.maxX, 474.01, "unchanged multi-line paragraph must not grow to a page-wide single line")
+        XCTAssertLessThanOrEqual(measured.width, 402.01, "unchanged multi-line paragraph must keep its column width, not collapse to one line")
+        XCTAssertGreaterThan(measured.height, 24, "paragraph should keep its multi-line height, not collapse to a single line")
     }
 
     func testMeasuredBoundsPreservesManualResizeGeometry() throws {
@@ -1925,6 +2023,31 @@ final class InlineTextEditPlacementTests: XCTestCase {
         let committed = try XCTUnwrap(fixture.committedEdit())
         XCTAssertTrue(colorsApproximatelyEqual(committed.textColor, sourceFormat.textColor.nsColor))
         XCTAssertFalse(committed.didManuallyChangeStyle)
+    }
+
+    func testInlineEditorKeepsActionButtonsReachableWhenCanvasIsNarrow() throws {
+        // With the inspector panel open the canvas (and thus the editor overlay) is narrow.
+        // The toolbar clamps to the visible width; the Done/Cancel action group must stay
+        // pinned inside it rather than being laid out past the right edge and off-canvas,
+        // which previously made Done/Cancel/Delete unreachable with panels open.
+        let fixture = try makeInlineEditorFixture(
+            text: "Editable paragraph text near the page edge",
+            pdfViewFrame: CGRect(x: 0, y: 0, width: 520, height: 900)
+        )
+        let done = try XCTUnwrap(findSubview(in: fixture.overlay) { (button: NSButton) in
+            button.title == "Done"
+        })
+        let cancel = try XCTUnwrap(findSubview(in: fixture.overlay) { (button: NSButton) in
+            button.title == "Cancel"
+        })
+
+        let doneInOverlay = fixture.overlay.convert(done.bounds, from: done)
+        let cancelInOverlay = fixture.overlay.convert(cancel.bounds, from: cancel)
+
+        XCTAssertLessThanOrEqual(doneInOverlay.maxX, fixture.overlay.bounds.maxX + 0.5, "Done must stay within the visible canvas")
+        XCTAssertGreaterThanOrEqual(doneInOverlay.minX, fixture.overlay.bounds.minX - 0.5, "Done must not be pushed off the left edge")
+        XCTAssertLessThanOrEqual(cancelInOverlay.maxX, fixture.overlay.bounds.maxX + 0.5, "Cancel must stay within the visible canvas")
+        XCTAssertGreaterThan(doneInOverlay.minX, cancelInOverlay.minX, "Done should sit to the right of Cancel in the action group")
     }
 
     func testInlineEditorCommitsParagraphBoundsWidthWhenTextIsShorter() throws {

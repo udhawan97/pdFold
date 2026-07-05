@@ -112,7 +112,13 @@ enum PDFEditedPageRenderer {
             // line just because the detected column or a substituted font came out a bit
             // narrow. A single unbreakable token can't wrap meaningfully either; both may
             // grow toward the page's right margin instead of wrapping mid-thought.
-            if textUnchanged || singleUnbreakableToken, needed > cap {
+            //
+            // But `unwrapped`/`needed` is the *single-line* width of the whole replacement,
+            // and for an already-wrapped multi-line paragraph that is enormous — applying
+            // this growth there would collapse the paragraph onto one page-wide line. So
+            // only grow unchanged text when the source itself was a single line.
+            let sourceWasSingleLine = operation.sourceLineBounds.count <= 1
+            if singleUnbreakableToken || (textUnchanged && sourceWasSingleLine), needed > cap {
                 cap = min(needed, pageLimit ?? needed)
             }
             width = min(max(operation.editedBounds.width, min(needed, cap)), cap)

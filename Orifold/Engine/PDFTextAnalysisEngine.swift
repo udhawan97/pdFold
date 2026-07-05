@@ -279,8 +279,50 @@ final class PDFTextAnalysisEngine {
         let pageBounds = sourcePage?.bounds(for: .cropBox)
             ?? unionBounds(lineBlocks.map(\.bounds))?.insetBy(dx: -24, dy: -24)
             ?? .zero
-        return mergeWrappedLines(assignColumnBounds(to: lineBlocks, pageBounds: pageBounds))
+        let merged = mergeWrappedLines(assignColumnBounds(to: lineBlocks, pageBounds: pageBounds))
+        return tightenColumnsToParagraphMargins(merged)
             .sorted { $0.bounds.minY > $1.bounds.minY }
+    }
+
+    /// After wrapped lines are merged into paragraphs, pull each full-width body
+    /// paragraph's column right edge in to the paragraph's OWN right margin (its widest
+    /// line).
+    ///
+    /// `assignColumnBounds` runs per single line and, when a body paragraph has no
+    /// detected right-neighbor, defaults the column right edge to the page edge. A normal
+    /// single-column paragraph never fills the page to its edge, so that inflated column
+    /// later lets edited text re-wrap out into the original right margin — the reported
+    /// "text bleeds right after an edit" bug. Once lines are merged we finally know the
+    /// paragraph's true right margin (`bounds.maxX`, the widest wrapped line), so clamp
+    /// the column to it.
+    ///
+    /// Guardrails so this never over-constrains: only applies to already-wrapped
+    /// paragraphs (`lines.count > 1`) whose ink actually *fills* most of the detected
+    /// column (`fillRatio`). A stack of short distinct lines (heading / item / caption)
+    /// that merged loosely, or a genuinely narrow snippet, keeps its wide column so a
+    /// replacement longer than the original can still grow rightward instead of being
+    /// force-wrapped onto extra lines.
+    private func tightenColumnsToParagraphMargins(_ blocks: [EditableTextBlock]) -> [EditableTextBlock] {
+        blocks.map { block in
+            guard block.lines.count > 1, let column = block.columnBounds, column.width > 0 else { return block }
+            // Only a paragraph that already spans most of its column has an established
+            // right margin worth preserving. Loosely-merged short lines do not.
+            let fillRatio = block.bounds.width / column.width
+            guard fillRatio >= 0.6 else { return block }
+            // One space/word of slack so a replacement word a hair longer than the
+            // original longest line still fits without forcing an extra wrapped line.
+            let paragraphRightMargin = block.bounds.maxX + max(6, block.fontSize)
+            let tightenedMaxX = min(column.maxX, paragraphRightMargin)
+            guard tightenedMaxX > column.minX, tightenedMaxX < column.maxX else { return block }
+            var updated = block
+            updated.columnBounds = CGRect(
+                x: column.minX,
+                y: column.minY,
+                width: tightenedMaxX - column.minX,
+                height: column.height
+            )
+            return updated
+        }
     }
 
     /// Splits a single vertically-grouped line into separate column segments wherever the

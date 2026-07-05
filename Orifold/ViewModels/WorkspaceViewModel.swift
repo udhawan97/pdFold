@@ -4224,10 +4224,19 @@ final class WorkspaceViewModel {
                 if matchedRanges.isEmpty {
                     throw ExportBuildError.cannotMapEdit(memberName: memberName, sourceText: edit.sourceText)
                 }
+                // Disambiguating a repeated paragraph maps a PDF *visual reading-order*
+                // occurrence index onto a raw-*source*-order list of substring matches.
+                // Those two orderings only line up when they enumerate the same set: the
+                // count of rendered blocks carrying this text must equal the count of raw
+                // matches. When markup, whitespace, reflow, columns or floats make them
+                // diverge, the index would silently patch the WRONG occurrence — worse than
+                // failing. So only trust the index when the counts agree; otherwise fail
+                // clearly and let the user fall back to PDF export.
                 if let member,
-                   let occurrenceIndex = sourceOccurrenceIndex(for: edit, sourceText: edit.sourceText, member: member),
-                   matchedRanges.indices.contains(occurrenceIndex) {
-                    replacements.append(StringReplacement(range: matchedRanges[occurrenceIndex], text: edit.replacementText))
+                   let occurrence = sourceOccurrence(for: edit, sourceText: edit.sourceText, member: member),
+                   occurrence.total == matchedRanges.count,
+                   matchedRanges.indices.contains(occurrence.index) {
+                    replacements.append(StringReplacement(range: matchedRanges[occurrence.index], text: edit.replacementText))
                     continue
                 }
                 throw ExportBuildError.ambiguousSourceText(memberName: memberName, sourceText: edit.sourceText)
@@ -4240,7 +4249,16 @@ final class WorkspaceViewModel {
         return replacements
     }
 
-    private func sourceOccurrenceIndex(for edit: PDFTextEditOperation, sourceText: String, member: MemberDocument) -> Int? {
+    /// The edited block's occurrence index (in PDF visual reading order across the member)
+    /// AND the total number of rendered blocks carrying the same text. Callers compare
+    /// `total` against the number of raw-source matches to prove the two orderings
+    /// enumerate the same set before trusting `index`.
+    private struct SourceOccurrence {
+        var index: Int
+        var total: Int
+    }
+
+    private func sourceOccurrence(for edit: PDFTextEditOperation, sourceText: String, member: MemberDocument) -> SourceOccurrence? {
         let normalizedNeedle = normalizedSourceText(sourceText)
         guard !normalizedNeedle.isEmpty,
               let editedPagePosition = member.pageRefs.firstIndex(of: edit.pageRefID) else {
@@ -4248,6 +4266,10 @@ final class WorkspaceViewModel {
         }
 
         var occurrenceOffset = 0
+        var resolvedIndex: Int?
+        var total = 0
+        // Iterate every page fully so `total` counts all matching blocks, not just those up
+        // to the edited page — the count guard needs the whole-document total.
         for pagePosition in member.pageRefs.indices {
             let pageRefID = member.pageRefs[pagePosition]
             guard let pageRef = document.workspace.pageOrder.first(where: { $0.id == pageRefID }),
@@ -4265,15 +4287,14 @@ final class WorkspaceViewModel {
                 .filter { normalizedSourceText($0.text) == normalizedNeedle }
                 .sorted(by: sourceReadingOrder)
 
-            if pagePosition == editedPagePosition {
-                guard let localIndex = nearestSourceBlockIndex(to: edit.sourceBounds, in: blocks) else {
-                    return nil
-                }
-                return occurrenceOffset + localIndex
+            if pagePosition == editedPagePosition, let localIndex = nearestSourceBlockIndex(to: edit.sourceBounds, in: blocks) {
+                resolvedIndex = occurrenceOffset + localIndex
             }
             occurrenceOffset += blocks.count
+            total += blocks.count
         }
-        return nil
+        guard let resolvedIndex else { return nil }
+        return SourceOccurrence(index: resolvedIndex, total: total)
     }
 
     private func nearestSourceBlockIndex(to sourceBounds: CGRect, in blocks: [EditableTextBlock]) -> Int? {
