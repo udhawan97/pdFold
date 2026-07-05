@@ -52,6 +52,14 @@ private func FPDFText_GetFontInfo(
     _ flags: UnsafeMutablePointer<Int32>?
 ) -> UInt
 
+@_silgen_name("FPDFText_GetFontWeight")
+private func FPDFText_GetFontWeight(_ textPage: OpaquePointer?, _ index: Int32) -> Int32
+
+/// PDF font-descriptor `/Flags` bit for an italic/oblique face (bit 7, value 64). Set even
+/// when the embedded font's PostScript name carries no "Italic"/"Oblique" token, so it is
+/// the only reliable slant signal for many documents.
+private let kPDFFontFlagItalic: Int32 = 1 << 6
+
 struct PDFTextPageAnalysis {
     var pageRefID: UUID?
     var blocks: [EditableTextBlock]
@@ -69,6 +77,13 @@ final class PDFTextAnalysisEngine {
         var reportedFontSize: CGFloat?
         var color: CodableColor
         var rawFontName: String?
+        /// PDFium-reported font weight (100–900), or nil when unavailable. Used so a
+        /// Semibold/Bold body face whose PostScript name carries no "Bold" token still
+        /// resolves to a bold substitute instead of a lighter-looking regular one.
+        var fontWeight: Int?
+        /// True when the embedded font descriptor's italic flag is set, even if the font
+        /// name has no "Italic"/"Oblique" token.
+        var isItalic: Bool
     }
 
     func analyze(data: Data, pageIndex: Int, pageRefID: UUID? = nil, fallbackPage: PDFPage? = nil) -> PDFTextPageAnalysis {
@@ -121,12 +136,16 @@ final class PDFTextAnalysisEngine {
                 let size = FPDFText_GetFontSize(textPage, Int32(index))
                 let color = fillColor(textPage: textPage, index: index)
                 let reportedFontSize: CGFloat? = size.isFinite && size >= 4 ? CGFloat(size) : nil
+                let descriptor = fontDescriptor(textPage: textPage, index: index)
+                let rawWeight = FPDFText_GetFontWeight(textPage, Int32(index))
                 samples.append(CharacterSample(
                     scalar: scalar,
                     bounds: bounds,
                     reportedFontSize: reportedFontSize,
                     color: color,
-                    rawFontName: fontName(textPage: textPage, index: index)
+                    rawFontName: descriptor.name,
+                    fontWeight: rawWeight > 0 ? Int(rawWeight) : nil,
+                    isItalic: descriptor.isItalic
                 ))
             }
 
@@ -135,21 +154,31 @@ final class PDFTextAnalysisEngine {
         }
     }
 
-    private func fontName(textPage: OpaquePointer?, index: Int) -> String? {
+    private func fontDescriptor(textPage: OpaquePointer?, index: Int) -> (name: String?, isItalic: Bool) {
         var buffer = [UInt8](repeating: 0, count: 256)
         var flags: Int32 = 0
         let needed = buffer.withUnsafeMutableBytes { rawBuffer -> UInt in
             FPDFText_GetFontInfo(textPage, Int32(index), rawBuffer.baseAddress, UInt(rawBuffer.count), &flags)
         }
-        guard needed > 1, needed <= buffer.count else { return nil }
+        let isItalic = flags & kPDFFontFlagItalic != 0
+        guard needed > 1, needed <= buffer.count else { return (nil, isItalic) }
         let byteCount = Int(needed) - 1 // FPDFText_GetFontInfo includes a trailing NUL
-        return String(bytes: buffer[0..<byteCount], encoding: .utf8)
+        return (String(bytes: buffer[0..<byteCount], encoding: .utf8), isItalic)
     }
 
     /// Maps a font name recovered from the PDF's embedded font descriptor to a PostScript
     /// name Orifold can actually draw with (`NSFont(name:)`), so replacement text matches
     /// the surrounding document's typography instead of always falling back to Helvetica.
-    private static func resolveFontPostScriptName(from pdfFontName: String) -> String {
+    /// `weightHint` (100–900, PDFium's reported weight) and `italicHint` (descriptor italic
+    /// flag) come straight from the embedded font descriptor and take precedence over
+    /// name-token guessing — a Semibold/Bold face whose PostScript name lacks a "Bold"
+    /// token, or an italic face with no "Italic" token, would otherwise resolve to a
+    /// lighter/upright substitute that no longer matches the surrounding document.
+    private static func resolveFontPostScriptName(
+        from pdfFontName: String,
+        weightHint: Int? = nil,
+        italicHint: Bool = false
+    ) -> String {
         var name = pdfFontName
         // Subsetted fonts are prefixed with a 6-letter tag + "+", e.g. "ABCDEF+Georgia-Bold".
         if let plusIndex = name.firstIndex(of: "+"),
@@ -158,17 +187,28 @@ final class PDFTextAnalysisEngine {
             name = String(name[name.index(after: plusIndex)...])
         }
         let lower = name.lowercased()
+        let boldByName = lower.contains("bold") || lower.contains("black") || lower.contains("heavy") || lower.contains("semibold")
+        let italicByName = lower.contains("italic") || lower.contains("oblique")
+        let boldByWeight = (weightHint ?? 0) >= 600
+        let wantsBold = boldByName || boldByWeight
+        let wantsItalic = italicByName || italicHint
         if lower.hasPrefix(".") ||
             lower.contains("sfns") ||
             lower.contains("apple") && lower.contains("system") {
-            return stableSansSerifPostScriptName()
+            return stableSansSerifPostScriptName(bold: wantsBold, italic: wantsItalic)
         }
+        // Even when the named font exists on the system, honor a descriptor weight/slant the
+        // name itself omits by promoting to the matching face of the same family (e.g.
+        // "Helvetica" + weight 700 → "Helvetica-Bold") rather than drawing it regular.
         if NSFont(name: name, size: 12) != nil {
+            if let promoted = promoteToTraits(fontNamed: name, bold: wantsBold, italic: wantsItalic) {
+                return promoted
+            }
             return name
         }
 
-        let isBold = lower.contains("bold") || lower.contains("black") || lower.contains("heavy") || lower.contains("semibold")
-        let isItalic = lower.contains("italic") || lower.contains("oblique")
+        let isBold = wantsBold
+        let isItalic = wantsItalic
         let family: String
         if lower.contains("georgia") {
             family = "Georgia"
@@ -195,11 +235,41 @@ final class PDFTextAnalysisEngine {
         return family == "Helvetica" ? "Helvetica" : (NSFont(name: family, size: 12)?.fontName ?? "Helvetica")
     }
 
-    private static func stableSansSerifPostScriptName() -> String {
-        if NSFont(name: "HelveticaNeue", size: 12) != nil {
-            return "HelveticaNeue"
+    #if DEBUG
+    /// Test hook for the private font-resolution logic (weight/italic descriptor hints).
+    static func testResolveFontPostScriptName(from name: String, weightHint: Int?, italicHint: Bool) -> String {
+        resolveFontPostScriptName(from: name, weightHint: weightHint, italicHint: italicHint)
+    }
+    #endif
+
+    private static func stableSansSerifPostScriptName(bold: Bool = false, italic: Bool = false) -> String {
+        let base = NSFont(name: "HelveticaNeue", size: 12) != nil ? "HelveticaNeue" : "Helvetica"
+        if bold || italic, let promoted = promoteToTraits(fontNamed: base, bold: bold, italic: italic) {
+            return promoted
         }
-        return "Helvetica"
+        return base
+    }
+
+    /// Returns the PostScript name of `fontNamed`'s same-family face carrying the requested
+    /// bold/italic traits, or nil when no restyle is needed / no such face exists. Keeps the
+    /// family (and thus the document's typographic character) while honoring a weight/slant
+    /// the base name didn't encode.
+    private static func promoteToTraits(fontNamed name: String, bold: Bool, italic: Bool) -> String? {
+        guard bold || italic, let base = NSFont(name: name, size: 12) else { return nil }
+        let currentTraits = NSFontManager.shared.traits(of: base)
+        var traits = currentTraits
+        if bold { traits.insert(.boldFontMask) }
+        if italic { traits.insert(.italicFontMask) }
+        guard traits != currentTraits,
+              let family = base.familyName,
+              let promoted = NSFontManager.shared.font(
+                  withFamily: family,
+                  traits: traits,
+                  weight: bold ? 9 : 5,
+                  size: 12
+              ),
+              promoted.fontName != base.fontName else { return nil }
+        return promoted.fontName
     }
 
     /// PDFium occasionally mis-decodes a ligature glyph (e.g. the "ti"/"tf" letter pair
@@ -370,7 +440,11 @@ final class PDFTextAnalysisEngine {
         let inkSamples = sorted.filter { $0.scalar.value != 32 }
         let color = dominantColor(among: inkSamples) ?? .documentText
         let rawFontName = dominantFontName(among: inkSamples)
-        let fontName = rawFontName.map(Self.resolveFontPostScriptName) ?? "Helvetica"
+        let weightHint = dominantFontWeight(among: inkSamples)
+        let italicHint = dominantItalic(among: inkSamples)
+        let fontName = rawFontName.map {
+            Self.resolveFontPostScriptName(from: $0, weightHint: weightHint, italicHint: italicHint)
+        } ?? Self.resolveFontPostScriptName(from: "Helvetica", weightHint: weightHint, italicHint: italicHint)
         let fontSize = resolveLineFontSize(sorted, lineBounds: bounds, resolvedFontName: fontName)
         let run = PDFTextRun(
             text: text,
@@ -430,6 +504,24 @@ final class PDFTextAnalysisEngine {
             counts[name, default: 0] += 1
         }
         return counts.max { $0.value < $1.value }?.key
+    }
+
+    /// Median reported weight across the line's ink glyphs (ignoring glyphs PDFium couldn't
+    /// report a weight for). Same "trust the majority, not the first glyph" reasoning as
+    /// `dominantColor`/`dominantFontName`: a leading bold keyword must not mark the whole
+    /// body line bold, nor a stray light glyph un-bold a genuinely bold line.
+    private func dominantFontWeight(among samples: [CharacterSample]) -> Int? {
+        let weights = samples.compactMap(\.fontWeight).filter { $0 > 0 }.sorted()
+        guard !weights.isEmpty else { return nil }
+        return weights[weights.count / 2]
+    }
+
+    /// True when MOST of the line's ink glyphs are italic — one incidental italic run
+    /// shouldn't slant the whole block, and vice-versa.
+    private func dominantItalic(among samples: [CharacterSample]) -> Bool {
+        guard !samples.isEmpty else { return false }
+        let italicCount = samples.filter(\.isItalic).count
+        return italicCount * 2 > samples.count
     }
 
     private func analyzeWithPDFKit(page: PDFPage?, pageRefID: UUID?) -> PDFTextPageAnalysis {

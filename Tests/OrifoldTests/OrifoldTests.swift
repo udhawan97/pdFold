@@ -475,6 +475,164 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertTrue(editedText.contains("edited"), "the committed replacement should be rendered into the page")
     }
 
+    // MARK: - Edited-text style fidelity
+
+    /// A Semibold/Bold body face whose PostScript name carries no "Bold" token (only the
+    /// font descriptor's weight says so) must still resolve to a bold substitute — otherwise
+    /// the re-rendered replacement text looks visibly lighter than the surrounding document
+    /// (the "edited paragraph looks lighter/different weight" fidelity bug).
+    func testFontResolutionPreservesBoldFromDescriptorWeightWhenNameLacksBoldToken() throws {
+        let resolved = PDFTextAnalysisEngine.testResolveFontPostScriptName(
+            from: "Helvetica",
+            weightHint: 700,
+            italicHint: false
+        )
+        let font = try XCTUnwrap(NSFont(name: resolved, size: 12), "resolved font must exist")
+        let traits = NSFontManager.shared.traits(of: font)
+        XCTAssertTrue(traits.contains(.boldFontMask), "descriptor weight 700 should yield a bold face, got \(resolved)")
+    }
+
+    /// Same reasoning as weight: an italic face whose name has no "Italic"/"Oblique" token
+    /// but whose descriptor italic flag is set must resolve to an italic substitute.
+    func testFontResolutionPreservesItalicFromDescriptorFlagWhenNameLacksItalicToken() throws {
+        let resolved = PDFTextAnalysisEngine.testResolveFontPostScriptName(
+            from: "Helvetica",
+            weightHint: nil,
+            italicHint: true
+        )
+        let font = try XCTUnwrap(NSFont(name: resolved, size: 12), "resolved font must exist")
+        let traits = NSFontManager.shared.traits(of: font)
+        XCTAssertTrue(traits.contains(.italicFontMask), "descriptor italic flag should yield an italic face, got \(resolved)")
+    }
+
+    /// The descriptor hints must not over-promote: a regular-weight, upright face stays
+    /// exactly as detected so ordinary body text is never bolded/slanted by the new logic.
+    func testFontResolutionKeepsRegularUprightWhenDescriptorIsPlain() {
+        let resolved = PDFTextAnalysisEngine.testResolveFontPostScriptName(
+            from: "Helvetica",
+            weightHint: 400,
+            italicHint: false
+        )
+        XCTAssertEqual(resolved, "Helvetica")
+    }
+
+    /// A multi-line paragraph's original line pitch (baseline-to-baseline distance) must be
+    /// recovered from the captured per-line bounds and fed to CoreText, so wrapped
+    /// replacement lines keep the document's leading instead of CoreText's default — the
+    /// "line height / paragraph spacing looks different after an edit" fidelity bug.
+    func testRendererRecoversOriginalLinePitchForMultiLineParagraph() throws {
+        let lineHeight: CGFloat = 15
+        let lines = (0..<3).map { index in
+            CGRect(x: 40, y: 700 - CGFloat(index) * lineHeight, width: 400, height: 11)
+        }
+        let bounds = lines.reduce(lines[0]) { $0.union($1) }
+        let op = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: bounds,
+            sourceLineBounds: lines,
+            sourceText: "line one line two line three",
+            editedBounds: bounds,
+            replacementText: "line one line two line three",
+            fontName: "Helvetica",
+            fontSize: 11,
+            textColor: .documentText,
+            alignment: .left
+        )
+        let pitch = try XCTUnwrap(PDFEditedPageRenderer.testOriginalLinePitch(for: op))
+        XCTAssertEqual(pitch, lineHeight, accuracy: 0.5)
+    }
+
+    /// A single-line source has no leading to preserve, so no forced line height is applied
+    /// (which would risk clipping/altering the sole line's metrics).
+    func testRendererDoesNotForceLinePitchForSingleLineSource() {
+        let bounds = CGRect(x: 40, y: 700, width: 400, height: 11)
+        let op = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: bounds,
+            sourceLineBounds: [bounds],
+            sourceText: "single line",
+            editedBounds: bounds,
+            replacementText: "single line",
+            fontName: "Helvetica",
+            fontSize: 11,
+            textColor: .documentText,
+            alignment: .left
+        )
+        XCTAssertNil(PDFEditedPageRenderer.testOriginalLinePitch(for: op))
+    }
+
+    /// The screenshot scenario: a page of repeated paragraphs, two of which have `pdFold`
+    /// edited to `oriFold`. Only the edited rows change; the untouched rows keep their ink,
+    /// and the edited rows do not lose ink density (weight) or reflow off their footprint.
+    func testEditingRepeatedParagraphsChangesOnlyEditedRowsAndKeepsTheirWeight() throws {
+        let pdf = makeRepeatedParagraphsPDF()
+        let fixture = try makeMemberFixture(name: "Repeated", pdf: pdf)
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+        let originalPage = try XCTUnwrap(PDFDocument(data: fixture.pdfData)?.page(at: 0))
+        let analysis = PDFTextAnalysisEngine().analyze(
+            data: fixture.pdfData,
+            pageIndex: 0,
+            pageRefID: fixture.refs[0].id,
+            fallbackPage: originalPage
+        )
+        func row(_ marker: String) throws -> EditableTextBlock {
+            try XCTUnwrap(analysis.blocks.first { $0.text.contains(marker) }, "missing \(marker)")
+        }
+        let row0 = try row("row-0")
+        let row1 = try row("row-1")
+        let row2 = try row("row-2")
+        let row3 = try row("row-3")
+
+        for editedRow in [row1, row3] {
+            let replacement = editedRow.text.replacingOccurrences(of: "pdFold", with: "oriFold")
+            XCTAssertNotEqual(replacement, editedRow.text, "fixture row should contain pdFold")
+            XCTAssertTrue(viewModel.applyInlineTextEdit(
+                pageRef: fixture.refs[0],
+                sourceBlock: editedRow,
+                replacementText: replacement,
+                editedBounds: editedRow.bounds,
+                fontName: editedRow.fontName,
+                fontSize: editedRow.fontSize,
+                textColor: editedRow.textColor.nsColor,
+                alignment: editedRow.alignment?.nsTextAlignment ?? .left
+            ))
+        }
+
+        let editedPage = try XCTUnwrap(viewModel.loadedPDFs.first?.1.page(at: 0))
+        let editedText = editedPage.string ?? ""
+        let oriFoldCount = editedText.components(separatedBy: "oriFold").count - 1
+        XCTAssertEqual(oriFoldCount, 2, "exactly the two edited rows should now read oriFold")
+
+        let bitmap = try renderedBitmap(for: editedPage)
+        // Untouched rows keep their original ink.
+        XCTAssertGreaterThan(darkPixelCount(in: row0.bounds, bitmap: bitmap), 50, "untouched row-0 must survive")
+        XCTAssertGreaterThan(darkPixelCount(in: row2.bounds, bitmap: bitmap), 50, "untouched row-2 must survive")
+
+        // The edited rows must not lose weight: their re-rendered ink density stays close to
+        // an untouched sibling's. A weight regression (bold → regular substitute) would drop
+        // this well below the tolerance floor.
+        func density(_ bounds: CGRect) -> Double {
+            let area = Double(bounds.standardized.width * bounds.standardized.height)
+            guard area > 0 else { return 0 }
+            return Double(darkPixelCount(in: bounds, bitmap: bitmap)) / area
+        }
+        let untouchedDensity = (density(row0.bounds) + density(row2.bounds)) / 2
+        XCTAssertGreaterThan(untouchedDensity, 0, "untouched rows should have measurable ink")
+        for editedRow in [row1, row3] {
+            XCTAssertGreaterThan(
+                density(editedRow.bounds),
+                untouchedDensity * 0.5,
+                "edited row ink density must stay comparable to untouched rows (no weight/blank regression)"
+            )
+        }
+    }
+
     func testUndoRedoStackedParagraphEditNeverBlanksUntouchedParagraph() throws {
         let pdf = makeStackedParagraphsPDF()
         let fixture = try makeMemberFixture(name: "Stacked", pdf: pdf)
@@ -7295,6 +7453,11 @@ private func makeStackedParagraphsPDF() -> PDFDocument {
     return PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
 }
 
+private func makeRepeatedParagraphsPDF() -> PDFDocument {
+    let view = RepeatedParagraphsFixturePageView(frame: CGRect(x: 0, y: 0, width: 612, height: 792))
+    return PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
+}
+
 private func renderedBitmap(for page: PDFPage) throws -> NSBitmapImageRep {
     let thumbnail = page.thumbnail(of: CGSize(width: 612, height: 792), for: .mediaBox)
     let tiff = try thumbnail.tiffRepresentation.unwrap()
@@ -7591,6 +7754,36 @@ private final class StackedParagraphsFixturePageView: NSView {
         let row1 = "This paragraph is intentionally searchable. Keywords: pdFold, annotation, export, zoom, rotate, section-1, row-1. It includes long identifiers like INV-2026-07-03-ALPHA-BRAVO-CHARLIE to check selection handles, search snippets, and copied text fidelity. The app should preserve scroll position while navigating results and editing nearby text"
         NSString(string: row0).draw(in: CGRect(x: 40, y: 120, width: 532, height: 100), withAttributes: attributes)
         NSString(string: row1).draw(in: CGRect(x: 40, y: 185, width: 532, height: 100), withAttributes: attributes)
+    }
+}
+
+/// Four visually-identical body paragraphs, each on its own row and each containing the
+/// token `pdFold` plus a unique `row-N` marker — mirrors the reported screenshot where two
+/// of several repeated paragraphs were edited (`pdFold` → `oriFold`) and looked different
+/// from their untouched neighbors.
+private final class RepeatedParagraphsFixturePageView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        bounds.fill()
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        let font = NSFont(name: "Helvetica", size: 12) ?? NSFont.systemFont(ofSize: 12)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.black,
+            .paragraphStyle: paragraph
+        ]
+        for index in 0..<4 {
+            // Single line per row so the `pdFold` token and the unique `row-N` marker land
+            // in the same extracted block (a wrapped paragraph would split them apart).
+            let text = "pdFold editor preserves row-\(index) typography while editing."
+            NSString(string: text).draw(
+                in: CGRect(x: 40, y: 80 + CGFloat(index) * 90, width: 520, height: 40),
+                withAttributes: attributes
+            )
+        }
     }
 }
 
