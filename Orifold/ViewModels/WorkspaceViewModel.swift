@@ -145,6 +145,15 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
     }
 
     var usesInkColor: Bool { self == .ink }
+
+    var isReaderModeAllowed: Bool {
+        switch self {
+        case .editText, .signature:
+            return false
+        case .none, .highlight, .note, .comment, .commentRegion, .ink, .eraser, .underline, .strikeout, .stamp:
+            return true
+        }
+    }
 }
 
 @Observable
@@ -230,12 +239,33 @@ final class WorkspaceViewModel {
     var isShowingPasswordPrompt = false
     var currentTool: AnnotationTool = .none {
         didSet {
+            if isReaderMode && !currentTool.isReaderModeAllowed {
+                let blockedTool = currentTool
+                currentTool = .none
+                showReaderModeBlockedMessage(for: blockedTool)
+                return
+            }
             if oldValue != currentTool {
                 selectedAnnotation = nil
                 selectedStampDecorationID = nil
             }
             if oldValue == .signature, currentTool != .signature {
                 clearPendingSignaturePlacement()
+            }
+        }
+    }
+    var isReaderMode = false {
+        didSet {
+            guard oldValue != isReaderMode else { return }
+            if isReaderMode {
+                if !currentTool.isReaderModeAllowed {
+                    currentTool = .none
+                }
+                isShowingSignaturePalette = false
+                clearPendingSignaturePlacement()
+                showEditMessage("Reader Mode is on. Text editing and signing are hidden; study tools stay available.", isError: false)
+            } else {
+                showEditMessage("Reader Mode is off. Editing and signing tools are available again.", isError: false)
             }
         }
     }
@@ -263,7 +293,9 @@ final class WorkspaceViewModel {
     var formSummary = PDFFormSummary()
     var highlightFormFields = false
     var selectedFormFieldIndex: Int? = nil
+    var appAppearanceMode: AppAppearanceMode = .system
     var isNightModeEnabled = false
+    var nightModeSettings = NightModeSettings.default
 
     var hasPendingSignaturePlacement: Bool {
         pendingSignatureData != nil && pendingSignatureOptions != nil
@@ -1519,6 +1551,25 @@ final class WorkspaceViewModel {
             return false
         }
         return true
+    }
+
+    private func canPerformSigningAction() -> Bool {
+        guard !isReaderMode else {
+            showReaderModeBlockedMessage(for: .signature)
+            return false
+        }
+        return canPerformMutatingAction()
+    }
+
+    private func showReaderModeBlockedMessage(for tool: AnnotationTool) {
+        switch tool {
+        case .editText:
+            showEditMessage("Reader Mode keeps the document text locked. Turn it off to edit PDF text.", isError: false)
+        case .signature:
+            showEditMessage("Reader Mode keeps signing locked. Turn it off to place or export signatures.", isError: false)
+        default:
+            showEditMessage("Reader Mode keeps authoring tools locked.", isError: false)
+        }
     }
 
     private func canPerformUndoMutation() -> Bool {
@@ -2807,7 +2858,7 @@ final class WorkspaceViewModel {
     func beginVisualSignaturePlacement(imageData: Data,
                                        kind: SignaturePlacement.Kind,
                                        signerName: String?) {
-        guard canPerformMutatingAction() else { return }
+        guard canPerformSigningAction() else { return }
         pendingSignatureData = imageData
         pendingSignatureOptions = PendingSignaturePlacementOptions(
             kind: kind,
@@ -2833,7 +2884,7 @@ final class WorkspaceViewModel {
                                               contactInfo: String?,
                                               timestampRequested: Bool,
                                               identity: (any SigningIdentity)? = nil) {
-        guard canPerformMutatingAction() else { return }
+        guard canPerformSigningAction() else { return }
         pendingSignatureData = imageData
         pendingSigningIdentity = identity
         pendingSignatureOptions = PendingSignaturePlacementOptions(
@@ -2893,7 +2944,7 @@ final class WorkspaceViewModel {
 
     @discardableResult
     func placeSignature(imageData: Data, at pagePoint: CGPoint, on page: PDFPage, size: CGSize = CGSize(width: 120, height: 48)) -> PDFAnnotation? {
-        guard canPerformMutatingAction() else { return nil }
+        guard canPerformSigningAction() else { return nil }
         guard let refID = pageRefID(for: page) else { return nil }
         let options = pendingSignatureOptions ?? .visualTyped
         let identity = pendingSigningIdentity
@@ -3112,7 +3163,7 @@ final class WorkspaceViewModel {
     }
 
     func signAndExportCryptographicPDF(timestampRequested: Bool) {
-        guard canPerformMutatingAction() else { return }
+        guard canPerformSigningAction() else { return }
         guard let placement = document.workspace.signatures.last(where: { $0.isCryptographic }) else {
             showEditMessage("Place a certificate signature before signing.", isError: true)
             return

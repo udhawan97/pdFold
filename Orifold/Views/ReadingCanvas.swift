@@ -330,7 +330,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
         view.displaysPageBreaks = false
         view.backgroundColor = .dsCanvasNS
         view.pageOverlayViewProvider = context.coordinator
-        view.setNightModeEnabled(viewModel.isNightModeEnabled)
+        view.setNightModeEnabled(viewModel.isNightModeEnabled, settings: viewModel.nightModeSettings)
 
         // Wire up delete key handler
         view.onDeleteKey = { [weak coordinator = context.coordinator] in
@@ -454,7 +454,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
         context.coordinator.viewModel = viewModel
         context.coordinator.inkOverlay.isHidden = (viewModel.currentTool != .ink)
         context.coordinator.inkOverlay.inkColor = viewModel.inkColor
-        nsView.setNightModeEnabled(viewModel.isNightModeEnabled)
+        nsView.setNightModeEnabled(viewModel.isNightModeEnabled, settings: viewModel.nightModeSettings)
         context.coordinator.refreshSignatureOverlay()
         context.coordinator.refreshDecorationOverlays()
         context.coordinator.refreshCommentOverlays()
@@ -1098,17 +1098,25 @@ final class OrifoldPDFView: PDFView {
     var onCommentMenu: (() -> Void)?
     private let nightToneOverlay = NightToneOverlayView()
     private var isNightModeEnabled = false
+    private var nightModeSettings = NightModeSettings.default
 
     override var acceptsFirstResponder: Bool { true }
 
-    func setNightModeEnabled(_ enabled: Bool) {
-        guard enabled != isNightModeEnabled || nightToneOverlay.superview == nil else { return }
+    func setNightModeEnabled(_ enabled: Bool, settings: NightModeSettings) {
+        let clampedSettings = settings.clamped
+        guard enabled != isNightModeEnabled ||
+              clampedSettings != nightModeSettings ||
+              nightToneOverlay.superview !== self else { return }
         isNightModeEnabled = enabled
+        nightModeSettings = clampedSettings
         backgroundColor = enabled
-            ? NSColor(srgbRed: 0.035, green: 0.039, blue: 0.048, alpha: 1)
+            ? clampedSettings.canvasBackgroundColor
             : .dsCanvasNS
+        nightToneOverlay.apply(settings: clampedSettings)
         if enabled {
             installNightToneOverlayIfNeeded()
+        } else if nightToneOverlay.superview !== self {
+            nightToneOverlay.removeFromSuperview()
         }
         nightToneOverlay.isHidden = !enabled
         nightToneOverlay.alphaValue = enabled ? 1 : 0
@@ -1116,16 +1124,13 @@ final class OrifoldPDFView: PDFView {
     }
 
     private func installNightToneOverlayIfNeeded() {
-        guard nightToneOverlay.superview == nil else {
-            nightToneOverlay.removeFromSuperview()
-            addSubview(nightToneOverlay, positioned: .above, relativeTo: nil)
-            return
-        }
+        if nightToneOverlay.superview === self { return }
+        nightToneOverlay.removeFromSuperview()
         addSubview(nightToneOverlay, positioned: .above, relativeTo: nil)
     }
 
     private func layoutNightToneOverlay() {
-        guard nightToneOverlay.superview != nil else { return }
+        guard nightToneOverlay.superview === self else { return }
         nightToneOverlay.frame = bounds
         nightToneOverlay.autoresizingMask = [.width, .height]
     }
@@ -1182,12 +1187,29 @@ private final class NightToneOverlayView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(srgbRed: 0.94, green: 0.72, blue: 0.43, alpha: 0.24).cgColor
-        layer?.compositingFilter = "multiplyBlendMode"
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+        configureCompositing()
+        apply(settings: .default)
     }
 
     required init?(coder: NSCoder) {
         nil
+    }
+
+    func apply(settings: NightModeSettings) {
+        if layer == nil {
+            wantsLayer = true
+            configureCompositing()
+        }
+        CATransaction.begin()
+        defer { CATransaction.commit() }
+        CATransaction.setDisableActions(true)
+        layer?.backgroundColor = settings.overlayColor.cgColor
+    }
+
+    private func configureCompositing() {
+        layer?.compositingFilter = "multiplyBlendMode"
+        layer?.opacity = layer?.compositingFilter == nil ? 0.72 : 1
     }
 }
 
@@ -3644,6 +3666,11 @@ final class NoteEditorViewController: NSViewController {
     @objc private func addSignatureBox() {
         guard !didFinish else { return }
         let viewModel = viewModel
+        guard viewModel?.isReaderMode != true else {
+            viewModel?.showEditMessage("Reader Mode keeps signing locked. Turn it off to place signatures.", isError: false)
+            refocusEditor()
+            return
+        }
         finishForHandoff()
         viewModel?.currentTool = .signature
         viewModel?.isShowingSignaturePalette = true

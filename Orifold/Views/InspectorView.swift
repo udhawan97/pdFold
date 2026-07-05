@@ -251,18 +251,18 @@ private struct InspectorWorkspaceCommentsView: View {
         VStack(alignment: .leading, spacing: .dsMD) {
             InspectorTextEditor(
                 text: $draftComment,
-                placeholder: "Write a comment...",
+                placeholder: viewModel.isReaderMode ? "Write a study note..." : "Write a comment...",
                 minHeight: 96,
                 background: Color.dsCard,
                 font: .dsBody()
             )
-            .accessibilityLabel("Comment")
+            .accessibilityLabel(viewModel.isReaderMode ? "Study note" : "Comment")
 
             Button {
                 viewModel.addComment(draftComment)
                 draftComment = ""
             } label: {
-                Label("Add Comment", systemImage: "text.bubble")
+                Label(viewModel.isReaderMode ? "Save Note" : "Add Comment", systemImage: "text.bubble")
                     .font(.system(size: 13, weight: .semibold))
                     .frame(maxWidth: .infinity, minHeight: 32)
             }

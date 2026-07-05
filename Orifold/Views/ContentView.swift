@@ -12,8 +12,13 @@ struct ContentView: View {
     @State private var isShowingExportSheet = false
     @State private var isWorkspaceDropTargeted = false
     @State private var isNavigationDropTargeted = false
+    @State private var isShowingNightModeControls = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @AppStorage("orifoldAppAppearanceMode") private var persistedAppAppearanceMode = AppAppearanceMode.system.rawValue
     @AppStorage("orifoldNightModeEnabled") private var persistedNightModeEnabled = false
+    @AppStorage("orifoldNightModeWarmth") private var persistedNightModeWarmth = NightModeSettings.default.warmth
+    @AppStorage("orifoldNightModeIntensity") private var persistedNightModeIntensity = NightModeSettings.default.intensity
+    @AppStorage("orifoldNightModeDimming") private var persistedNightModeDimming = NightModeSettings.default.dimming
     @Environment(\.undoManager) private var undoManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -39,6 +44,18 @@ struct ContentView: View {
                 } detail: {
                     HStack(spacing: 0) {
                         ReadingCanvas(viewModel: viewModel)
+                            .overlay(alignment: .topLeading) {
+                                if viewModel.isReaderMode {
+                                    ReaderModePill(viewModel: viewModel) {
+                                        inspectorTab = .comments
+                                        showInspector = true
+                                    } onExit: {
+                                        viewModel.isReaderMode = false
+                                    }
+                                    .padding(.top, 48)
+                                    .padding(.leading, .dsLG)
+                                }
+                            }
                             .overlay(alignment: .topTrailing) {
                                 DocumentCommentsIndicator(count: viewModel.currentPageCommentCount) {
                                     inspectorTab = .comments
@@ -67,6 +84,7 @@ struct ContentView: View {
             }
         }
         .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.18), value: viewModel.memberDocuments.isEmpty)
+        .preferredColorScheme(viewModel.appAppearanceMode.colorScheme)
         .tint(Color.dsAccent)
         .overlay(alignment: .bottomTrailing) {
             if !viewModel.memberDocuments.isEmpty {
@@ -87,11 +105,23 @@ struct ContentView: View {
         .focusedSceneValue(\.orifoldWorkspaceViewModel, viewModel)
         .onAppear {
             viewModel.undoManager = undoManager
+            setAppAppearanceMode(persistedAppAppearanceModeValue)
             viewModel.isNightModeEnabled = persistedNightModeEnabled
+            viewModel.nightModeSettings = persistedNightModeSettings
         }
         .onChange(of: undoManager) { _, um in viewModel.undoManager = um }
+        .onChange(of: viewModel.appAppearanceMode) { _, mode in
+            persistedAppAppearanceModeValue = mode
+            applyAppAppearanceMode(mode)
+        }
+        .onChange(of: persistedAppAppearanceMode) { _, _ in
+            syncPersistedAppAppearanceMode()
+        }
         .onChange(of: viewModel.isNightModeEnabled) { _, enabled in
             persistedNightModeEnabled = enabled
+        }
+        .onChange(of: viewModel.nightModeSettings) { _, settings in
+            persistedNightModeSettings = settings
         }
         .onChange(of: viewModel.selectedCommentID) { _, newValue in
             guard newValue != nil else { return }
@@ -183,6 +213,20 @@ struct ContentView: View {
 
         // Trailing: search, document actions, view controls, help
         ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                viewModel.isReaderMode.toggle()
+                if viewModel.isReaderMode {
+                    inspectorTab = .comments
+                    showInspector = true
+                }
+            } label: {
+                Label("Reader Mode", systemImage: viewModel.isReaderMode ? "book.fill" : "book")
+            }
+            .acceptsImportDrops { providers in
+                handleDrop(providers: providers)
+            }
+            .help(viewModel.isReaderMode ? "Exit Reader Mode" : "Enter Reader Mode")
+
             Button { viewModel.isShowingSearch.toggle() } label: {
                 Label("Search", systemImage: "magnifyingglass")
             }
@@ -227,6 +271,20 @@ struct ContentView: View {
             }
             .help(viewModel.isNightModeEnabled ? "Turn off night document tone" : "Dim and warm document pages for night reading")
 
+            Button {
+                isShowingNightModeControls.toggle()
+            } label: {
+                Label("Night Tone", systemImage: "slider.horizontal.3")
+            }
+            .acceptsImportDrops { providers in
+                handleDrop(providers: providers)
+            }
+            .help("Adjust app appearance and night reading tone")
+            .popover(isPresented: $isShowingNightModeControls, arrowEdge: .top) {
+                NightModeControls(viewModel: viewModel)
+                    .frame(width: 320)
+            }
+
             GuideButton(autoShow: true)
                 .acceptsImportDrops { providers in
                     handleDrop(providers: providers)
@@ -235,6 +293,52 @@ struct ContentView: View {
     }
 
     // MARK: - Helpers
+
+    private var persistedNightModeSettings: NightModeSettings {
+        get {
+            NightModeSettings(
+                warmth: persistedNightModeWarmth,
+                intensity: persistedNightModeIntensity,
+                dimming: persistedNightModeDimming
+            ).clamped
+        }
+        nonmutating set {
+            let settings = newValue.clamped
+            persistedNightModeWarmth = settings.warmth
+            persistedNightModeIntensity = settings.intensity
+            persistedNightModeDimming = settings.dimming
+        }
+    }
+
+    private var persistedAppAppearanceModeValue: AppAppearanceMode {
+        get {
+            AppAppearanceMode(rawValue: persistedAppAppearanceMode) ?? .system
+        }
+        nonmutating set {
+            persistedAppAppearanceMode = newValue.rawValue
+        }
+    }
+
+    private func applyAppAppearanceMode(_ mode: AppAppearanceMode) {
+        NSApp.appearance = mode.nsAppearance
+    }
+
+    private func syncPersistedAppAppearanceMode() {
+        setAppAppearanceMode(persistedAppAppearanceModeValue)
+    }
+
+    private func setAppAppearanceMode(_ mode: AppAppearanceMode) {
+        guard viewModel.appAppearanceMode != mode else {
+            applyAppAppearanceMode(mode)
+            return
+        }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            viewModel.appAppearanceMode = mode
+        }
+        applyAppAppearanceMode(mode)
+    }
 
     private var workspaceDropOverlay: some View {
         RoundedRectangle(cornerRadius: .dsRadiusLg, style: .continuous)
@@ -299,6 +403,174 @@ struct ContentView: View {
         configureImportOpenPanel(panel)
         if panel.runModal() == .OK {
             importFilesWithBatchLimit(urls: panel.urls, into: viewModel)
+        }
+    }
+}
+
+private struct ReaderModePill: View {
+    @Bindable var viewModel: WorkspaceViewModel
+    var openNotes: () -> Void
+    var onExit: () -> Void
+    @State private var isShowingToneControls = false
+
+    var body: some View {
+        HStack(spacing: .dsSM) {
+            Label("Reader", systemImage: "book.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.dsTextPrimary)
+
+            Button {
+                isShowingToneControls.toggle()
+            } label: {
+                Image(systemName: viewModel.isNightModeEnabled ? "moon.stars.fill" : "slider.horizontal.3")
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(viewModel.isNightModeEnabled ? Color.dsAccent : Color.dsTextTertiary)
+            .help("Adjust appearance and reading tone")
+            .popover(isPresented: $isShowingToneControls, arrowEdge: .top) {
+                NightModeControls(viewModel: viewModel)
+                    .frame(width: 320)
+            }
+
+            Button(action: openNotes) {
+                Image(systemName: "text.bubble")
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(Color.dsAccent)
+            .help("Open notes and comments")
+
+            Button(action: onExit) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(Color.dsTextTertiary)
+            .help("Exit Reader Mode")
+        }
+        .padding(.leading, .dsMD)
+        .padding(.trailing, .dsSM)
+        .padding(.vertical, 7)
+        .background(.regularMaterial, in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder(Color.dsSeparator, lineWidth: 1)
+        }
+        .shadow(color: Color.dsTextPrimary.opacity(0.10), radius: 8, x: 0, y: 2)
+    }
+}
+
+private struct NightModeControls: View {
+    @Bindable var viewModel: WorkspaceViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: .dsMD) {
+            VStack(alignment: .leading, spacing: .dsSM) {
+                Label("Application", systemImage: "macwindow")
+                    .font(.dsHeadline())
+                Picker("Application appearance", selection: appAppearanceModeBinding) {
+                    ForEach(AppAppearanceMode.allCases) { mode in
+                        Label(mode.title, systemImage: mode.systemImage)
+                            .tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+
+            Divider()
+
+            Toggle(isOn: $viewModel.isNightModeEnabled) {
+                Label("Night Mode", systemImage: viewModel.isNightModeEnabled ? "moon.stars.fill" : "moon.stars")
+                    .font(.dsHeadline())
+            }
+
+            HStack(spacing: .dsSM) {
+                ForEach(NightModePreset.allCases) { preset in
+                    Button {
+                        viewModel.isNightModeEnabled = true
+                        viewModel.nightModeSettings = preset.settings
+                    } label: {
+                        Label(preset.title, systemImage: preset.systemImage)
+                            .labelStyle(.titleAndIcon)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: .dsSM) {
+                nightModeSlider(
+                    title: "Warmth",
+                    systemImage: "thermometer.sun",
+                    value: Binding(
+                        get: { viewModel.nightModeSettings.warmth },
+                        set: { viewModel.nightModeSettings.warmth = $0 }
+                    )
+                )
+                nightModeSlider(
+                    title: "Tone",
+                    systemImage: "circle.lefthalf.filled",
+                    value: Binding(
+                        get: { viewModel.nightModeSettings.intensity },
+                        set: { viewModel.nightModeSettings.intensity = $0 }
+                    )
+                )
+                nightModeSlider(
+                    title: "Dimming",
+                    systemImage: "sun.min",
+                    value: Binding(
+                        get: { viewModel.nightModeSettings.dimming },
+                        set: { viewModel.nightModeSettings.dimming = $0 }
+                    )
+                )
+            }
+
+            HStack {
+                Spacer()
+                Button("Reset") {
+                    viewModel.nightModeSettings = .default
+                }
+            }
+        }
+        .padding(.dsLG)
+    }
+
+    private var appAppearanceModeBinding: Binding<AppAppearanceMode> {
+        Binding(
+            get: { viewModel.appAppearanceMode },
+            set: { mode in
+                setAppAppearanceMode(mode)
+            }
+        )
+    }
+
+    private func setAppAppearanceMode(_ mode: AppAppearanceMode) {
+        guard viewModel.appAppearanceMode != mode else { return }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            viewModel.appAppearanceMode = mode
+        }
+    }
+
+    private func nightModeSlider(title: String, systemImage: String, value: Binding<Double>) -> some View {
+        HStack(spacing: .dsSM) {
+            Image(systemName: systemImage)
+                .frame(width: 18)
+                .foregroundStyle(Color.dsTextTertiary)
+            Text(title)
+                .font(.dsCaption())
+                .foregroundStyle(Color.dsTextSecondary)
+                .frame(width: 54, alignment: .leading)
+            Slider(value: value, in: 0...1, step: 0.01)
+            Text("\(Int(value.wrappedValue * 100))%")
+                .font(.dsCaption())
+                .foregroundStyle(Color.dsTextSecondary)
+                .monospacedDigit()
+                .frame(width: 42, alignment: .trailing)
         }
     }
 }
@@ -644,13 +916,21 @@ private struct AnnotationToolPicker: View {
         [.note, .ink]
     ]
 
+    private var visibleToolGroups: [[AnnotationTool]] {
+        toolGroups
+            .map { group in
+                viewModel.isReaderMode ? group.filter(\.isReaderModeAllowed) : group
+            }
+            .filter { !$0.isEmpty }
+    }
+
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(toolGroups.indices, id: \.self) { groupIndex in
+            ForEach(visibleToolGroups.indices, id: \.self) { groupIndex in
                 if groupIndex > 0 {
                     groupDivider
                 }
-                ForEach(toolGroups[groupIndex]) { tool in
+                ForEach(visibleToolGroups[groupIndex]) { tool in
                     toolButton(tool, shouldReduceMotion: shouldReduceMotion)
                 }
             }
@@ -771,6 +1051,10 @@ private struct AnnotationToolPicker: View {
     }
 
     private func select(_ tool: AnnotationTool) {
+        guard !viewModel.isReaderMode || tool.isReaderModeAllowed else {
+            viewModel.currentTool = tool
+            return
+        }
         if tool == .signature {
             viewModel.isShowingSignaturePalette = true
             viewModel.isShowingStampPalette = false

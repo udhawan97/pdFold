@@ -410,6 +410,40 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertEqual(result.editedBounds.minX, row0.bounds.minX, accuracy: 0.5, "left edge must not shift on a simple append edit")
     }
 
+    func testCommittingStackedParagraphEditPreservesUntouchedSiblingParagraph() throws {
+        let pdf = makeStackedParagraphsPDF()
+        let fixture = try makeMemberFixture(name: "Stacked", pdf: pdf)
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+        let originalPage = try XCTUnwrap(PDFDocument(data: fixture.pdfData)?.page(at: 0))
+        let analysis = PDFTextAnalysisEngine().analyze(
+            data: fixture.pdfData,
+            pageIndex: 0,
+            pageRefID: fixture.refs[0].id,
+            fallbackPage: originalPage
+        )
+        let row1 = try XCTUnwrap(analysis.blocks.first { $0.text.contains("row-1") })
+
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: row1,
+            replacementText: row1.text + " edited",
+            editedBounds: row1.bounds,
+            fontName: row1.fontName,
+            fontSize: row1.fontSize,
+            textColor: row1.textColor.nsColor,
+            alignment: row1.alignment?.nsTextAlignment ?? .left
+        ))
+
+        let editedText = viewModel.loadedPDFs.first?.1.page(at: 0)?.string ?? ""
+        XCTAssertTrue(editedText.contains("row-0"), "editing row-1 must preserve the untouched row-0 paragraph")
+        XCTAssertTrue(editedText.contains("row-1"), "the edited paragraph should remain on the page")
+        XCTAssertTrue(editedText.contains("edited"), "the committed replacement should be rendered into the page")
+    }
+
     func testPDFTextAnalysisUsesVisibleFontSizeForScaledContentStreams() throws {
         let nominalFontSize: CGFloat = 24
         let pdf = makeScaledTextPDF(text: "Scaled inline text", fontSize: nominalFontSize, scale: 0.5)
@@ -3645,6 +3679,40 @@ final class WorkspaceDocumentTests: XCTestCase {
 }
 
 final class WorkspaceViewModelTests: XCTestCase {
+    func testReaderModeBlocksTextEditingAndSigningToolsButAllowsStudyTools() {
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument())
+
+        viewModel.isReaderMode = true
+        viewModel.currentTool = .editText
+        XCTAssertEqual(viewModel.currentTool, .none)
+
+        viewModel.currentTool = .signature
+        XCTAssertEqual(viewModel.currentTool, .none)
+
+        viewModel.currentTool = .highlight
+        XCTAssertEqual(viewModel.currentTool, .highlight)
+
+        viewModel.currentTool = .comment
+        XCTAssertEqual(viewModel.currentTool, .comment)
+    }
+
+    func testReaderModeBlocksSignaturePlacementWhileCommentsStillSave() {
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument())
+        viewModel.isReaderMode = true
+
+        viewModel.beginVisualSignaturePlacement(
+            imageData: Data([0, 1, 2, 3]),
+            kind: .visualTyped,
+            signerName: "Reader"
+        )
+        viewModel.addComment("  Research note  ")
+
+        XCTAssertNil(viewModel.pendingSignatureData)
+        XCTAssertEqual(viewModel.currentTool, .none)
+        XCTAssertEqual(viewModel.document.workspace.signatures.count, 0)
+        XCTAssertEqual(viewModel.document.workspace.comments.map(\.body), ["Research note"])
+    }
+
     func testMetadataMutationsNormalizeTrimAndDeduplicate() {
         let viewModel = WorkspaceViewModel(document: WorkspaceDocument())
 
