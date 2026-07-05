@@ -28,6 +28,10 @@ struct EmptyStateView: View {
             Color.dsCanvas.ignoresSafeArea()
             EmptyStateAmbientBackground()
 
+            LanguageSwitcher()
+                .padding(.dsMD)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
             ScrollView {
                 VStack(spacing: .dsXL) {
                     // Wordmark block
