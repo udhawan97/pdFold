@@ -121,7 +121,7 @@ enum PDFEditedPageRenderer {
         context.restoreGState()
     }
 
-    static func measuredBounds(for operation: PDFTextEditOperation, pageBounds: CGRect? = nil) -> CGRect {
+    static func measuredBounds(for operation: PDFTextEditOperation, pageBounds: CGRect? = nil, sourcePage: PDFPage? = nil) -> CGRect {
         let layout = ReplacementTextLayout(operation: operation)
 
         // Word-wrap can't break every unbreakable run, so an undersized stale box may
@@ -139,7 +139,7 @@ enum PDFEditedPageRenderer {
             trimmedReplacement == operation.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
         let singleUnbreakableToken = !trimmedReplacement.isEmpty &&
             trimmedReplacement.rangeOfCharacter(from: .whitespaces) == nil
-        let width: CGFloat
+        var width: CGFloat
         if operation.didManuallyResizeWidth {
             width = max(1, operation.editedBounds.width)
         } else {
@@ -161,7 +161,7 @@ enum PDFEditedPageRenderer {
             width = min(max(operation.editedBounds.width, min(needed, cap)), cap)
         }
 
-        let measured = layout.suggestedSize(constrainedTo: CGSize(width: width, height: 10_000))
+        var measured = layout.suggestedSize(constrainedTo: CGSize(width: width, height: 10_000))
         // A pathologically long paste (tens of thousands of characters) has no other cap on
         // height the way width is capped by the page's right margin — left unchecked, the
         // box (and the erase/replacement geometry baked into the exported PDF) can grow far
@@ -174,6 +174,54 @@ enum PDFEditedPageRenderer {
             guard let page = pageBounds?.standardized, page.height > 0 else { return nil }
             return max(24, operation.editedBounds.maxY - page.minY - 8)
         }()
+
+        // A paragraph edited near the page's bottom margin has little or no room to grow
+        // downward, but the live editor overlay (`InlineTextEditorOverlay.resizeTextViewHeight`)
+        // has no such limit and shows the user's full typed text while they're still
+        // editing. Capping height alone here — after already settling on the paragraph's
+        // established (often narrow) column width — would make `ReplacementTextLayout.draw`
+        // silently drop whatever no longer fits inside that shorter box, so the user loses
+        // the tail of what they typed with no warning. Before accepting that loss, widen —
+        // but only up to `maxWidth`, the SAME column-aware ceiling used above (bounded by a
+        // detected right-neighbor column as well as the page edge), never the raw page edge
+        // directly: a left-column paragraph must not widen across into a right column's text
+        // just to avoid an unrelated height cap. Fewer wrapped lines needs less height, and
+        // unused width within the paragraph's own safe column is far less damaging than
+        // silently deleting the user's text.
+        if !operation.didManuallyResizeHeight, !operation.didManuallyResizeWidth,
+           let heightPageLimit, maxWidth > width {
+            let neededHeight = ceil(measured.height) + 4
+            if neededHeight > heightPageLimit {
+                let widened = layout.suggestedSize(constrainedTo: CGSize(width: maxWidth, height: 10_000))
+                if ceil(widened.height) + 4 < neededHeight {
+                    width = maxWidth
+                    measured = widened
+                }
+            }
+        }
+
+        // Column/page-edge growth above only ever looked at OTHER TEXT blocks (via
+        // `columnBounds`'s right-neighbor detection) — an adjacent embedded image, figure,
+        // or shaded box isn't a text block, so nothing stopped auto-growth from drawing the
+        // replacement's extra width directly over it. Auto-growth never erases (only the
+        // ORIGINAL source bounds get erased — see `eraseBounds`), so growing into non-blank
+        // page content would draw new text on top of it unerased. Before accepting that
+        // growth, confirm the strip of page the box is about to expand INTO is actually
+        // blank (ordinary paper background); if it isn't, fall back to the original
+        // committed width so the text wraps normally instead of overlapping that content.
+        if !operation.didManuallyResizeWidth, width > operation.editedBounds.width, let sourcePage {
+            let growthStrip = CGRect(
+                x: operation.editedBounds.maxX,
+                y: operation.editedBounds.minY,
+                width: width - operation.editedBounds.maxX,
+                height: max(operation.editedBounds.height, ceil(measured.height) + 4)
+            )
+            if !regionIsBlankBackground(growthStrip, on: sourcePage) {
+                width = max(1, operation.editedBounds.width)
+                measured = layout.suggestedSize(constrainedTo: CGSize(width: width, height: 10_000))
+            }
+        }
+
         let height = operation.didManuallyResizeHeight
             ? max(1, operation.editedBounds.height)
             : min(max(1, ceil(measured.height) + 4), heightPageLimit ?? .greatestFiniteMagnitude)
@@ -197,6 +245,85 @@ enum PDFEditedPageRenderer {
             return max(620, operation.sourceBounds.standardized.width, operation.editedBounds.standardized.width)
         }
         return max(24, columnBounds.maxX - operation.editedBounds.minX)
+    }
+
+    /// True when `rect` on `page` looks like ordinary paper background — possibly with a
+    /// FEW stray/sparse dark pixels from nearby text ink — rather than a densely-painted
+    /// embedded image, figure, or shaded block. Used to gate auto-width growth (see
+    /// `measuredBounds`) so it never draws replacement text over an image it never erased.
+    ///
+    /// This deliberately checks the FRACTION of light/paper-colored pixels rather than
+    /// requiring one dominant color: text glyphs only ink a small fraction of the pixels
+    /// they occupy (a growth strip that happens to graze the tail of an unrelated word, or
+    /// a still-to-be-erased sliver of the source text itself, is still mostly white) —
+    /// while a real photo/image densely covers nearly every sampled pixel with non-white
+    /// color. Requiring "one overwhelming color" instead would also reject ordinary sparse
+    /// text ink, which is legitimate to grow over (it gets erased or was never the
+    /// target of this check to begin with).
+    private static func regionIsBlankBackground(_ rect: CGRect, on page: PDFPage) -> Bool {
+        let pageBounds = page.bounds(for: .mediaBox)
+        let sampleRect = rect.standardized.intersection(pageBounds)
+        guard sampleRect.width > 1, sampleRect.height > 1, !sampleRect.isNull else { return true }
+
+        let maxPixels = 96
+        let pixelWidth = min(maxPixels, max(1, Int(ceil(sampleRect.width))))
+        let pixelHeight = min(maxPixels, max(1, Int(ceil(sampleRect.height))))
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelWidth,
+            pixelsHigh: pixelHeight,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ),
+        let bitmapContext = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext else {
+            return true
+        }
+
+        let scaleX = CGFloat(pixelWidth) / sampleRect.width
+        let scaleY = CGFloat(pixelHeight) / sampleRect.height
+        bitmapContext.saveGState()
+        bitmapContext.setFillColor(NSColor.white.cgColor)
+        bitmapContext.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+        bitmapContext.scaleBy(x: scaleX, y: scaleY)
+        bitmapContext.translateBy(x: -sampleRect.minX, y: -sampleRect.minY)
+        drawPageForSampling(page, mediaBox: pageBounds, in: bitmapContext)
+        bitmapContext.restoreGState()
+
+        var totalSamples = 0
+        var lightSamples = 0
+        let sampleStep = max(1, Int(sqrt(Double(pixelWidth * pixelHeight) / 900.0).rounded(.up)))
+        for y in stride(from: 0, to: pixelHeight, by: sampleStep) {
+            for x in stride(from: 0, to: pixelWidth, by: sampleStep) {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                var red: CGFloat = 0
+                var green: CGFloat = 0
+                var blue: CGFloat = 0
+                var alpha: CGFloat = 0
+                color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+                guard alpha > 0.5 else { continue }
+                totalSamples += 1
+                // Paper background (white or a light off-white/tint) has high brightness AND
+                // low saturation; sparse black text ink fails brightness, a solid colored
+                // image/figure typically fails on saturation even at high brightness.
+                let maxComponent = max(red, green, blue)
+                let minComponent = min(red, green, blue)
+                let saturation = maxComponent > 0 ? (maxComponent - minComponent) / maxComponent : 0
+                if maxComponent >= 0.82, saturation <= 0.12 {
+                    lightSamples += 1
+                }
+            }
+        }
+        guard totalSamples > 0 else { return true }
+
+        // A growth strip that's mostly paper background, with at most a sparse scattering
+        // of foreign ink, is safe to grow into. A densely-painted image/figure fails this
+        // by a wide margin (most sampled pixels are neither light nor low-saturation).
+        return Double(lightSamples) / Double(totalSamples) >= 0.7
     }
 
     private static func sampledBackgroundColor(near sourceBounds: CGRect, on page: PDFPage) -> CGColor? {

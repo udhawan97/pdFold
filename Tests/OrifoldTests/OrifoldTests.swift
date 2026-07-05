@@ -339,6 +339,29 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertFalse(first.first?.text.contains("Second item") ?? true)
     }
 
+    /// Regression: a line that opens with a differently-colored run — a hyperlink, an
+    /// inline code span, a highlighted keyword — followed by ordinary body-colored text.
+    /// `buildBlock` picked the WHOLE line's detected color from only the first
+    /// non-space glyph's color, so a link at the very start of a sentence recolored the
+    /// entire paragraph's replacement text to the link color once any word in that
+    /// sentence was edited, even words nowhere near the link. The detected color should
+    /// track whichever color actually covers the most ink on the line.
+    func testPDFTextAnalysisUsesDominantColorNotFirstRunWhenLineOpensWithAHyperlink() throws {
+        let pdf = makeHyperlinkThenPlainTextPDF()
+        let data = try pdf.dataRepresentation().unwrap()
+        let engine = PDFTextAnalysisEngine()
+        let page = try XCTUnwrap(pdf.page(at: 0))
+
+        let analysis = engine.analyze(data: data, pageIndex: 0, pageRefID: UUID(), fallbackPage: page)
+        let block = try XCTUnwrap(analysis.blocks.first { $0.text.contains("for the complete quarterly") })
+
+        // The link run ("See docs") is a handful of characters; the trailing black run is
+        // most of the line, so the dominant/detected color must be black, not the link blue.
+        XCTAssertLessThan(block.textColor.red, 0.3)
+        XCTAssertLessThan(block.textColor.green, 0.3)
+        XCTAssertLessThan(block.textColor.blue, 0.3)
+    }
+
     /// Regression for a real user-reported bug: editing one paragraph in a document with
     /// several near-identical stacked paragraphs (e.g. a repeated-content stress file)
     /// visibly shifted the edited text's position and font size, even though the user
@@ -493,6 +516,87 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertTrue(viewModel.loadedPDFs.first?.1.page(at: 0)?.string?.contains("edited") ?? false)
     }
 
+    /// Three sequential inline edits made back-to-back (no run-loop turn between them, as
+    /// happens in a scripted/batch edit flow, or simply several fast edits within the same
+    /// event) must still undo ONE STEP AT A TIME. `UndoManager.groupsByEvent` (the default)
+    /// auto-closes an implicit group only at run-loop boundaries — if nothing in the edit
+    /// path explicitly closes a group per edit, three synchronous edits with no run-loop
+    /// turn between them could coalesce into a single implicit undo group, so one `undo()`
+    /// would revert all three edits at once instead of just the most recent one.
+    func testThreeSequentialInlineEditsUndoOneStepAtATime() throws {
+        let pdf = makeStackedParagraphsPDF()
+        let fixture = try makeMemberFixture(name: "Stacked", pdf: pdf)
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+        let undoManager = UndoManager()
+        viewModel.undoManager = undoManager
+        let originalPage = try XCTUnwrap(PDFDocument(data: fixture.pdfData)?.page(at: 0))
+        let analysis = PDFTextAnalysisEngine().analyze(
+            data: fixture.pdfData,
+            pageIndex: 0,
+            pageRefID: fixture.refs[0].id,
+            fallbackPage: originalPage
+        )
+        let row0 = try XCTUnwrap(analysis.blocks.first { $0.text.contains("row-0") })
+        let row1 = try XCTUnwrap(analysis.blocks.first { $0.text.contains("row-1") })
+
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: row1,
+            replacementText: row1.text + " edit-one",
+            editedBounds: row1.bounds,
+            fontName: row1.fontName,
+            fontSize: row1.fontSize,
+            textColor: row1.textColor.nsColor,
+            alignment: row1.alignment?.nsTextAlignment ?? .left
+        ))
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: row0,
+            replacementText: row0.text + " edit-two",
+            editedBounds: row0.bounds,
+            fontName: row0.fontName,
+            fontSize: row0.fontSize,
+            textColor: row0.textColor.nsColor,
+            alignment: row0.alignment?.nsTextAlignment ?? .left
+        ))
+        let row1AfterFirstEdit = try XCTUnwrap(
+            viewModel.document.workspace.pageEditStates.first(where: { $0.pageRefID == fixture.refs[0].id })?
+                .operations.first(where: { $0.sourceBlockID == row1.id })
+        )
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: row1,
+            replacementText: row1.text + " edit-three",
+            editedBounds: row1AfterFirstEdit.editedBounds,
+            fontName: row1.fontName,
+            fontSize: row1.fontSize,
+            textColor: row1.textColor.nsColor,
+            alignment: row1.alignment?.nsTextAlignment ?? .left
+        ))
+        XCTAssertEqual(viewModel.document.workspace.pageEditStates.first?.operations.count, 2, "three edits across two distinct blocks should net two stored operations")
+
+        undoManager.undo()
+
+        let pageText = viewModel.loadedPDFs.first?.1.page(at: 0)?.string ?? ""
+        XCTAssertFalse(pageText.contains("edit-three"), "the most recent edit must be undone")
+        XCTAssertTrue(pageText.contains("edit-two"), "a single undo() must not also revert the second edit")
+        XCTAssertTrue(pageText.contains("row-0") && pageText.contains("edit-two"), "row-0's edit-two must still be present after undoing only the last edit")
+
+        undoManager.undo()
+        let pageTextAfterSecondUndo = viewModel.loadedPDFs.first?.1.page(at: 0)?.string ?? ""
+        XCTAssertFalse(pageTextAfterSecondUndo.contains("edit-two"), "second undo() should revert edit-two")
+        XCTAssertTrue(pageTextAfterSecondUndo.contains("edit-one"), "second undo() must not also revert edit-one")
+
+        undoManager.redo()
+        let pageTextAfterRedo = viewModel.loadedPDFs.first?.1.page(at: 0)?.string ?? ""
+        XCTAssertTrue(pageTextAfterRedo.contains("edit-two"), "redo() should restore exactly the edit that was just undone")
+        XCTAssertFalse(pageTextAfterRedo.contains("edit-three"), "redo() must not also restore the edit still further ahead")
+    }
+
     func testInlineTextEditPreservesImageBackedPDFBackground() throws {
         let pdfData = try makePhotoPDFData(text: "Original searchable text")
         let pdf = try XCTUnwrap(PDFDocument(data: pdfData))
@@ -631,6 +735,28 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertNotNil(NSFont(name: block.fontName, size: block.fontSize))
     }
 
+    /// Regression companion to the hyperlink-at-line-start fix: the same run-position bias
+    /// (picking only the FIRST glyph's font) could also misfire when the differently-styled
+    /// run sits in the MIDDLE of a sentence — e.g. "Please review the **Q3 budget** figures
+    /// before Friday" with a single bold emphasis mid-sentence. The dominant/majority font
+    /// selection must be position-independent: the surrounding plain-weight text is still
+    /// most of the line, so the detected (and thus committed-on-edit) font must stay
+    /// non-bold regardless of where in the line the bold run sits.
+    func testPDFTextAnalysisUsesDominantFontNotFirstRunForAMidSentenceBoldEmphasis() throws {
+        let pdf = makeMidSentenceBoldPDF()
+        let data = try pdf.dataRepresentation().unwrap()
+        let engine = PDFTextAnalysisEngine()
+        let page = try XCTUnwrap(pdf.page(at: 0))
+
+        let analysis = engine.analyze(data: data, pageIndex: 0, pageRefID: UUID(), fallbackPage: page)
+        let block = try XCTUnwrap(analysis.blocks.first { $0.text.contains("figures before Friday") })
+
+        XCTAssertFalse(
+            block.fontName.localizedCaseInsensitiveContains("bold"),
+            "a single mid-sentence bold emphasis must not flip the whole paragraph's detected (and thus edited) font to bold"
+        )
+    }
+
     func testReconcileLigaturesPrefersPDFKitTextWhenPlausible() throws {
         let pdf = makePDF(pageTexts: ["Generative AI strategy"])
         let page = try XCTUnwrap(pdf.page(at: 0))
@@ -750,6 +876,67 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertEqual(viewModel.document.workspace.pageEditStates.first?.operations.first?.replacementText, "Replacement text")
         XCTAssertNotNil(viewModel.loadedPDFs.first?.1.page(at: 0))
         XCTAssertTrue(viewModel.loadedPDFs.first?.1.stringValue.contains("Replacement text") ?? false)
+    }
+
+    /// Rotating one page (page 1) and then editing text on an entirely UNRELATED page
+    /// (page 2) in the same member must leave page 1's rotation and content untouched.
+    /// Every inline edit re-serializes the WHOLE member PDF and reloads it fresh
+    /// (`regenerateEditedPage`), so a real risk here is the round-trip silently losing or
+    /// shifting another page's `/Rotate` state or content — this is the first test to
+    /// exercise that specific cross-page interaction end-to-end through the real
+    /// `rotatePage`/`applyInlineTextEdit`/export APIs (not the low-level renderer alone).
+    func testEditingOnePageAfterRotatingAnUnrelatedPagePreservesBothIndependently() throws {
+        let fixture = try makeMemberWithPDF(name: "Multi", pageTexts: ["Page one content", "Page two original"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+
+        viewModel.rotatePage(fixture.refs[0], by: 90)
+        XCTAssertEqual(viewModel.loadedPDFs.first?.1.page(at: 0)?.rotation, 90)
+
+        let sourceBlock = EditableTextBlock(
+            pageRefID: fixture.refs[1].id,
+            text: "Page two original",
+            bounds: CGRect(x: 70, y: 700, width: 150, height: 24),
+            lines: [],
+            fontName: "Helvetica",
+            fontSize: 16,
+            textColor: .documentText,
+            rotation: 0,
+            baseline: 700,
+            confidence: .high
+        )
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[1],
+            sourceBlock: sourceBlock,
+            replacementText: "Page two edited",
+            editedBounds: CGRect(x: 70, y: 700, width: 190, height: 28),
+            fontName: "Helvetica",
+            fontSize: 16,
+            textColor: .black,
+            alignment: .left
+        ))
+
+        // The rotated, untouched page must still be rotated and still contain its content.
+        let page1 = try XCTUnwrap(viewModel.loadedPDFs.first?.1.page(at: 0))
+        XCTAssertEqual(page1.rotation, 90, "editing an unrelated page must not disturb this page's rotation")
+        XCTAssertTrue(page1.string?.contains("Page one content") ?? false, "editing an unrelated page must not disturb this page's content")
+
+        // The edited page must reflect the edit and stay unrotated.
+        let page2 = try XCTUnwrap(viewModel.loadedPDFs.first?.1.page(at: 1))
+        XCTAssertEqual(page2.rotation, 0)
+        XCTAssertTrue(page2.string?.contains("Page two edited") ?? false)
+
+        let exportedData = try viewModel.document.exportedPDFDataThrowing(from: try viewModel.document.snapshot(contentType: .pdf))
+        let exportedPDF = try XCTUnwrap(PDFDocument(data: exportedData))
+        let exportedPage1 = try XCTUnwrap(exportedPDF.page(at: 0))
+        let exportedPage2 = try XCTUnwrap(exportedPDF.page(at: 1))
+        XCTAssertEqual(exportedPage1.rotation, 90, "exported rotated page must still be rotated")
+        XCTAssertTrue(exportedPage1.string?.contains("Page one content") ?? false)
+        XCTAssertEqual(exportedPage2.rotation, 0)
+        XCTAssertTrue(exportedPage2.string?.contains("Page two edited") ?? false)
     }
 
     func testInlineTextEditAfterPageMoveUsesOriginalSourcePage() throws {
@@ -1534,6 +1721,52 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertGreaterThan(measured.height, 24, "paragraph should keep its multi-line height, not collapse to a single line")
     }
 
+    /// Regression: `maximumTextWidth`'s column-neighbor detection only ever looks at OTHER
+    /// TEXT BLOCKS — an embedded image, figure, or logo sitting immediately to the right of
+    /// a short paragraph isn't a text block, so nothing previously stopped a single-token
+    /// (unbreakable) replacement from auto-growing its box's width straight across into the
+    /// image's territory. Auto-growth never erases (see `eraseBounds`), so that growth would
+    /// draw new replacement text directly on top of the image, unerased.
+    func testMeasuredBoundsDoesNotGrowIntoAnAdjacentEmbeddedImage() throws {
+        let pageBounds = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let imageBounds = CGRect(x: 300, y: 650, width: 200, height: 100)
+        let data = NSMutableData()
+        var mediaBox = pageBounds
+        let context = try XCTUnwrap(CGDataConsumer(data: data).flatMap { CGContext(consumer: $0, mediaBox: &mediaBox, nil) })
+        context.beginPDFPage(nil)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        NSColor.white.setFill()
+        pageBounds.fill()
+        NSColor.systemBlue.setFill()
+        imageBounds.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        context.endPDFPage()
+        context.closePDF()
+        let page = try XCTUnwrap(PDFDocument(data: data as Data)?.page(at: 0))
+
+        let originalBounds = CGRect(x: 72, y: 670, width: 60, height: 16)
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: originalBounds,
+            editedBounds: originalBounds,
+            replacementText: "Supercalifragilisticexpialidocious",
+            fontName: "Helvetica",
+            fontSize: 12,
+            textColor: .documentText,
+            alignment: .left
+        )
+
+        let measured = PDFEditedPageRenderer.measuredBounds(for: operation, pageBounds: pageBounds, sourcePage: page)
+
+        XCTAssertLessThanOrEqual(
+            measured.maxX,
+            imageBounds.minX + 0.01,
+            "auto-growth must not extend the replacement box across an adjacent embedded image"
+        )
+    }
+
     func testMeasuredBoundsCapsAutomaticHeightToWhatFitsOnThePage() throws {
         // A pathologically long paste (tens of thousands of characters) has no other cap on
         // height the way width is capped to the page's right margin — unchecked, the box
@@ -1559,6 +1792,85 @@ final class PDFTextEditingRedesignTests: XCTestCase {
 
         XCTAssertLessThanOrEqual(measured.height, pageBounds.height, "the box must never grow taller than the page itself")
         XCTAssertGreaterThanOrEqual(measured.minY, pageBounds.minY - 1, "the box's bottom edge must not be pushed off the bottom of the page")
+    }
+
+    /// Regression: editing the LAST line of a paragraph sitting at the page's bottom
+    /// margin, with a realistic (not pathological) amount of added text — enough to need
+    /// one or two more wrapped lines at the paragraph's established column width, but not
+    /// an absurd paste. The live editor overlay (`resizeTextViewHeight`) has no page-bottom
+    /// limit and shows the full text while typing; only `measuredBounds` (used when
+    /// actually regenerating/exporting the page) caps height to the room left below the
+    /// box's fixed top edge. Capping height alone, without ever widening the box first,
+    /// makes the CTFrame draw silently drop whatever text no longer fits — the user sees
+    /// their full paragraph while typing, then loses the tail of it on commit with no
+    /// warning. This paragraph's own detected column (as `assignColumnBounds` would
+    /// actually produce for an ordinary single-column page with no right neighbor) has
+    /// unused width beyond the current line's own text — that room should absorb the
+    /// overflow (fewer wrapped lines) before any text is silently dropped.
+    func testMeasuredBoundsWidensBeforeSilentlyDroppingTextNearThePageBottomMargin() throws {
+        let originalBounds = CGRect(x: 72, y: 40, width: 200, height: 14)
+        let replacement = "This replacement paragraph is intentionally long enough that it would need several wrapped lines at the original narrow column width, right at the bottom margin of the page."
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: originalBounds,
+            editedBounds: originalBounds,
+            columnBounds: CGRect(x: 72, y: 0, width: 480, height: 792),
+            replacementText: replacement,
+            fontName: "Helvetica",
+            fontSize: 12,
+            textColor: .documentText,
+            alignment: .left
+        )
+        let pageBounds = CGRect(x: 0, y: 0, width: 612, height: 792)
+
+        let measured = PDFEditedPageRenderer.measuredBounds(for: operation, pageBounds: pageBounds)
+
+        let font = NSFont(name: "Helvetica", size: 12) ?? NSFont.systemFont(ofSize: 12)
+        let attributed = NSAttributedString(string: replacement, attributes: [.font: font])
+        let framesetter = CTFramesetterCreateWithAttributedString(attributed)
+        let path = CGMutablePath()
+        path.addRect(measured)
+        let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: attributed.length), path, nil)
+        let visibleRange = CTFrameGetVisibleStringRange(frame)
+
+        XCTAssertEqual(
+            visibleRange.length,
+            attributed.length,
+            "the box measuredBounds computed must be tall/wide enough to actually fit the full replacement text, not silently truncate it"
+        )
+        XCTAssertGreaterThanOrEqual(measured.minY, pageBounds.minY - 1, "must not bleed off the bottom of the page")
+        XCTAssertLessThanOrEqual(measured.maxX, pageBounds.maxX + 1, "must not bleed off the right of the page")
+    }
+
+    /// The bottom-margin widen fallback (above) must stay inside the paragraph's own
+    /// detected column — a left-column paragraph near the page bottom must never widen
+    /// across into a right column's territory just to dodge its own height cap.
+    func testMeasuredBoundsWidenFallbackNeverCrossesIntoARightColumn() throws {
+        let originalBounds = CGRect(x: 72, y: 40, width: 200, height: 14)
+        let replacement = "This replacement paragraph is intentionally long enough that it would need several wrapped lines at the original narrow column width, right at the bottom margin of the page."
+        let leftColumnBounds = CGRect(x: 72, y: 0, width: 220, height: 792)
+        let operation = PDFTextEditOperation(
+            pageRefID: UUID(),
+            sourceBlockID: UUID(),
+            sourceBounds: originalBounds,
+            editedBounds: originalBounds,
+            columnBounds: leftColumnBounds,
+            replacementText: replacement,
+            fontName: "Helvetica",
+            fontSize: 12,
+            textColor: .documentText,
+            alignment: .left
+        )
+        let pageBounds = CGRect(x: 0, y: 0, width: 612, height: 792)
+
+        let measured = PDFEditedPageRenderer.measuredBounds(for: operation, pageBounds: pageBounds)
+
+        XCTAssertLessThanOrEqual(
+            measured.maxX,
+            leftColumnBounds.maxX + 1,
+            "widening to avoid a height-cap truncation must stay inside the paragraph's own column, not cross into a right column"
+        )
     }
 
     func testMeasuredBoundsPreservesManualResizeGeometry() throws {
@@ -1647,6 +1959,74 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         let regeneratedPage = try XCTUnwrap(viewModel.loadedPDFs.first?.1.page(at: 0))
         XCTAssertEqual(regeneratedPage.annotations.count, 1, "highlight annotation was dropped by the text-edit regeneration")
         XCTAssertEqual(regeneratedPage.annotations.first?.type, "Highlight")
+    }
+
+    /// Both occurrences of an identical repeated paragraph, each edited to DIFFERENT
+    /// replacement text, must map back onto the CORRECT occurrence in a source-preserving
+    /// plain-text export — never swapped and never both collapsing onto the same one.
+    /// `resolvedStringReplacements`/`sourceOccurrence` disambiguate a repeated string by
+    /// comparing the PDF visual reading-order occurrence index against the raw-source-text
+    /// match count; this is the first end-to-end test to actually exercise editing BOTH
+    /// occurrences of the same repeated text at once.
+    func testBothOccurrencesOfRepeatedIdenticalTextMapToCorrectPositionInSourcePreservingExport() throws {
+        let repeatedLine = "Repeated line item"
+        let pdf = makeRepeatedIdenticalTextPDF(text: repeatedLine)
+        let fixture = try makeMemberFixture(name: "Repeated", pdf: pdf)
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let originalString = "\(repeatedLine)\n\n\(repeatedLine)"
+        document.sourcePayloads[fixture.member.id] = SourceDocumentPayload(
+            format: .plainText,
+            originalFilename: "repeated.txt",
+            originalContentTypeIdentifier: "public.plain-text",
+            originalData: try XCTUnwrap(originalString.data(using: .utf8)),
+            plainText: originalString
+        )
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+        let originalPage = try XCTUnwrap(PDFDocument(data: fixture.pdfData)?.page(at: 0))
+        let analysis = PDFTextAnalysisEngine().analyze(
+            data: fixture.pdfData,
+            pageIndex: 0,
+            pageRefID: fixture.refs[0].id,
+            fallbackPage: originalPage
+        )
+        let matches = analysis.blocks.filter { $0.text == repeatedLine }.sorted { $0.bounds.minY > $1.bounds.minY }
+        XCTAssertEqual(matches.count, 2, "fixture should produce two distinct blocks with identical text")
+        let topOccurrence = matches[0]
+        let bottomOccurrence = matches[1]
+
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: topOccurrence,
+            replacementText: "First occurrence replaced",
+            editedBounds: topOccurrence.bounds,
+            fontName: topOccurrence.fontName,
+            fontSize: topOccurrence.fontSize,
+            textColor: topOccurrence.textColor.nsColor,
+            alignment: topOccurrence.alignment?.nsTextAlignment ?? .left
+        ))
+        XCTAssertTrue(viewModel.applyInlineTextEdit(
+            pageRef: fixture.refs[0],
+            sourceBlock: bottomOccurrence,
+            replacementText: "Second occurrence replaced",
+            editedBounds: bottomOccurrence.bounds,
+            fontName: bottomOccurrence.fontName,
+            fontSize: bottomOccurrence.fontSize,
+            textColor: bottomOccurrence.textColor.nsColor,
+            alignment: bottomOccurrence.alignment?.nsTextAlignment ?? .left
+        ))
+
+        let exportedData = try viewModel.dataForWorkspaceExport(as: .text)
+        let exportedText = try XCTUnwrap(String(data: exportedData, encoding: .utf8))
+
+        XCTAssertTrue(exportedText.contains("First occurrence replaced"))
+        XCTAssertTrue(exportedText.contains("Second occurrence replaced"))
+        XCTAssertFalse(exportedText.contains(repeatedLine), "both raw occurrences should have been replaced, not just one")
+        let firstRange = try XCTUnwrap(exportedText.range(of: "First occurrence replaced"))
+        let secondRange = try XCTUnwrap(exportedText.range(of: "Second occurrence replaced"))
+        XCTAssertTrue(firstRange.lowerBound < secondRange.lowerBound, "the top-of-page occurrence's edit must land before the bottom occurrence's edit in reading order")
     }
 
     /// `/ByteRange` is a PDF construct used only by signature dictionaries, so its presence
@@ -2273,6 +2653,79 @@ final class InlineTextEditPlacementTests: XCTestCase {
         XCTAssertFalse(exportedText.contains("Second edit wraps"))
     }
 
+    /// A very short original word ("Hi"), auto-sized (no manual geometry flags) across FIVE
+    /// rapid re-edit cycles alternating short and much-longer replacements — mirroring a
+    /// user who commits a short edit, immediately reopens it, and keeps tweaking it. Each
+    /// reopen mimics `WorkspaceViewModel.reopenedBounds`: width resets to the ORIGINAL
+    /// source width and the box's TOP edge (`maxY`) is carried over exactly, letting
+    /// `measuredBounds` recompute width/height fresh every time. Regression target: font
+    /// size/box geometry must never compound (creep) across cycles — a short replacement
+    /// after several long ones must shrink back down to essentially the same box the very
+    /// first short edit produced, and the box's top edge must never drift.
+    func testRepeatedAutoSizedEditsOfAVeryShortTextBoxDoNotCompoundGeometryDrift() throws {
+        let fixture = try makeMemberWithPDF(name: "Editable", pageTexts: ["Hi"])
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        let viewModel = WorkspaceViewModel(document: document, processingEngine: PDFKitProcessingEngineFallback())
+
+        let sourceBounds = CGRect(x: 72, y: 700, width: 20, height: 14)
+        var sourceBlock = EditableTextBlock(
+            pageRefID: fixture.refs[0].id, text: "Hi", bounds: sourceBounds,
+            lines: [], fontName: "Helvetica", fontSize: 12, textColor: .documentText,
+            rotation: 0, baseline: 700, confidence: .high)
+        var editedBounds = sourceBounds
+
+        let shortText = "Ok"
+        let cycles = [
+            shortText,
+            "This is a considerably longer replacement that should wrap onto more than one line",
+            shortText,
+            "Yet another much longer replacement to force wrapping a second time and check for drift",
+            shortText
+        ]
+        var maxYByCycle: [CGFloat] = []
+        var shortCycleBounds: [CGRect] = []
+        for replacement in cycles {
+            XCTAssertTrue(viewModel.applyInlineTextEdit(
+                pageRef: fixture.refs[0],
+                sourceBlock: sourceBlock,
+                replacementText: replacement,
+                editedBounds: editedBounds,
+                fontName: "Helvetica",
+                fontSize: 12,
+                textColor: .black,
+                alignment: .left
+            ))
+            let stored = try XCTUnwrap(viewModel.document.workspace.pageEditStates.first?.operations.first)
+            maxYByCycle.append(stored.editedBounds.maxY)
+            if replacement == shortText {
+                shortCycleBounds.append(stored.editedBounds)
+            }
+
+            // Reopen exactly as `reopenedBounds` does: width resets to the ORIGINAL source
+            // width, height carries the just-committed height forward as a starting point,
+            // and the top edge (maxY) is preserved exactly.
+            let height = max(1, stored.editedBounds.height)
+            editedBounds = CGRect(
+                x: sourceBounds.minX,
+                y: stored.editedBounds.maxY - height,
+                width: sourceBounds.width,
+                height: height
+            )
+            sourceBlock.text = replacement
+            sourceBlock.bounds = stored.editedBounds
+        }
+
+        XCTAssertEqual(Set(maxYByCycle.map { ($0 * 100).rounded() }).count, 1, "the box's top edge must never drift across repeated auto-sized re-edits: \(maxYByCycle)")
+        XCTAssertEqual(shortCycleBounds.count, 3)
+        for bounds in shortCycleBounds {
+            XCTAssertEqual(bounds.width, shortCycleBounds[0].width, accuracy: 0.5, "a short replacement's box must shrink back to essentially the same size every time, not compound growth from the intervening long edits")
+            XCTAssertEqual(bounds.height, shortCycleBounds[0].height, accuracy: 0.5)
+        }
+    }
+
     func testRepeatedInlineTextEditPreservesExistingManualGeometryFlags() throws {
         let fixture = try makeMemberWithPDF(name: "Editable", pageTexts: ["Original text"])
         let document = WorkspaceDocument()
@@ -2794,6 +3247,38 @@ final class InlineTextEditPlacementTests: XCTestCase {
 
         let edit = try XCTUnwrap(fixture.committedEdit())
         XCTAssertEqual(edit.editedBounds.maxY, 664, accuracy: 0.01)
+    }
+
+    /// Regression: the editor overlay is a plain NSView subview of `pdfView`, laid out by
+    /// converting the block's PAGE-space bounds through `pdfView.convert(_:from:page:)`
+    /// (`layoutEditor`). Before this fix, only ZOOM changes (`.PDFViewScaleChanged`)
+    /// triggered that re-layout — scrolling the canvas while editing left the overlay glued
+    /// to its stale on-screen position. Since `commitButton()` converts the overlay's
+    /// on-screen frame back to page space at commit time, scrolling mid-edit and then
+    /// clicking Done would have committed the replacement at the WRONG page location.
+    func testInlineEditorFollowsScrollPositionSoCommitLandsAtTheCorrectPageLocation() throws {
+        let fixture = try makeInlineEditorFixture()
+        guard let scrollView = findSubview(in: fixture.pdfView, matching: { (_: NSScrollView) in true }) else {
+            throw XCTSkip("PDFView did not expose an internal NSScrollView on this OS/runtime to scroll")
+        }
+        let clipView = scrollView.contentView
+        clipView.postsBoundsChangedNotifications = true
+
+        // Simulate the user scrolling the canvas while the editor is open.
+        clipView.scroll(to: CGPoint(x: 0, y: 60))
+        scrollView.reflectScrolledClipView(clipView)
+
+        let textView = try XCTUnwrap(findSubview(in: fixture.overlay) { (_: NSTextView) in true })
+        let doneButton = try XCTUnwrap(findSubview(in: fixture.overlay) { (button: NSButton) in
+            button.title == "Done"
+        })
+        textView.string = "Changed text"
+        doneButton.performClick(nil)
+
+        let edit = try XCTUnwrap(fixture.committedEdit())
+        // Matches the un-scrolled baseline in `testInlineEditorCommitsTextContentTopEdge` —
+        // scrolling mid-edit must have zero effect on where the commit lands.
+        XCTAssertEqual(edit.editedBounds.maxY, 664, accuracy: 0.01, "scrolling mid-edit must not shift where the replacement commits on the page")
     }
 }
 
@@ -6056,6 +6541,16 @@ private func makeTwoColumnWrappedPDF() -> PDFDocument {
     return PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
 }
 
+private func makeHyperlinkThenPlainTextPDF() -> PDFDocument {
+    let view = HyperlinkThenPlainTextFixturePageView(frame: CGRect(x: 0, y: 0, width: 612, height: 792))
+    return PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
+}
+
+private func makeMidSentenceBoldPDF() -> PDFDocument {
+    let view = MidSentenceBoldFixturePageView(frame: CGRect(x: 0, y: 0, width: 612, height: 792))
+    return PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
+}
+
 private func makeConsecutiveBulletsPDF() -> PDFDocument {
     let view = ConsecutiveBulletsFixturePageView(frame: CGRect(x: 0, y: 0, width: 612, height: 792))
     return PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
@@ -6063,6 +6558,11 @@ private func makeConsecutiveBulletsPDF() -> PDFDocument {
 
 private func makeTwoLinePDF() -> PDFDocument {
     let view = TwoLineFixturePageView(frame: CGRect(x: 0, y: 0, width: 612, height: 792))
+    return PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
+}
+
+private func makeRepeatedIdenticalTextPDF(text: String) -> PDFDocument {
+    let view = RepeatedIdenticalTextFixturePageView(frame: CGRect(x: 0, y: 0, width: 612, height: 792), text: text)
     return PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
 }
 
@@ -6270,6 +6770,32 @@ private final class SolidColorTextFixturePageView: NSView {
     }
 }
 
+/// The SAME text drawn twice, well separated vertically (top of page, bottom of page) so
+/// they never merge into one editable block — used to test disambiguating edits to
+/// distinct occurrences of identical repeated text.
+private final class RepeatedIdenticalTextFixturePageView: NSView {
+    private let text: String
+
+    init(frame: CGRect, text: String) {
+        self.text = text
+        super.init(frame: frame)
+    }
+
+    required init?(coder: NSCoder) { nil }
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        bounds.fill()
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont(name: "Helvetica", size: 14) ?? NSFont.systemFont(ofSize: 14),
+            .foregroundColor: NSColor.black
+        ]
+        NSString(string: text).draw(at: CGPoint(x: 72, y: 100), withAttributes: attributes)
+        NSString(string: text).draw(at: CGPoint(x: 72, y: 500), withAttributes: attributes)
+    }
+}
+
 private final class TwoLineFixturePageView: NSView {
     override var isFlipped: Bool { false }
 
@@ -6457,6 +6983,42 @@ private final class TwoColumnWrappedFixturePageView: NSView {
             .draw(in: CGRect(x: 72, y: 96, width: 170, height: 70), withAttributes: attrs)
         NSString(string: "Right column wrapped sentence with continuation text for paragraph grouping.")
             .draw(in: CGRect(x: 340, y: 96, width: 170, height: 70), withAttributes: attrs)
+    }
+}
+
+/// A single line that opens with a short blue "hyperlink" run followed by a much longer
+/// black run, all on the same baseline/font/size — mirrors a sentence that opens with a
+/// hyperlink ("See docs for the complete quarterly report details this cycle").
+private final class HyperlinkThenPlainTextFixturePageView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        bounds.fill()
+        let font = NSFont(name: "Helvetica", size: 14) ?? NSFont.systemFont(ofSize: 14)
+        let linkRun = NSAttributedString(string: "See docs", attributes: [.font: font, .foregroundColor: NSColor.blue])
+        let bodyRun = NSAttributedString(string: " for the complete quarterly report details this cycle", attributes: [.font: font, .foregroundColor: NSColor.black])
+        let line = NSMutableAttributedString(attributedString: linkRun)
+        line.append(bodyRun)
+        line.draw(at: CGPoint(x: 72, y: 120))
+    }
+}
+
+/// A single line with a short bold emphasis run in the MIDDLE, surrounded by much more
+/// plain-weight text — "Please review the " + bold "Q3 budget" + " figures before Friday".
+private final class MidSentenceBoldFixturePageView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        bounds.fill()
+        let regular = NSFont(name: "Helvetica", size: 14) ?? NSFont.systemFont(ofSize: 14)
+        let bold = NSFont(name: "Helvetica-Bold", size: 14) ?? NSFont.boldSystemFont(ofSize: 14)
+        let line = NSMutableAttributedString()
+        line.append(NSAttributedString(string: "Please review the ", attributes: [.font: regular, .foregroundColor: NSColor.black]))
+        line.append(NSAttributedString(string: "Q3 budget", attributes: [.font: bold, .foregroundColor: NSColor.black]))
+        line.append(NSAttributedString(string: " figures before Friday", attributes: [.font: regular, .foregroundColor: NSColor.black]))
+        line.draw(at: CGPoint(x: 72, y: 120))
     }
 }
 

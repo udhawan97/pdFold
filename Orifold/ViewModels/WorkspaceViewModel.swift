@@ -1095,6 +1095,31 @@ final class WorkspaceViewModel {
         undoManager?.setActionName(actionName)
     }
 
+    /// Registers `registration` as its own isolated, atomic undo step, regardless of where
+    /// this is called from in the run loop. `UndoManager.groupsByEvent` (the default) only
+    /// auto-closes its implicit group at a run-loop boundary — several inline edits
+    /// committed back-to-back with no run-loop turn between them (a scripted/batch edit
+    /// flow, or just a few fast edits inside the same event, as happens in tests and in
+    /// some programmatic call paths) would otherwise all land in the SAME implicit group,
+    /// so a single `undo()` would revert every one of them at once instead of stepping
+    /// back one edit at a time. Nesting a plain `beginUndoGrouping`/`endUndoGrouping` pair
+    /// inside that still-open implicit group does not help — it only manipulates the
+    /// nested grouping level, leaving the ambient group open underneath. Temporarily
+    /// disabling `groupsByEvent` forces this bracket to form a genuine standalone top-level
+    /// group, which is then restored to whatever it was before.
+    private func registerIsolatedUndo(_ registration: () -> Void) {
+        guard let undoManager else {
+            registration()
+            return
+        }
+        let priorGroupsByEvent = undoManager.groupsByEvent
+        undoManager.groupsByEvent = false
+        undoManager.beginUndoGrouping()
+        registration()
+        undoManager.endUndoGrouping()
+        undoManager.groupsByEvent = priorGroupsByEvent
+    }
+
     private func captureInlineTextEditSnapshot() -> InlineTextEditSnapshot {
         InlineTextEditSnapshot(
             editStates: document.workspace.pageEditStates,
@@ -1116,11 +1141,13 @@ final class WorkspaceViewModel {
         textAnalysisCache.removeAll()
         rebuild()
         markWorkspaceModified()
-        undoManager?.registerUndo(withTarget: self) { vm in
-            guard vm.canPerformUndoMutation() else { return }
-            vm.restoreInlineTextEditSnapshot(inverse, actionName: actionName)
+        registerIsolatedUndo {
+            undoManager?.registerUndo(withTarget: self) { vm in
+                guard vm.canPerformUndoMutation() else { return }
+                vm.restoreInlineTextEditSnapshot(inverse, actionName: actionName)
+            }
+            undoManager?.setActionName(actionName)
         }
-        undoManager?.setActionName(actionName)
     }
 
     private func syncLoadedPDFsOrder() {
@@ -2330,7 +2357,8 @@ final class WorkspaceViewModel {
         // intact, then let measuredBounds expand only as needed for longer text.
         operation.editedBounds = PDFEditedPageRenderer.measuredBounds(
             for: operation,
-            pageBounds: basePage.bounds(for: .cropBox)
+            pageBounds: basePage.bounds(for: .cropBox),
+            sourcePage: basePage
         )
         if let stateIndex = document.workspace.pageEditStates.firstIndex(where: { $0.pageRefID == pageRef.id }) {
             document.workspace.pageEditStates[stateIndex].operations.removeAll { $0.sourceBlockID == sourceBlock.id }
@@ -2349,11 +2377,13 @@ final class WorkspaceViewModel {
         markWorkspaceModified()
         warnIfEditingWouldInvalidateSignatures()
 
-        undoManager?.registerUndo(withTarget: self) { vm in
-            guard vm.canPerformUndoMutation() else { return }
-            vm.restoreInlineTextEditSnapshot(previousSnapshot, actionName: "Edit PDF Text")
+        registerIsolatedUndo {
+            undoManager?.registerUndo(withTarget: self) { vm in
+                guard vm.canPerformUndoMutation() else { return }
+                vm.restoreInlineTextEditSnapshot(previousSnapshot, actionName: "Edit PDF Text")
+            }
+            undoManager?.setActionName("Edit PDF Text")
         }
-        undoManager?.setActionName("Edit PDF Text")
         PetBuddyHook.trigger(.edit)
         return true
     }

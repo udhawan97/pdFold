@@ -2542,6 +2542,25 @@ final class NoteEditorViewController: NSViewController {
             name: .PDFViewScaleChanged,
             object: pdfView
         )
+        // The editor overlay is a plain NSView subview of `pdfView` itself, positioned by
+        // converting the block's PAGE-space bounds through `pdfView.convert(_:from:page:)`
+        // at layout time (`layoutEditor`). That conversion accounts for scroll position at
+        // the moment it runs, but nothing re-ran it on SCROLL alone (only on zoom, via
+        // `.PDFViewScaleChanged` above) — so scrolling while editing left the overlay glued
+        // to its stale on-screen position while the actual page content scrolled underneath
+        // it. Worse than a cosmetic drift: `commitButton()` converts the overlay's (now
+        // stale) on-screen frame back to page space, so committing after a scroll could
+        // place the edit at the wrong location entirely. Observe the enclosing clip view's
+        // bounds (the standard scroll-position-changed signal) and re-layout just like zoom.
+        if let clipView = pdfView?.findEnclosingScrollView()?.contentView {
+            clipView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(pdfViewScaleChanged(_:)),
+                name: NSView.boundsDidChangeNotification,
+                object: clipView
+            )
+        }
         applyFormatting()
     }
 

@@ -367,8 +367,9 @@ final class PDFTextAnalysisEngine {
               bounds.height > 2 else { return nil }
         let text = Self.reconcileLigatures(rawText, bounds: bounds, sourcePage: sourcePage)
 
-        let color = sorted.first(where: { $0.scalar.value != 32 })?.color ?? .documentText
-        let rawFontName = sorted.first(where: { $0.scalar.value != 32 })?.rawFontName
+        let inkSamples = sorted.filter { $0.scalar.value != 32 }
+        let color = dominantColor(among: inkSamples) ?? .documentText
+        let rawFontName = dominantFontName(among: inkSamples)
         let fontName = rawFontName.map(Self.resolveFontPostScriptName) ?? "Helvetica"
         let fontSize = resolveLineFontSize(sorted, lineBounds: bounds, resolvedFontName: fontName)
         let run = PDFTextRun(
@@ -395,6 +396,40 @@ final class PDFTextAnalysisEngine {
             baseline: bounds.minY,
             confidence: confidence
         )
+    }
+
+    /// A line/segment can open with a differently-styled run (a hyperlink, an inline code
+    /// span, a highlighted keyword) before the ordinary body-colored text that makes up
+    /// most of the line. Picking the FIRST glyph's color would recolor the whole block —
+    /// including words nowhere near that leading run — to the minority color once any word
+    /// in the block is edited. Count glyphs per color bucket (rounded to absorb anti-
+    /// aliasing noise) and keep whichever color actually covers the most characters.
+    private func dominantColor(among samples: [CharacterSample]) -> CodableColor? {
+        guard !samples.isEmpty else { return nil }
+        var counts: [String: (count: Int, color: CodableColor)] = [:]
+        for sample in samples {
+            let key = colorBucketKey(sample.color)
+            counts[key, default: (0, sample.color)].count += 1
+            counts[key]?.color = sample.color
+        }
+        return counts.values.max { $0.count < $1.count }?.color
+    }
+
+    private func colorBucketKey(_ color: CodableColor) -> String {
+        func bucket(_ value: CGFloat) -> Int { Int((value * 20).rounded()) }
+        return "\(bucket(color.red)),\(bucket(color.green)),\(bucket(color.blue)),\(bucket(color.alpha))"
+    }
+
+    /// Same reasoning as `dominantColor`: a leading hyperlink/keyword run may also use a
+    /// distinct embedded font before the body text's own font resumes.
+    private func dominantFontName(among samples: [CharacterSample]) -> String? {
+        guard !samples.isEmpty else { return nil }
+        var counts: [String: Int] = [:]
+        for sample in samples {
+            guard let name = sample.rawFontName else { continue }
+            counts[name, default: 0] += 1
+        }
+        return counts.max { $0.value < $1.value }?.key
     }
 
     private func analyzeWithPDFKit(page: PDFPage?, pageRefID: UUID?) -> PDFTextPageAnalysis {
