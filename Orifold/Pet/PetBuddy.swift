@@ -527,10 +527,13 @@ struct PetView: View {
 
     private var petIcon: some View {
         // The avatar folds into the user's chosen companion (dog or cat) and stays alive
-        // — breathing, and wagging its tail (dog) or ears (cat). It re-folds on each
-        // feature event via `replayToken`. Motion/idle are handled inside the mark.
+        // — breathing, and wagging its tail (dog) or ears+tail (cat). It re-folds on
+        // each feature event via `replayToken`. Motion/idle are handled inside the
+        // mark; `excitement` rides the same hover state that already grows the chip,
+        // so a dog's tail visibly picks up when the cursor is close.
         OrifoldFoldMark(size: iconSize, interactive: false,
-                        figure: .forSpecies(buddy.species), replayTrigger: replayToken)
+                        figure: .forSpecies(buddy.species), replayTrigger: replayToken,
+                        excitement: isHovered ? 1 : 0)
             .clipShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
     }
 

@@ -80,10 +80,10 @@ The same fold that opens Orifold's logo blossoms into a small companion that liv
   &nbsp;&nbsp;&nbsp;
   <img src="docs/assets/orifold-dog-wag.svg" alt="Animated: Origami Dog, tail wagging" width="220">
   &nbsp;&nbsp;&nbsp;
-  <img src="docs/assets/orifold-cat-twitch.svg" alt="Animated: Origami Cat, ears twitching" width="220">
+  <img src="docs/assets/orifold-cat-twitch.svg" alt="Animated: Origami Cat, ears twitching and tail swaying" width="220">
 </p>
 
-<p align="center"><sub>The brand mark folds into a crane · <strong>Origami Dog</strong> — loyal, tidy, endlessly encouraging, tail always wagging · <strong>Origami Cat</strong> — clever, composed, quietly in charge, ears twitching on watch</sub></p>
+<p align="center"><sub>The brand mark folds into a crane, its tancho crown a quiet red accent · <strong>Origami Dog</strong> — loyal, tidy, endlessly encouraging, tail wagging faster the closer you get · <strong>Origami Cat</strong> — clever, composed, quietly in charge, ears twitching sharp while its tail sways slow</sub></p>
 
 ## ⚡ Install in 30 Seconds
 

@@ -42,17 +42,28 @@ struct OrifoldFoldMark: View {
     /// Bumping this replays the fold from the start — used to re-fold the companion
     /// each time a feature fires.
     var replayTrigger: Int = 0
+    /// 0…1: how "excited" the companion should be right now — driven by the caller's
+    /// own hover/proximity state (e.g. the workspace chip while the cursor is near).
+    /// Only wags marked `excitable` (the dog's tail) respond to it; everything else
+    /// ignores it. Smoothed internally so callers can just flip it on `onHover`.
+    var excitement: Double = 0
 
     /// Delay before the fold plays on first appearance, so the screen settles first.
     private let autoplayDelay: TimeInterval = 1.0
     /// Total fold runtime (through the icon hand-off), used to time idle hand-off.
     private let animationRuntime: TimeInterval = 4.3
+    /// How long the excitement ramp takes to catch up to a new target — fast enough
+    /// to feel responsive, slow enough not to look like a frequency snap.
+    private let excitementRampDuration: TimeInterval = 0.35
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var foldStart: Date?
     @State private var isFoldRunning = false
     @State private var hasScheduledFirstPlay = false
     @State private var playGeneration = 0
+    @State private var excitementRampStart = Date.distantPast
+    @State private var excitementRampFrom: Double = 0
+    @State private var excitementTarget: Double = 0
 
     private var shouldReduceMotion: Bool {
         reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -62,7 +73,7 @@ struct OrifoldFoldMark: View {
     /// once its fold resolves it stops ticking. Companions always have an idle wag, so
     /// they keep breathing/wagging.
     private var isPaused: Bool {
-        figure.idle == nil && !isFoldRunning
+        figure.idle.isEmpty && !isFoldRunning
     }
 
     var body: some View {
@@ -86,6 +97,19 @@ struct OrifoldFoldMark: View {
         .accessibilityHint(interactive && !shouldReduceMotion ? "orifoldFoldMark.replay.accessibilityHint" : "")
         .onAppear(perform: scheduleFirstPlay)
         .onChange(of: replayTrigger) { _, _ in replay() }
+        .onChange(of: excitement) { _, newValue in
+            excitementRampFrom = currentExcitement(at: Date())
+            excitementRampStart = Date()
+            excitementTarget = newValue
+        }
+    }
+
+    /// The smoothed excitement value at a given moment, ramping from wherever the
+    /// last ramp started toward its target — avoids an abrupt frequency jump when a
+    /// hover flips the caller's `excitement` on or off.
+    private func currentExcitement(at date: Date) -> Double {
+        let t = FoldMarkRenderer.smoothstep(date.timeIntervalSince(excitementRampStart) / excitementRampDuration)
+        return excitementRampFrom + (excitementTarget - excitementRampFrom) * t
     }
 
     private var animatedMark: some View {
@@ -95,7 +119,8 @@ struct OrifoldFoldMark: View {
                 FoldState.state(atElapsed: $0, resolvesToAppIcon: figure.resolvesToAppIcon)
             } ?? .start
             let intensity = elapsed.map(idleIntensity(atElapsed:)) ?? 1
-            let idle = IdlePhase(phase: timeline.date.timeIntervalSinceReferenceDate, intensity: intensity)
+            let idle = IdlePhase(phase: timeline.date.timeIntervalSinceReferenceDate, intensity: intensity,
+                                 excitement: currentExcitement(at: timeline.date))
 
             ZStack {
                 Canvas(opaque: false, rendersAsynchronously: true) { context, canvasSize in
@@ -220,10 +245,13 @@ private struct FoldState: Equatable {
 }
 
 /// The continuous idle clock: `phase` (seconds, absolute) drives the wag/breath;
-/// `intensity` (0…1) ramps the motion in once the figure has settled.
+/// `intensity` (0…1) ramps the motion in once the figure has settled; `excitement`
+/// (0…1, smoothed) boosts any `excitable` wag — currently just the dog's tail
+/// picking up when the cursor is close.
 private struct IdlePhase {
     var phase: Double
     var intensity: Double
+    var excitement: Double = 0
 }
 
 // MARK: - Figure geometry
@@ -323,12 +351,25 @@ private struct PaperSpecular {
 }
 
 /// A living-idle wag: the named `group` rotates around `pivot` by ±`amplitude`
-/// (radians) at `speed` (radians/second). Dogs wag the tail; cats twitch the ears.
+/// (radians) at `speed` (radians/second). Dogs wag the tail; cats twitch their ears
+/// and sway their tail — a figure can carry more than one independent wag.
 private struct PaperWag {
+    /// `sway` is a smooth continuous sine (a wag or a slow wavy drift); `twitch` stays
+    /// near rest most of the cycle and snaps through a brief, sharp flick — reads as
+    /// alert/reflexive rather than rhythmic.
+    enum Motion {
+        case sway
+        case twitch
+    }
+
     let group: BloomGroup
     let pivot: CGPoint
     let amplitude: Double
     let speed: Double
+    var motion: Motion = .sway
+    /// When true, this wag speeds up and widens while `IdlePhase.excitement` is
+    /// elevated (the dog's tail, picking up when the cursor is close).
+    var excitable: Bool = false
 }
 
 /// A complete blossomed figure. The brand crane (`.crane`) hands off to the app icon;
@@ -343,8 +384,10 @@ struct PaperFigure {
     fileprivate let groundCenter: CGPoint
     fileprivate let specular: PaperSpecular?
     fileprivate let palette: PaperPalette
-    /// The idle wag, or `nil` for a figure that rests completely still (the crane).
-    fileprivate let idle: PaperWag?
+    /// The figure's idle wags — empty for a figure that rests completely still (the
+    /// crane), one entry for a single wagging part, or several for independent
+    /// motion (the cat twitches its ears and sways its tail at the same time).
+    fileprivate let idle: [PaperWag]
 
     /// Only the brand crane dissolves and hands off to the real app icon.
     fileprivate var resolvesToAppIcon: Bool { species == nil }
@@ -465,7 +508,7 @@ extension PaperFigure {
             groundCenter: CGPoint(x: 0.48, y: 0.79),
             specular: PaperSpecular(from: CGPoint(x: 0.560, y: 0.520), to: CGPoint(x: 0.30, y: 0.235), group: .wing),
             palette: .ivory,
-            idle: nil
+            idle: []
         )
     }()
 }
@@ -577,8 +620,13 @@ extension PaperFigure {
             groundCenter: CGPoint(x: 0.44, y: 0.87),
             specular: PaperSpecular(from: CGPoint(x: 0.470, y: 0.260), to: CGPoint(x: 0.560, y: 0.360), group: .head),
             palette: .kraft,
-            // Big, lively tail wag around the tail base.
-            idle: PaperWag(group: .tail, pivot: CGPoint(x: 0.360, y: 0.720), amplitude: 0.30, speed: 8.2)
+            // Big, lively tail wag around the tail base — picks up further when the
+            // cursor is close (`excitable`), since a dog's tail is the one part of it
+            // that visibly reacts to attention.
+            idle: [
+                PaperWag(group: .tail, pivot: CGPoint(x: 0.360, y: 0.720), amplitude: 0.30, speed: 8.2,
+                         motion: .sway, excitable: true)
+            ]
         )
     }()
 }
@@ -695,8 +743,16 @@ extension PaperFigure {
             groundCenter: CGPoint(x: 0.48, y: 0.87),
             specular: PaperSpecular(from: CGPoint(x: 0.500, y: 0.360), to: CGPoint(x: 0.440, y: 0.470), group: .head),
             palette: .slate,
-            // Gentle twin-ear twitch around the crown.
-            idle: PaperWag(group: .wing, pivot: CGPoint(x: 0.500, y: 0.380), amplitude: 0.14, speed: 5.2)
+            // Two independent motions, distinctly un-dog-like: the ears stay near rest
+            // and snap through a quick, sharp flick (`.twitch`, alert and reflexive),
+            // while the tail sways in a slow, smooth curl (`.sway`, well below the
+            // dog's tail speed) — elegant rather than eager.
+            idle: [
+                PaperWag(group: .wing, pivot: CGPoint(x: 0.500, y: 0.380), amplitude: 0.20, speed: 9.0,
+                         motion: .twitch),
+                PaperWag(group: .tail, pivot: CGPoint(x: 0.510, y: 0.740), amplitude: 0.20, speed: 1.6,
+                         motion: .sway)
+            ]
         )
     }()
 }
@@ -905,12 +961,31 @@ private enum FoldMarkRenderer {
         let overall = max(state.bloomBody, state.bloomWing, state.bloomTail, state.bloomNeck, state.bloomHead)
         guard overall > 0.001 else { return }
 
-        // The live idle wag: how far the wagging group is currently rotated. A tile-unit
-        // transform applied only to that group's points (identity for every other group).
-        let wagAngle = figure.idle.map { sin(idle.phase * $0.speed) * $0.amplitude * idle.intensity } ?? 0
+        // The live idle wags: how far each wagging group is currently rotated (and
+        // around which pivot), so a tile-unit transform can be applied only to that
+        // group's points (identity for every other group). A figure can carry more
+        // than one independent wag (the cat twitches its ears and sways its tail).
+        var wagAngle: [BloomGroup: Double] = [:]
+        var wagPivot: [BloomGroup: CGPoint] = [:]
+        for w in figure.idle {
+            let speedBoost = w.excitable ? 1 + idle.excitement * 0.6 : 1
+            let ampBoost = w.excitable ? 1 + idle.excitement * 0.35 : 1
+            let raw = sin(idle.phase * w.speed * speedBoost)
+            let shaped: Double
+            switch w.motion {
+            case .sway:
+                shaped = raw
+            case .twitch:
+                // Stays near rest for most of the cycle, then snaps through a brief,
+                // sharp flick — reads as alert/reflexive rather than rhythmic.
+                shaped = copysign(pow(abs(raw), 6), raw)
+            }
+            wagAngle[w.group, default: 0] += shaped * w.amplitude * ampBoost * idle.intensity
+            wagPivot[w.group] = w.pivot
+        }
         func wag(_ group: BloomGroup) -> (CGPoint) -> CGPoint {
-            guard let wag = figure.idle, wag.group == group, wagAngle != 0 else { return { $0 } }
-            return { rotate($0, around: wag.pivot, angle: wagAngle) }
+            guard let angle = wagAngle[group], angle != 0, let pivot = wagPivot[group] else { return { $0 } }
+            return { rotate($0, around: pivot, angle: angle) }
         }
 
         // Contact shadow beneath the settling figure — a single soft ellipse.

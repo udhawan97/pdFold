@@ -470,8 +470,11 @@ private struct PetPickerCard: View {
 
     var body: some View {
         VStack(spacing: .dsSM) {
-            // Interactive: tapping the mark replays the fold as a preview.
-            OrifoldFoldMark(size: 76, interactive: true, figure: .forSpecies(species))
+            // Interactive: tapping the mark replays the fold as a preview. Hovering
+            // the card also nudges the dog's tail into its more excited wag, the same
+            // cue used in the workspace chip, so the preview reads consistently.
+            OrifoldFoldMark(size: 76, interactive: true, figure: .forSpecies(species),
+                            excitement: isHovered ? 1 : 0)
 
             VStack(spacing: 2) {
                 Text(verbatim: species.displayName)
