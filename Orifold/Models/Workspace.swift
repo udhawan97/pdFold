@@ -118,6 +118,16 @@ struct WorkspaceComment: Codable, Identifiable {
 
 struct Workspace: Codable {
     var id: UUID = UUID()
+    // NOTE: Intentionally left as a literal English string, not L10n.string(...).
+    // WorkspaceViewModel.swift compares `document.workspace.title == "Untitled Workspace"`
+    // (see its handling around auto-naming a freshly created document) to decide whether
+    // the title is still the untouched default before overwriting it with a user-provided
+    // name. If this default became locale-dependent, that equality check would only match
+    // in the locale active when the document was created, silently breaking auto-rename
+    // for documents created in one language and later viewed/renamed in another. Since
+    // WorkspaceViewModel.swift is off-limits for this change, the default stays English
+    // here; the actual user-facing untitled-workspace fallback shown at import time is
+    // already localized in WorkspaceDocument.swift via L10n.string("document.untitledWorkspace").
     var title: String = "Untitled Workspace"
     var createdAt: Date = Date()
     var modifiedAt: Date = Date()
@@ -139,6 +149,9 @@ struct Workspace: Codable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        // Kept as literal English to match the `title` default above — see the comment
+        // on that property for why this can't be localized without also touching
+        // WorkspaceViewModel.swift's "Untitled Workspace" equality check.
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? "Untitled Workspace"
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         modifiedAt = try c.decodeIfPresent(Date.self, forKey: .modifiedAt) ?? createdAt

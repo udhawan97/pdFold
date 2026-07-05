@@ -17,7 +17,7 @@ struct PasswordPromptView: View {
                 .font(.system(size: 36))
                 .foregroundStyle(Color.dsTextSecondary)
 
-            Text("\"\(fileName)\" is password-protected")
+            Text(L10n.format("passwordPrompt.protectedFile", fileName))
                 .font(.dsHeadline())
                 .foregroundStyle(Color.dsTextPrimary)
 

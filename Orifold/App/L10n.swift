@@ -30,4 +30,13 @@ enum L10n {
     static func string(_ key: StaticString, defaultValue: String.LocalizationValue) -> String {
         String(localized: key, defaultValue: defaultValue, bundle: bundle, locale: currentLocale)
     }
+
+    /// Builds a display string from a catalog entry that contains `%@`/`%lld`-style
+    /// format placeholders. Use this for interpolated `Text`/`Button` sites instead of
+    /// `Text("key \(arg)")` — the latter's runtime lookup key is a compiler-derived
+    /// format string, not the literal source syntax, so a catalog entry authored with
+    /// the literal `\(arg)` text never actually matches at lookup time.
+    static func format(_ key: String, _ args: CVarArg...) -> String {
+        String(format: String(localized: String.LocalizationValue(key), bundle: bundle, locale: currentLocale), arguments: args)
+    }
 }

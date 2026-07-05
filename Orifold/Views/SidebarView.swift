@@ -209,7 +209,7 @@ struct MemberDocRow: View {
                 .allowsHitTesting(isHovered)
                 .disabled(!viewModel.canRemoveDocuments)
                 .help("sidebar.removeDocument.help")
-                .accessibilityLabel("Remove \(member.displayName)")
+                .accessibilityLabel(L10n.format("sidebar.removeMember.accessibilityLabel", member.displayName))
             }
             .padding(.vertical, 2)
             .contentShape(Rectangle())
@@ -398,20 +398,22 @@ struct ThumbnailCell: View {
             .background(Color.dsCard, in: RoundedRectangle(cornerRadius: 3))
             .contextMenu {
                 let selection = viewModel.pageRefsForCurrentSelection(including: pageRef)
-                let selectionLabel = selection.count == 1 ? "Page" : "\(selection.count) Pages"
-                Button("Rotate \(selectionLabel) 90° CW")  {
+                let selectionLabel = selection.count == 1
+                    ? L10n.string("sidebar.selection.page")
+                    : L10n.format("sidebar.selection.pages", selection.count)
+                Button(L10n.format("sidebar.rotateCW", selectionLabel))  {
                     viewModel.rotatePages(selection, by: 90)
                     thumbnail = nil
                 }
-                Button("Rotate \(selectionLabel) 90° CCW") {
+                Button(L10n.format("sidebar.rotateCCW", selectionLabel)) {
                     viewModel.rotatePages(selection, by: -90)
                     thumbnail = nil
                 }
-                Button("Duplicate \(selectionLabel)") {
+                Button(L10n.format("sidebar.duplicate", selectionLabel)) {
                     viewModel.duplicatePages(selection)
                     thumbnail = nil
                 }
-                Button("Export \(selectionLabel)…") {
+                Button(L10n.format("sidebar.export", selectionLabel)) {
                     viewModel.exportPages(selection)
                 }
                 Divider()
@@ -419,13 +421,13 @@ struct ThumbnailCell: View {
                     openFiles(insertingAfter: pageRef)
                 }
                 Divider()
-                Button("Delete \(selectionLabel)…", role: .destructive) {
+                Button(L10n.format("sidebar.delete", selectionLabel), role: .destructive) {
                     isConfirmingDelete = true
                 }
             }
 
             // Label
-            Text("p. \(pageNumber)")
+            Text(L10n.format("sidebar.pageLabel.short", pageNumber))
                 .font(.dsCaption())
                 .fontWeight(isSelected ? .semibold : .regular)
                 .foregroundStyle(isSelected ? Color.dsAccent : Color.dsTextSecondary)

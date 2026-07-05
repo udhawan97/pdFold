@@ -146,7 +146,7 @@ struct SearchResultRow: View {
                 .foregroundStyle(isActive ? Color.dsAccent : Color.dsTextPrimary)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("Page \(pageLabel)")
+            Text(L10n.format("search.pageLabel", pageLabel))
                 .font(.dsCaption())
                 .foregroundStyle(Color.dsTextTertiary)
         }

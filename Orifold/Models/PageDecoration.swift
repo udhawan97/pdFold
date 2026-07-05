@@ -75,7 +75,7 @@ struct PageDecoration: Codable, Identifiable, Equatable {
 
 extension PageDecoration {
     static func watermark() -> PageDecoration {
-        PageDecoration(kind: .watermark, text: "Draft", fontSize: 64, opacity: 0.16, swatch: .tertiary)
+        PageDecoration(kind: .watermark, text: L10n.string("decoration.defaultWatermark"), fontSize: 64, opacity: 0.16, swatch: .tertiary)
     }
 
     static func pageNumber() -> PageDecoration {

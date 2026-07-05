@@ -715,7 +715,7 @@ private struct PDFNoteCommentRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: .dsSM) {
             HStack(alignment: .firstTextBaseline) {
-                Label("Page \(note.pageNumber)", systemImage: "note.text")
+                Label(L10n.format("inspector.pdfNote.pageLabel", note.pageNumber), systemImage: "note.text")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.dsTextTertiary)
                 Spacer()
@@ -825,7 +825,7 @@ private struct InspectorDecorateView: View {
 
             decorationRow(title: "inspector.decorate.pageNumbers.title", isOn: pageNumbersEnabled) {
                 VStack(alignment: .leading, spacing: .dsSM) {
-                    Text("Page 1 of \(max(viewModel.pageCount, 1))")
+                    Text(L10n.format("inspector.pageOf", max(viewModel.pageCount, 1)))
                         .font(.dsCaption())
                         .foregroundStyle(Color.dsTextSecondary)
 

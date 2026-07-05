@@ -130,7 +130,7 @@ private struct FormBar: View {
                         Text("readingCanvas.formBar.fillableFields.title")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Color.dsTextPrimary)
-                        Text("\(viewModel.formSummary.fieldCount) fields")
+                        Text(L10n.format("readingCanvas.formFieldCount", viewModel.formSummary.fieldCount))
                             .font(.dsCaption())
                             .foregroundStyle(Color.dsTextSecondary)
                     }

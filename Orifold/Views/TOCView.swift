@@ -49,7 +49,7 @@ struct TOCView: View {
                                             .font(.dsBody())
                                             .foregroundStyle(Color.dsTextPrimary)
                                             .lineLimit(1)
-                                        Text("Page \(entry.displayPageNumber)")
+                                        Text(L10n.format("toc.pageLabel", entry.displayPageNumber))
                                             .font(.dsCaption())
                                             .foregroundStyle(Color.dsTextTertiary)
                                     }

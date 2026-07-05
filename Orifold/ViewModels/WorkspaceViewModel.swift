@@ -1013,7 +1013,7 @@ final class WorkspaceViewModel {
         document.workspace.documents = loadedPDFs.map(\.0) + unloadedDocuments
         rebuildPageOrder()
         rebuild()
-        registerUndo(snapshot: snapshot, actionName: "Move Document")
+        registerUndo(snapshot: snapshot, actionName: L10n.string("undo.moveDocument"))
     }
 
     func removeDocument(at offsets: IndexSet) {
@@ -1046,7 +1046,7 @@ final class WorkspaceViewModel {
         selectedPageRefIDs.subtract(removedPageRefIDs)
         rebuildPageOrder()
         rebuild()
-        registerUndo(snapshot: snapshot, actionName: "Remove Document")
+        registerUndo(snapshot: snapshot, actionName: L10n.string("undo.removeDocument"))
     }
 
     private struct OrderSnapshot: @unchecked Sendable {
@@ -1244,7 +1244,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             vm.removeTag(tag)
         }
-        undoManager?.setActionName("Add Tag")
+        undoManager?.setActionName(L10n.string("undo.addTag"))
         PetBuddyHook.trigger(.tag)
     }
 
@@ -1260,7 +1260,7 @@ final class WorkspaceViewModel {
             vm.markWorkspaceModified()
             vm.commentRevision += 1
         }
-        undoManager?.setActionName("Remove Tag")
+        undoManager?.setActionName(L10n.string("undo.removeTag"))
     }
 
     func addComment(_ rawBody: String) {
@@ -1274,7 +1274,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             vm.removeComment(comment)
         }
-        undoManager?.setActionName("Add Comment")
+        undoManager?.setActionName(L10n.string("undo.addComment"))
         PetBuddyHook.trigger(.comment)
     }
 
@@ -1293,7 +1293,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             vm.removeComment(comment)
         }
-        undoManager?.setActionName("Add Comment")
+        undoManager?.setActionName(L10n.string("undo.addComment"))
         PetBuddyHook.trigger(.comment)
         return comment.id
     }
@@ -1337,7 +1337,7 @@ final class WorkspaceViewModel {
             vm.selectedCommentID = previousSelection
             vm.markCommentsModified()
         }
-        undoManager?.setActionName("Remove Comment")
+        undoManager?.setActionName(L10n.string("undo.removeComment"))
     }
 
     func updateCommentBody(_ comment: WorkspaceComment, body rawBody: String) {
@@ -1350,7 +1350,7 @@ final class WorkspaceViewModel {
         }
         var updated = document.workspace.comments[index]
         updated.body = body
-        replaceComment(at: index, with: updated, actionName: "Edit Comment")
+        replaceComment(at: index, with: updated, actionName: L10n.string("undo.editComment"))
     }
 
     func updateCommentStyle(_ comment: WorkspaceComment, style: WorkspaceCommentStyle) {
@@ -1361,7 +1361,7 @@ final class WorkspaceViewModel {
         }
         var updated = document.workspace.comments[index]
         updated.style = style
-        replaceComment(at: index, with: updated, actionName: "Format Comment")
+        replaceComment(at: index, with: updated, actionName: L10n.string("undo.formatComment"))
     }
 
     func updateCommentResolved(_ comment: WorkspaceComment, isResolved: Bool) {
@@ -1372,7 +1372,7 @@ final class WorkspaceViewModel {
         }
         var updated = document.workspace.comments[index]
         updated.isResolved = isResolved
-        replaceComment(at: index, with: updated, actionName: isResolved ? "Resolve Comment" : "Reopen Comment")
+        replaceComment(at: index, with: updated, actionName: isResolved ? L10n.string("undo.resolveComment") : L10n.string("undo.reopenComment"))
     }
 
     func addTag(_ rawTag: String, to comment: WorkspaceComment) {
@@ -1385,7 +1385,7 @@ final class WorkspaceViewModel {
         }
         var updated = document.workspace.comments[index]
         updated.tags.append(tag)
-        replaceComment(at: index, with: updated, actionName: "Tag Comment")
+        replaceComment(at: index, with: updated, actionName: L10n.string("undo.tagComment"))
         PetBuddyHook.trigger(.tag)
     }
 
@@ -1397,7 +1397,7 @@ final class WorkspaceViewModel {
         }
         var updated = document.workspace.comments[index]
         updated.tags.removeAll { $0 == tag }
-        replaceComment(at: index, with: updated, actionName: "Untag Comment")
+        replaceComment(at: index, with: updated, actionName: L10n.string("undo.untagComment"))
     }
 
     private func replaceComment(at index: Int, with updated: WorkspaceComment, actionName: String) {
@@ -1557,7 +1557,7 @@ final class WorkspaceViewModel {
             page.addAnnotation(note.annotation)
             vm.markAnnotationsModified()
         }
-        undoManager?.setActionName("Remove Note")
+        undoManager?.setActionName(L10n.string("undo.removeNote"))
     }
 
     func registerAnnotationEdit(_ annotation: PDFAnnotation,
@@ -1849,7 +1849,7 @@ final class WorkspaceViewModel {
                         guard vm.canPerformUndoMutation() else { return }
                         vm.restore(snapshot)
                     }
-                    self.undoManager?.setActionName("Make searchable")
+                    self.undoManager?.setActionName(L10n.string("undo.makeSearchable"))
                     self.editingStatus = .success(L10n.string("status.ocr.searchableNow"))
                 }
             } catch {
@@ -2051,13 +2051,13 @@ final class WorkspaceViewModel {
     private func decorationActionName(for kind: PageDecoration.Kind) -> String {
         switch kind {
         case .watermark:
-            return "Change watermark"
+            return L10n.string("undo.changeWatermark")
         case .pageNumber:
-            return "Change page numbers"
+            return L10n.string("undo.changePageNumbers")
         case .bates:
-            return "Change Bates stamp"
+            return L10n.string("undo.changeBatesStamp")
         case .stamp:
-            return "Change stamp"
+            return L10n.string("undo.changeStamp")
         }
     }
 
@@ -2434,9 +2434,9 @@ final class WorkspaceViewModel {
         registerIsolatedUndo {
             undoManager?.registerUndo(withTarget: self) { vm in
                 guard vm.canPerformUndoMutation() else { return }
-                vm.restoreInlineTextEditSnapshot(previousSnapshot, actionName: "Edit PDF Text")
+                vm.restoreInlineTextEditSnapshot(previousSnapshot, actionName: L10n.string("undo.editPDFText"))
             }
-            undoManager?.setActionName("Edit PDF Text")
+            undoManager?.setActionName(L10n.string("undo.editPDFText"))
         }
         PetBuddyHook.trigger(.edit)
         return true
@@ -2564,9 +2564,9 @@ final class WorkspaceViewModel {
         markWorkspaceModified()
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
-            vm.restoreInlineTextEditSnapshot(previousSnapshot, actionName: "Revert Text Edit")
+            vm.restoreInlineTextEditSnapshot(previousSnapshot, actionName: L10n.string("undo.revertTextEdit"))
         }
-        undoManager?.setActionName("Revert Text Edit")
+        undoManager?.setActionName(L10n.string("undo.revertTextEdit"))
         return true
     }
 
@@ -2605,9 +2605,9 @@ final class WorkspaceViewModel {
         markWorkspaceModified()
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
-            vm.restoreInlineTextEditSnapshot(previousSnapshot, actionName: "Revert All Text Edits")
+            vm.restoreInlineTextEditSnapshot(previousSnapshot, actionName: L10n.string("undo.revertAllTextEdits"))
         }
-        undoManager?.setActionName("Revert All Text Edits")
+        undoManager?.setActionName(L10n.string("undo.revertAllTextEdits"))
         return failedPageRefIDs.isEmpty
     }
 
@@ -2630,7 +2630,7 @@ final class WorkspaceViewModel {
         }
         if didAddAnnotation {
             markAnnotationsModified()
-            undoManager?.setActionName("Highlight")
+            undoManager?.setActionName(L10n.string("undo.highlight"))
             PetBuddyHook.trigger(.highlight)
         }
         return didAddAnnotation
@@ -2652,7 +2652,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             page.removeAnnotation(ann)
         }
-        undoManager?.setActionName("Add Note")
+        undoManager?.setActionName(L10n.string("undo.addNote"))
         PetBuddyHook.trigger(.note)
         return ann
     }
@@ -2684,7 +2684,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             page.removeAnnotation(ann)
         }
-        undoManager?.setActionName("Add Text Box")
+        undoManager?.setActionName(L10n.string("undo.addTextBox"))
         return ann
     }
 
@@ -2731,7 +2731,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             page.removeAnnotation(ann)
         }
-        undoManager?.setActionName("Replace PDF Text")
+        undoManager?.setActionName(L10n.string("undo.replacePDFText"))
         return ann
     }
 
@@ -2763,7 +2763,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             page.removeAnnotation(ann)
         }
-        undoManager?.setActionName("Ink Stroke")
+        undoManager?.setActionName(L10n.string("undo.inkStroke"))
         PetBuddyHook.trigger(.ink)
     }
 
@@ -2835,7 +2835,7 @@ final class WorkspaceViewModel {
             }
             vm.selectedAnnotation = ann
         }
-        undoManager?.setActionName("Delete Annotation")
+        undoManager?.setActionName(L10n.string("undo.deleteAnnotation"))
     }
 
     @discardableResult
@@ -2855,7 +2855,7 @@ final class WorkspaceViewModel {
             page.addAnnotation(ann)
             vm.selectedAnnotation = ann
         }
-        undoManager?.setActionName("Erase Markup")
+        undoManager?.setActionName(L10n.string("undo.eraseMarkup"))
         return true
     }
 
@@ -3080,7 +3080,7 @@ final class WorkspaceViewModel {
             signingIdentitiesByPlacementID.removeValue(forKey: placementID)
             return nil
         }
-        undoManager?.setActionName("Place Signature")
+        undoManager?.setActionName(L10n.string("undo.placeSignature"))
         PetBuddyHook.trigger(.sign)
         return selectedAnnotation
     }
@@ -3190,7 +3190,7 @@ final class WorkspaceViewModel {
                 guard vm.canPerformUndoMutation() else { return }
                 vm.updateStampDecoration(id: decorationID, on: page, to: previousBounds, registerUndoFrom: bounds)
             }
-            undoManager?.setActionName("Move stamp")
+            undoManager?.setActionName(L10n.string("undo.moveStamp"))
         }
         return bounds
     }
@@ -3225,7 +3225,7 @@ final class WorkspaceViewModel {
                 guard vm.canPerformUndoMutation() else { return }
                 vm.updateSignaturePlacement(for: annotation, to: previousBounds, registerUndoFrom: bounds)
             }
-            undoManager?.setActionName("Move Signature")
+            undoManager?.setActionName(L10n.string("undo.moveSignature"))
         }
         return bounds
     }
@@ -3253,7 +3253,7 @@ final class WorkspaceViewModel {
     func signAndExportCryptographicPDF(timestampRequested: Bool) {
         guard canPerformSigningAction() else { return }
         guard let placement = document.workspace.signatures.last(where: { $0.isCryptographic }) else {
-            showEditMessage("Place a certificate signature before signing.", isError: true)
+            showEditMessage(L10n.string("status.sign.placeCertificateFirst"), isError: true)
             return
         }
         let identity: any SigningIdentity
@@ -3291,7 +3291,7 @@ final class WorkspaceViewModel {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         panel.nameFieldStringValue = "\(safeFilename(document.workspace.title))-signed.pdf"
-        panel.title = "Sign & Export PDF"
+        panel.title = L10n.string("savePanel.signExport.title")
         guard panel.runModal() == .OK, let chosenURL = panel.url else { return }
         targetURL = chosenURL
 
@@ -3326,7 +3326,7 @@ final class WorkspaceViewModel {
                             timestampWasApplied = true
                             return token
                         } catch {
-                            timestampFallbackMessage = "Timestamp authority unavailable; exported as PAdES B-B without trusted timestamp."
+                            timestampFallbackMessage = L10n.string("status.sign.timestampUnavailable")
                             return nil
                         }
                     }
@@ -3383,8 +3383,8 @@ final class WorkspaceViewModel {
 
     private func importPKCS12SigningIdentity() throws -> any SigningIdentity {
         let panel = NSOpenPanel()
-        panel.title = "Import Digital ID"
-        panel.prompt = "Import"
+        panel.title = L10n.string("savePanel.importDigitalID.title")
+        panel.prompt = L10n.string("savePanel.import.prompt")
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = ["p12", "pfx"].compactMap { UTType(filenameExtension: $0) }
@@ -3405,14 +3405,14 @@ final class WorkspaceViewModel {
         }
 
         let alert = NSAlert()
-        alert.messageText = "Choose Keychain Digital ID"
-        alert.informativeText = "Select the certificate-backed identity to use for this PDF signature."
-        alert.addButton(withTitle: "Choose")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L10n.string("signAlert.chooseKeychainID.message")
+        alert.informativeText = L10n.string("signAlert.chooseKeychainID.info")
+        alert.addButton(withTitle: L10n.string("signAlert.choose.button"))
+        alert.addButton(withTitle: L10n.string("signAlert.cancel.button"))
 
         let popup = NSPopUpButton(frame: CGRect(x: 0, y: 0, width: 360, height: 28), pullsDown: false)
         for identity in identities {
-            popup.addItem(withTitle: identity.commonName ?? "Untitled Digital ID")
+            popup.addItem(withTitle: identity.commonName ?? L10n.string("signAlert.untitledDigitalID"))
         }
         alert.accessoryView = popup
 
@@ -3424,10 +3424,10 @@ final class WorkspaceViewModel {
 
     private func promptForPKCS12Passphrase() throws -> String {
         let alert = NSAlert()
-        alert.messageText = "Digital ID Password"
-        alert.informativeText = "Enter the password for the selected .p12/.pfx Digital ID."
-        alert.addButton(withTitle: "Unlock")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L10n.string("signAlert.digitalIDPassword.message")
+        alert.informativeText = L10n.string("signAlert.digitalIDPassword.info")
+        alert.addButton(withTitle: L10n.string("signAlert.unlock.button"))
+        alert.addButton(withTitle: L10n.string("signAlert.cancel.button"))
 
         let field = NSSecureTextField(frame: CGRect(x: 0, y: 0, width: 320, height: 24))
         alert.accessoryView = field
@@ -3673,7 +3673,7 @@ final class WorkspaceViewModel {
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.pdf]
             panel.nameFieldStringValue = defaultName
-            panel.title = "Export PDF"
+            panel.title = L10n.string("savePanel.exportPDF.title")
             guard panel.runModal() == .OK, let chosenURL = panel.url else { return false }
             targetURL = chosenURL
         }
@@ -3750,8 +3750,8 @@ final class WorkspaceViewModel {
         panel.allowedContentTypes = [.pdf]
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = defaultName
-        panel.title = "Reduce File Size"
-        panel.prompt = "Reduce"
+        panel.title = L10n.string("savePanel.reduceFileSize.title")
+        panel.prompt = L10n.string("savePanel.reduce.prompt")
         guard panel.runModal() == .OK, let chosenURL = panel.url else { return }
         targetURL = chosenURL
 
@@ -3832,7 +3832,7 @@ final class WorkspaceViewModel {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         panel.nameFieldStringValue = defaultName
-        panel.title = "Export PDF"
+        panel.title = L10n.string("savePanel.exportPDF.title")
         guard panel.runModal() == .OK, let chosenURL = panel.url else { return false }
         targetURL = chosenURL
 
@@ -4152,8 +4152,8 @@ final class WorkspaceViewModel {
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = "\(safeFilename(document.workspace.title)) \(format.fileExtension.uppercased()) Pages"
-        panel.title = "Export \(format.menuTitle)"
-        panel.prompt = "Export"
+        panel.title = String(localized: "Export \(format.menuTitle)", locale: L10n.currentLocale)
+        panel.prompt = L10n.string("savePanel.export.prompt")
         guard panel.runModal() == .OK, let folderURL = panel.url else { return false }
 
         // Render every page into memory up front so a mid-export render
@@ -4240,7 +4240,7 @@ final class WorkspaceViewModel {
         panel.allowedContentTypes = [format.contentType]
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = "\(safeFilename(document.workspace.title)).\(format.fileExtension)"
-        panel.title = "Export \(format.menuTitle)"
+        panel.title = String(localized: "Export \(format.menuTitle)", locale: L10n.currentLocale)
         guard panel.runModal() == .OK, let url = panel.url else { return false }
 
         do {
@@ -5417,7 +5417,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             vm.restore(snapshot)
         }
-        undoManager?.setActionName("Delete Page")
+        undoManager?.setActionName(L10n.string("undo.deletePage"))
         PetBuddyHook.trigger(.delete)
     }
 
@@ -5459,7 +5459,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             vm.restore(snapshot)
         }
-        undoManager?.setActionName(orderedRefs.count == 1 ? "Delete Page" : "Delete Pages")
+        undoManager?.setActionName(orderedRefs.count == 1 ? L10n.string("undo.deletePage") : L10n.string("undo.deletePages"))
         PetBuddyHook.trigger(.delete)
     }
 
@@ -5534,7 +5534,7 @@ final class WorkspaceViewModel {
         panel.allowedContentTypes = [.pdf]
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = "\(safeFilename(document.workspace.title))-selected-pages.pdf"
-        panel.title = "Export Selected Pages"
+        panel.title = L10n.string("savePanel.exportSelectedPages.title")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try writeExportData(data, to: url)
@@ -5580,7 +5580,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             vm.restore(snapshot)
         }
-        undoManager?.setActionName("Move Page")
+        undoManager?.setActionName(L10n.string("undo.movePage"))
         return true
     }
 
@@ -5638,7 +5638,7 @@ final class WorkspaceViewModel {
             guard vm.canPerformUndoMutation() else { return }
             vm.restore(snapshot)
         }
-        undoManager?.setActionName("Move Page")
+        undoManager?.setActionName(L10n.string("undo.movePage"))
         return true
     }
 

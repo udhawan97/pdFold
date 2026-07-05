@@ -142,12 +142,13 @@ final class WorkspaceDocument: ReferenceFileDocument {
 
     private init(file: FileWrapper, contentType: UTType, filename: String?) throws {
         if contentType.conforms(to: .orifoldRTFD), file.isDirectory {
+            let fallbackRTFDFilename = L10n.string("document.importedDocument") + ".rtfd"
             let imported = try DocumentImportConverter.importedRTFDDocument(
                 fromFileWrappers: file.fileWrappers ?? [:],
-                filename: filename ?? "Imported Document.rtfd"
+                filename: filename ?? fallbackRTFDFilename
             )
             workspace = Workspace()
-            try importPDFDocument(imported.pdfDocument, filename: filename ?? "Imported Document.rtfd", sourcePayload: imported.sourcePayload)
+            try importPDFDocument(imported.pdfDocument, filename: filename ?? fallbackRTFDFilename, sourcePayload: imported.sourcePayload)
             return
         }
 
@@ -160,7 +161,7 @@ final class WorkspaceDocument: ReferenceFileDocument {
         workspace = Workspace()
         try importFileData(
             data,
-            filename: filename ?? "Imported Document",
+            filename: filename ?? L10n.string("document.importedDocument"),
             contentType: contentType
         )
     }
@@ -203,7 +204,7 @@ final class WorkspaceDocument: ReferenceFileDocument {
         let refs = (0..<pageCount).map { PageRef(memberDocId: member.id, sourcePageIndex: $0) }
 
         member.pageRefs = refs.map(\.id)
-        workspace.title = displayName.isEmpty ? "Untitled Workspace" : displayName
+        workspace.title = displayName.isEmpty ? L10n.string("document.untitledWorkspace") : displayName
         workspace.documents = [member]
         workspace.pageOrder = refs
         workspace.comments = metadata.comments
@@ -432,7 +433,7 @@ final class WorkspaceDocument: ReferenceFileDocument {
                 let body = annotation.contents?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 guard !body.isEmpty else { continue }
                 items.append(PDFCommentSummaryItem(
-                    title: "PDF note, page \(pageIndex + 1)",
+                    title: String(localized: "PDF note, page \(pageIndex + 1)", locale: L10n.currentLocale),
                     body: body,
                     tags: [],
                     isResolved: false
@@ -446,12 +447,12 @@ final class WorkspaceDocument: ReferenceFileDocument {
         if let anchor = comment.anchor,
            let pageIndex = workspace.pageOrder.firstIndex(where: { $0.id == anchor.pageRefID }) {
             if let snippet = anchor.snippet, !snippet.isEmpty {
-                return "p. \(pageIndex + 1) - \(snippet)"
+                return String(localized: "p. \(pageIndex + 1) - \(snippet)", locale: L10n.currentLocale)
             }
-            return "p. \(pageIndex + 1)"
+            return String(localized: "p. \(pageIndex + 1)", locale: L10n.currentLocale)
         }
         if comment.anchorWasRemoved {
-            return "(page removed)"
+            return L10n.string("document.commentPageRemoved")
         }
         return comment.createdAt.formatted(date: .abbreviated, time: .shortened)
     }
@@ -502,11 +503,11 @@ final class WorkspaceDocument: ReferenceFileDocument {
             .foregroundColor: NSColor.labelColor
         ]
 
-        output.append(NSAttributedString(string: "Comments\n\n", attributes: titleAttributes))
+        output.append(NSAttributedString(string: L10n.string("document.commentsSummary.title") + "\n\n", attributes: titleAttributes))
         appendSummaryItems(items.filter { !$0.isResolved }, to: output, metaAttributes: metaAttributes, bodyAttributes: bodyAttributes)
         let resolved = items.filter(\.isResolved)
         if !resolved.isEmpty {
-            output.append(NSAttributedString(string: "\nResolved\n", attributes: headingAttributes))
+            output.append(NSAttributedString(string: "\n" + L10n.string("document.commentsSummary.resolved") + "\n", attributes: headingAttributes))
             appendSummaryItems(resolved, to: output, metaAttributes: metaAttributes, bodyAttributes: bodyAttributes)
         }
         return output
@@ -519,7 +520,8 @@ final class WorkspaceDocument: ReferenceFileDocument {
         for item in items {
             output.append(NSAttributedString(string: "\(item.title)\n", attributes: metaAttributes))
             if !item.tags.isEmpty {
-                output.append(NSAttributedString(string: "Tags: \(item.tags.joined(separator: ", "))\n", attributes: bodyAttributes))
+                let tagsLine = String(localized: "Tags: \(item.tags.joined(separator: ", "))", locale: L10n.currentLocale)
+                output.append(NSAttributedString(string: tagsLine + "\n", attributes: bodyAttributes))
             }
             output.append(NSAttributedString(string: "\(item.body)\n\n", attributes: bodyAttributes))
         }

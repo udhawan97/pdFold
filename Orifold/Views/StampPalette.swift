@@ -21,7 +21,7 @@ struct StampPalette: View {
                             StampPreviewLabel(title: preset.title, swatch: preset.swatch)
                         }
                         .buttonStyle(.plain)
-                        .help("Place \(preset.title.lowercased()) stamp")
+                        .help(L10n.format("stampPalette.place.help", preset.title.lowercased()))
                     }
                 }
 
