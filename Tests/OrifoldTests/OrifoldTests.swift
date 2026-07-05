@@ -339,6 +339,77 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         XCTAssertFalse(first.first?.text.contains("Second item") ?? true)
     }
 
+    /// Regression for a real user-reported bug: editing one paragraph in a document with
+    /// several near-identical stacked paragraphs (e.g. a repeated-content stress file)
+    /// visibly shifted the edited text's position and font size, even though the user
+    /// hadn't touched formatting.
+    ///
+    /// Root cause: `shouldMergeWrappedLine`'s `lineHeight` (which scales every merge
+    /// tolerance — vertical gap, baseline, indent, column compatibility) was computed from
+    /// `previous.bounds.height` — but `previous` is the in-progress merge ACCUMULATOR, whose
+    /// `.bounds` is the union of every line already merged into it. Once a paragraph had
+    /// merged 3-4 wrapped lines, `.bounds.height` became the whole paragraph's height
+    /// (~4x-8x one line), inflating every tolerance by the same factor — wide enough that a
+    /// completely separate paragraph below it (same left margin, no trailing punctuation —
+    /// both common and legitimate for body text) got silently absorbed into the SAME
+    /// editable block. Editing the first paragraph then edited/redrew the fused block,
+    /// which is what produced the observed size/position drift.
+    func testPDFTextAnalysisDoesNotMergeTwoSeparateStackedParagraphsAtALegitimateParagraphGap() throws {
+        let pdf = makeStackedParagraphsPDF()
+        let data = try pdf.dataRepresentation().unwrap()
+        let engine = PDFTextAnalysisEngine()
+        let page = try XCTUnwrap(pdf.page(at: 0))
+
+        let analysis = engine.analyze(data: data, pageIndex: 0, pageRefID: UUID(), fallbackPage: page)
+        let row0 = analysis.blocks.filter { $0.text.contains("row-0") }
+        let row1 = analysis.blocks.filter { $0.text.contains("row-1") }
+
+        XCTAssertEqual(row0.count, 1)
+        XCTAssertEqual(row1.count, 1)
+        XCTAssertFalse(row0.first?.text.contains("row-1") ?? true, "two visually separate paragraphs must not fuse into one editable block")
+    }
+
+    /// End-to-end version of the above: commits a small append edit to the FIRST of two
+    /// stacked paragraphs and confirms the resulting operation carries only that
+    /// paragraph's text at its original font size and left margin — i.e. no drift, and the
+    /// second paragraph is never touched.
+    func testEditingOneOfTwoStackedParagraphsPreservesFontSizeAndPositionOfTheOther() throws {
+        let pdf = makeStackedParagraphsPDF()
+        let data = try pdf.dataRepresentation().unwrap()
+        let engine = PDFTextAnalysisEngine()
+        let page = try XCTUnwrap(pdf.page(at: 0))
+        let analysis = engine.analyze(data: data, pageIndex: 0, pageRefID: UUID(), fallbackPage: page)
+        let row0 = try XCTUnwrap(analysis.blocks.first { $0.text.contains("row-0") })
+
+        let pdfView = OrifoldPDFView(frame: CGRect(x: 0, y: 0, width: 900, height: 1000))
+        pdfView.document = pdf
+        pdfView.autoScales = false
+        pdfView.scaleFactor = 1
+        pdfView.layoutDocumentView()
+        let pageRef = PageRef(memberDocId: UUID(), sourcePageIndex: 0)
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument())
+        var committed: InlineTextEditorOverlay.EditResult?
+        let overlay = InlineTextEditorOverlay(
+            frame: pdfView.bounds, viewModel: viewModel, pdfView: pdfView, page: page,
+            pageRef: pageRef, block: row0, sourceFormat: PDFTextEditFormat(block: row0)
+        ) { result in
+            if case .commit(let edit) = result { committed = edit }
+        }
+        pdfView.addSubview(overlay)
+        overlay.layoutSubtreeIfNeeded()
+
+        let textView = try XCTUnwrap(findSubview(in: overlay) { (_: NSTextView) in true })
+        textView.string = row0.text + " again for good measure"
+        textView.delegate?.textDidChange?(Notification(name: NSText.didChangeNotification, object: textView))
+        let done = try XCTUnwrap(findSubview(in: overlay) { (button: NSButton) in button.title == "Done" })
+        done.performClick(nil)
+
+        let result = try XCTUnwrap(committed)
+        XCTAssertFalse(result.text.contains("row-1"), "editing row0 must never pull in row1's text")
+        XCTAssertEqual(result.fontSize, row0.fontSize, accuracy: 0.01, "font size must not drift on a simple append edit")
+        XCTAssertEqual(result.editedBounds.minX, row0.bounds.minX, accuracy: 0.5, "left edge must not shift on a simple append edit")
+    }
+
     func testPDFTextAnalysisUsesVisibleFontSizeForScaledContentStreams() throws {
         let nominalFontSize: CGFloat = 24
         let pdf = makeScaledTextPDF(text: "Scaled inline text", fontSize: nominalFontSize, scale: 0.5)
@@ -5731,6 +5802,11 @@ private func makeTwoLinePDF() -> PDFDocument {
     return PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
 }
 
+private func makeStackedParagraphsPDF() -> PDFDocument {
+    let view = StackedParagraphsFixturePageView(frame: CGRect(x: 0, y: 0, width: 612, height: 792))
+    return PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
+}
+
 private func renderedBitmap(for page: PDFPage) throws -> NSBitmapImageRep {
     let thumbnail = page.thumbnail(of: CGSize(width: 612, height: 792), for: .mediaBox)
     let tiff = try thumbnail.tiffRepresentation.unwrap()
@@ -5938,6 +6014,31 @@ private final class TwoLineFixturePageView: NSView {
         ]
         NSString(string: "Short").draw(at: CGPoint(x: 72, y: 690), withAttributes: attributes)
         NSString(string: "Stale lower line").draw(at: CGPoint(x: 72, y: 650), withAttributes: attributes)
+    }
+}
+
+/// Two near-identical multi-line paragraphs stacked at the same left margin with a
+/// realistic single-blank-line paragraph gap, neither ending in terminal punctuation —
+/// matches the "repeated stress-test paragraph" structure that reproduced the wrapped-line
+/// over-merge bug (see `testPDFTextAnalysisDoesNotMergeTwoSeparateStackedParagraphsAtALegitimateParagraphGap`).
+private final class StackedParagraphsFixturePageView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        bounds.fill()
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        let font = NSFont(name: "Helvetica", size: 11) ?? NSFont.systemFont(ofSize: 11)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.black,
+            .paragraphStyle: paragraph
+        ]
+        let row0 = "This paragraph is intentionally searchable. Keywords: pdFold, annotation, export, zoom, rotate, section-1, row-0. It includes long identifiers like INV-2026-07-03-ALPHA-BRAVO-CHARLIE to check selection handles, search snippets, and copied text fidelity. The app should preserve scroll position while navigating results and editing nearby text edits"
+        let row1 = "This paragraph is intentionally searchable. Keywords: pdFold, annotation, export, zoom, rotate, section-1, row-1. It includes long identifiers like INV-2026-07-03-ALPHA-BRAVO-CHARLIE to check selection handles, search snippets, and copied text fidelity. The app should preserve scroll position while navigating results and editing nearby text"
+        NSString(string: row0).draw(in: CGRect(x: 40, y: 120, width: 532, height: 100), withAttributes: attributes)
+        NSString(string: row1).draw(in: CGRect(x: 40, y: 185, width: 532, height: 100), withAttributes: attributes)
     }
 }
 

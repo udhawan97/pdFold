@@ -502,9 +502,20 @@ final class PDFTextAnalysisEngine {
     private func shouldMergeWrappedLine(previous: EditableTextBlock, next: EditableTextBlock) -> Bool {
         guard previous.confidence != .low, next.confidence != .low else { return false }
         guard fontsMatch(previous, next), colorsMatch(previous.textColor, next.textColor) else { return false }
-        let verticalGap = previous.bounds.minY - next.bounds.maxY
-        let lineHeight = max(previous.bounds.height, next.bounds.height, previous.fontSize, next.fontSize)
-        let sameBaseline = abs(previous.bounds.midY - next.bounds.midY) <= lineHeight * 0.45
+        // `previous` is the in-progress merge accumulator: once it has already absorbed
+        // several wrapped lines, its `.bounds` is the UNION of every line merged so far, so
+        // `.bounds.height` is the whole paragraph's height, not one line's. Every tolerance
+        // below is scaled by this "line height" — using the cumulative block height instead
+        // of a single line's made every threshold (gap, baseline, indent, column, wrap
+        // shortfall) grow with each successful merge, so a 4-line paragraph could span a
+        // tolerance wide enough to absorb an entirely separate paragraph below it. Anchor to
+        // the LAST individual line actually merged (the one physically adjacent to `next`)
+        // so the tolerance stays a true single-line measurement no matter how long the
+        // paragraph accumulated so far has already grown.
+        let previousLastLine = previous.lines.last?.bounds ?? previous.bounds
+        let verticalGap = previousLastLine.minY - next.bounds.maxY
+        let lineHeight = max(previousLastLine.height, next.bounds.height, previous.fontSize, next.fontSize)
+        let sameBaseline = abs(previousLastLine.midY - next.bounds.midY) <= lineHeight * 0.45
         let horizontalGap = next.bounds.minX - previous.bounds.maxX
         if sameBaseline,
            horizontalGap >= 0,
