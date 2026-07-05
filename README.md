@@ -129,6 +129,7 @@ Everything below runs on your Mac. The cloud was not consulted.
 | 🗜️ | **Compress** — downsample oversized images, then losslessly re-pack the structure | Attachments that stop bouncing off email size limits |
 | 🧼 | **Sanitize for sharing** — strip auto-run actions, embedded JavaScript, hidden metadata | A file that carries nothing you didn't intend to send |
 | 🔒 | **Protect & export** — real AES-256 password, or export DOCX, Markdown, HTML, PNG, JPEG | The format the next person actually needs, locked when it matters |
+| 📖 | **Read comfortably** — distraction-free Reader Mode, plus Night Mode with Gentle/Paper/Amber warmth presets | Long documents that don't fight your eyes or your focus |
 
 > [!TIP]
 > **Meet Foldy 🤝** — Orifold ships with a small built-in buddy who reacts to what you do with short tips and the occasional wisecrack ("Highlighted. Future-you will pretend they read the rest."). Helpful when you're new, easy to silence when you're not: toggle **Show Orifold Buddy** from the app's menu.
@@ -142,7 +143,7 @@ Everything below runs on your Mac. The cloud was not consulted.
 | --- | --- |
 | **Import** | Open PDFs, Word documents, HTML, Markdown, text, CSV, JSON, XML, and common image formats — up to 50 files per workspace; corrupt PDFs are repaired via qpdf recovery when the native reader gives up |
 | **Organize** | Reorder documents and pages, rotate, delete, add section banners, navigate from the sidebar |
-| **Read & search** | Native PDF canvas, page indicator, inspector, workspace-wide search, password unlock prompts |
+| **Read & search** | Native PDF canvas, page indicator, inspector, workspace-wide search, password unlock prompts, distraction-free Reader Mode, Night Mode with Gentle/Paper/Amber warmth-and-dimming presets |
 | **Annotate** | Highlight, notes, ink, underline, strikeout, text boxes, and in-place editing of detected PDF text |
 | **Comments & metadata** | Workspace comments, tags, document details, inspector-visible annotation lists |
 | **Signatures** | Draw and place signatures, export signed PDFs locally |
@@ -186,7 +187,7 @@ Practical guardrails include password prompts for protected PDFs, import size li
 
 ## 🔄 Updating & Uninstalling
 
-**Update:** double-click **Orifold.command** on your Desktop. It checks the latest release before launching. That's the entire procedure — you may cancel the calendar reminder.
+**Update:** double-click **Orifold.command** on your Desktop. It checks the latest release before launching and sweeps up any stray `Orifold.app` copies (e.g. one dragged straight into `/Applications`) so only one install remains. That's the entire procedure — you may cancel the calendar reminder.
 
 **Uninstall:** double-click **Uninstall Orifold.command**. It removes the app, the Desktop helpers, the installer cache, and app data — a cleaner exit than most software manages.
 
@@ -222,8 +223,8 @@ curl -fsSL https://raw.githubusercontent.com/udhawan97/Orifold/main/scripts/unin
 | | |
 | --- | --- |
 | **Language** | Swift 5.9+, 100% SwiftUI interface |
-| **Codebase** | 52 Swift source files, ~24,000 lines |
-| **Tests** | 281 tests gating every release |
+| **Codebase** | 54 Swift source files, ~26,000 lines |
+| **Tests** | 320 tests gating every release |
 | **PDF engines** | PDFKit (composition) + PDFium (image compression) + qpdf (repair, AES-256, sanitize, structural validation) + Vision (OCR) |
 | **Architecture** | Unidirectional flow: views → one observable view model → protocol-seamed local engines → staged export pipeline |
 | **Distribution** | GitHub Actions builds the release zip; installer, Homebrew cask, and uninstaller ship from this repo |
