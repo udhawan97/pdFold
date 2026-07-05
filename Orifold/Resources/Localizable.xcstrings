@@ -21806,6 +21806,129 @@
           }
         }
       }
+    },
+    "error.import.preparePDFForSaving": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifold could not prepare this file for saving. Try exporting it to PDF first, then import the exported file."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifold no pudo preparar este archivo para guardarlo. Intenta exportarlo primero a PDF y luego importa el archivo exportado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifold n'a pas pu préparer ce fichier pour l'enregistrement. Essayez de l'exporter d'abord en PDF, puis importez le fichier exporté."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifold इस फ़ाइल को सहेजने के लिए तैयार नहीं कर सका। पहले इसे PDF में एक्सपोर्ट करने का प्रयास करें, फिर एक्सपोर्ट की गई फ़ाइल आयात करें।"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifold 无法为保存准备此文件。请先将其导出为 PDF，然后再导入导出的文件。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifoldはこのファイルを保存用に準備できませんでした。まずPDFとして書き出してから、その書き出したファイルを読み込んでください。"
+          }
+        }
+      }
+    },
+    "error.export.signingNotAvailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digital signing is not available in this build yet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La firma digital aún no está disponible en esta versión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La signature numérique n'est pas encore disponible dans cette version."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इस बिल्ड में डिजिटल हस्ताक्षर अभी उपलब्ध नहीं है।"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此版本尚不支持数字签名。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このビルドではまだデジタル署名はご利用いただけません。"
+          }
+        }
+      }
+    },
+    "content.noExtractableText": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No extractable text was found in this file."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se encontró texto extraíble en este archivo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun texte extractible n'a été trouvé dans ce fichier."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इस फ़ाइल में कोई निकाला जाने योग्य टेक्स्ट नहीं मिला।"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此文件中未找到可提取的文本。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このファイルには抽出可能なテキストが見つかりませんでした。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
