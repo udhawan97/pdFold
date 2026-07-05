@@ -12,13 +12,17 @@ import AppKit
 ///
 /// With Reduce Motion the animation is skipped entirely and the finished logo is
 /// shown immediately, so the screen is complete and polished with no motion at all.
+///
+/// Tapping the mark replays the fold from the start — a small discoverable delight,
+/// not required for any workflow.
 struct OrifoldFoldMark: View {
     var size: CGFloat = 80
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var play = false
+    @State private var playCount = 0
     @State private var breathe = false
     @State private var didResolve = false
+    @State private var replayGeneration = 0
 
     private var shouldReduceMotion: Bool {
         reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -37,54 +41,73 @@ struct OrifoldFoldMark: View {
     }
 
     private var animated: some View {
-        KeyframeAnimator(initialValue: FoldState.start, trigger: play) { state in
-            ZStack {
-                Canvas(opaque: false, rendersAsynchronously: true) { context, canvasSize in
-                    FoldMarkRenderer.draw(in: &context, size: canvasSize, state: state)
-                }
-                .opacity(1 - state.resolve)
+        Button {
+            replay()
+        } label: {
+            KeyframeAnimator(initialValue: FoldState.start, trigger: playCount) { state in
+                ZStack {
+                    Canvas(opaque: false, rendersAsynchronously: true) { context, canvasSize in
+                        FoldMarkRenderer.draw(in: &context, size: canvasSize, state: state)
+                    }
+                    .opacity(1 - state.resolve)
 
-                AppIconMark(size: size)
-                    .opacity(state.resolve)
-            }
-            .scaleEffect(breathe ? 1.012 : 1.0)
-        } keyframes: { _ in
-            // Sheet fades and scales into place.
-            KeyframeTrack(\.sheet) {
-                CubicKeyframe(1.0, duration: 0.34)
-            }
-            // Three deliberate corner folds, gently staggered.
-            KeyframeTrack(\.fold1) {
-                LinearKeyframe(0.0, duration: 0.30)
-                CubicKeyframe(1.0, duration: 0.60)
-            }
-            KeyframeTrack(\.fold2) {
-                LinearKeyframe(0.0, duration: 0.62)
-                CubicKeyframe(1.0, duration: 0.58)
-            }
-            KeyframeTrack(\.fold3) {
-                LinearKeyframe(0.0, duration: 1.00)
-                CubicKeyframe(1.0, duration: 0.48)
-            }
-            // Cross-dissolve the folded paper into the finished logo.
-            KeyframeTrack(\.resolve) {
-                LinearKeyframe(0.0, duration: 1.52)
-                CubicKeyframe(1.0, duration: 0.46)
+                    AppIconMark(size: size)
+                        .opacity(state.resolve)
+                }
+                .scaleEffect(breathe ? 1.012 : 1.0)
+            } keyframes: { _ in
+                // Sheet fades and scales into place.
+                KeyframeTrack(\.sheet) {
+                    CubicKeyframe(1.0, duration: 0.34)
+                }
+                // Three deliberate corner folds, gently staggered.
+                KeyframeTrack(\.fold1) {
+                    LinearKeyframe(0.0, duration: 0.30)
+                    CubicKeyframe(1.0, duration: 0.60)
+                }
+                KeyframeTrack(\.fold2) {
+                    LinearKeyframe(0.0, duration: 0.62)
+                    CubicKeyframe(1.0, duration: 0.58)
+                }
+                KeyframeTrack(\.fold3) {
+                    LinearKeyframe(0.0, duration: 1.00)
+                    CubicKeyframe(1.0, duration: 0.48)
+                }
+                // Cross-dissolve the folded paper into the finished logo.
+                KeyframeTrack(\.resolve) {
+                    LinearKeyframe(0.0, duration: 1.52)
+                    CubicKeyframe(1.0, duration: 0.46)
+                }
             }
         }
+        .buttonStyle(.plain)
+        .help("Replay the fold")
         .onAppear {
-            guard !play else { return }
-            play = true
-            // Settle into a slow, near-invisible idle breath once the fold resolves.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.05) {
-                guard !didResolve else { return }
-                didResolve = true
-                withAnimation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true)) {
-                    breathe = true
-                }
-            }
+            guard playCount == 0 else { return }
+            scheduleIdleBreath()
         }
         .accessibilityLabel("Orifold")
+        .accessibilityHint("Replays the fold animation.")
+    }
+
+    private func replay() {
+        replayGeneration += 1
+        didResolve = false
+        breathe = false
+        playCount += 1
+        scheduleIdleBreath()
+    }
+
+    private func scheduleIdleBreath() {
+        let generation = replayGeneration
+        // Settle into a slow, near-invisible idle breath once the fold resolves.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.05) {
+            guard generation == replayGeneration, !didResolve else { return }
+            didResolve = true
+            withAnimation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true)) {
+                breathe = true
+            }
+        }
     }
 }
 
