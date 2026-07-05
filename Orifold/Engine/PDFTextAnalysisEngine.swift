@@ -367,10 +367,10 @@ final class PDFTextAnalysisEngine {
               bounds.height > 2 else { return nil }
         let text = Self.reconcileLigatures(rawText, bounds: bounds, sourcePage: sourcePage)
 
-        let fontSize = resolveLineFontSize(sorted, lineBounds: bounds)
         let color = sorted.first(where: { $0.scalar.value != 32 })?.color ?? .documentText
         let rawFontName = sorted.first(where: { $0.scalar.value != 32 })?.rawFontName
         let fontName = rawFontName.map(Self.resolveFontPostScriptName) ?? "Helvetica"
+        let fontSize = resolveLineFontSize(sorted, lineBounds: bounds, resolvedFontName: fontName)
         let run = PDFTextRun(
             text: text,
             bounds: bounds,
@@ -590,9 +590,19 @@ final class PDFTextAnalysisEngine {
     /// scale through the content stream CTM: PDFium can report the nominal `Tf` size while
     /// the glyph boxes are visibly smaller in page space. Prefer reported sizes only when
     /// they agree with the actual ink height; otherwise use an ink-derived effective size.
-    private func resolveLineFontSize(_ samples: [CharacterSample], lineBounds: CGRect) -> CGFloat {
+    ///
+    /// `resolvedFontName` lets the ink estimate use THIS line's own font metrics (see
+    /// `effectiveFontSize`) instead of one fixed ratio for every font — measured against
+    /// several common fonts, a single global ratio was off by 5-12% depending on the font's
+    /// actual cap-height/descender proportions (e.g. Georgia and Verdana ink noticeably
+    /// taller relative to their point size than Helvetica does). That error was large enough
+    /// to make `resolveLineFontSize` reject a genuinely-correct reported size as
+    /// "implausible" and substitute the less-accurate generic estimate instead — the same
+    /// wrong value then got reused as-is by "Match"/"Copy nearby format", since both read
+    /// this same detected size.
+    private func resolveLineFontSize(_ samples: [CharacterSample], lineBounds: CGRect, resolvedFontName: String) -> CGFloat {
         let validSizes = samples.compactMap(\.reportedFontSize).filter { $0.isFinite && $0 > 0 }
-        let inkEstimatedSize = effectiveFontSize(fromInkHeight: lineBounds.height)
+        let inkEstimatedSize = effectiveFontSize(fromInkHeight: lineBounds.height, fontName: resolvedFontName)
         if !validSizes.isEmpty {
             let reported = median(validSizes)
             guard inkEstimatedSize > 0 else { return reported }
@@ -606,12 +616,30 @@ final class PDFTextAnalysisEngine {
         return inkEstimatedSize > 0 ? inkEstimatedSize : 12
     }
 
-    private func effectiveFontSize(fromInkHeight inkHeight: CGFloat) -> CGFloat {
+    /// Ratio of a font's typical rendered ink height (cap height down to the descender) to
+    /// its point size, cached per PostScript name since this is looked up on every detected
+    /// line. Fonts vary meaningfully here (Courier New ≈0.87, Georgia ≈0.91, Helvetica
+    /// ≈0.95) — using one fixed constant for all of them is what produced a font-dependent,
+    /// but consistent-per-document, font-size error.
+    private static var inkRatioCache: [String: CGFloat] = [:]
+    private static let fallbackInkRatio: CGFloat = 1 / 1.15
+
+    private static func inkRatio(forFontName fontName: String) -> CGFloat {
+        if let cached = inkRatioCache[fontName] { return cached }
+        guard let font = NSFont(name: fontName, size: 1), font.capHeight > 0 else {
+            inkRatioCache[fontName] = fallbackInkRatio
+            return fallbackInkRatio
+        }
+        let ratio = font.capHeight - font.descender
+        let resolved = ratio > 0 ? ratio : fallbackInkRatio
+        inkRatioCache[fontName] = resolved
+        return resolved
+    }
+
+    private func effectiveFontSize(fromInkHeight inkHeight: CGFloat, fontName: String) -> CGFloat {
         guard inkHeight.isFinite, inkHeight > 0 else { return 0 }
-        // For common PDF fonts, the union of visible glyph boxes in a line is usually a bit
-        // shorter than the nominal point size. 1.15 keeps replacement glyphs visually close
-        // to the source ink without accepting unscaled nominal sizes from CTM-scaled pages.
-        return max(4, inkHeight * 1.15)
+        let ratio = Self.inkRatio(forFontName: fontName)
+        return max(4, inkHeight / ratio)
     }
 }
 

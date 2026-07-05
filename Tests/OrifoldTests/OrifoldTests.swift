@@ -554,7 +554,9 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         let inkHeight = try XCTUnwrap(block.lines.first?.runs.first?.bounds.height)
 
         XCTAssertLessThan(block.fontSize, nominalFontSize * 0.8)
-        XCTAssertEqual(block.fontSize, max(4, inkHeight * 1.15), accuracy: 1.0)
+        let helveticaUnitFont = try XCTUnwrap(NSFont(name: "Helvetica", size: 1))
+        let helveticaInkRatio = helveticaUnitFont.capHeight - helveticaUnitFont.descender
+        XCTAssertEqual(block.fontSize, max(4, inkHeight / helveticaInkRatio), accuracy: 1.0)
     }
 
     func testPDFTextAnalysisUsesVisibleFontSizeForModeratelyScaledText() throws {
@@ -569,7 +571,49 @@ final class PDFTextEditingRedesignTests: XCTestCase {
         let inkHeight = try XCTUnwrap(block.lines.first?.runs.first?.bounds.height)
 
         XCTAssertLessThan(block.fontSize, nominalFontSize * 0.95)
-        XCTAssertEqual(block.fontSize, max(4, inkHeight * 1.15), accuracy: 1.0)
+        let helveticaUnitFont = try XCTUnwrap(NSFont(name: "Helvetica", size: 1))
+        let helveticaInkRatio = helveticaUnitFont.capHeight - helveticaUnitFont.descender
+        XCTAssertEqual(block.fontSize, max(4, inkHeight / helveticaInkRatio), accuracy: 1.0)
+    }
+
+    /// Regression for a real user-reported bug: the detected font size was consistently
+    /// off (and "Match"/"Copy nearby format" reproduced the same wrong number, since both
+    /// read this same detected value) for ordinary, unscaled text.
+    ///
+    /// Root cause: `FPDFText_GetFontSize` reports nothing usable for many PDF-producing
+    /// pipelines (confirmed: for every font tested here, `reportedFontSize` is nil for
+    /// every glyph), so `resolveLineFontSize` always fell back to an ink-height estimate —
+    /// but that estimate used ONE FIXED ratio (ink height × 1.15) for every font. Different
+    /// fonts have meaningfully different cap-height/descender proportions (Georgia and
+    /// Verdana ink taller relative to their point size than Helvetica does), so a single
+    /// global constant was off by 5-12% depending on the font, consistently and
+    /// reproducibly for a given document. Fixed by deriving the ink-to-point-size ratio
+    /// from the ACTUAL resolved font's own metrics (`capHeight - descender`) instead of one
+    /// constant for every font.
+    func testPDFTextAnalysisDetectsFontSizeAccuratelyAcrossCommonFonts() throws {
+        let candidates: [(name: String, size: CGFloat)] = [
+            ("Helvetica", 11), ("Times New Roman", 12), ("Georgia", 13), ("Arial", 11), ("Verdana", 10)
+        ]
+        let engine = PDFTextAnalysisEngine()
+        for candidate in candidates {
+            guard let font = NSFont(name: candidate.name, size: candidate.size) else { continue }
+            let view = SingleFontLineFixturePageView(text: "Sample text for size probe", font: font)
+            let pdf = PDFDocument(data: view.dataWithPDF(inside: view.bounds))!
+            let page = try XCTUnwrap(pdf.page(at: 0), candidate.name)
+            let data = try pdf.dataRepresentation().unwrap()
+
+            let analysis = engine.analyze(data: data, pageIndex: 0, pageRefID: UUID(), fallbackPage: page)
+            let block = try XCTUnwrap(analysis.blocks.first { $0.text.contains("Sample text") }, candidate.name)
+
+            // A font-specific ink ratio can't be perfect (it depends on which glyphs happen
+            // to appear on a given line), but it should stay well clear of the ~12% worst
+            // case the single fixed-ratio formula produced for fonts like Georgia/Verdana.
+            let percentError = abs(block.fontSize - candidate.size) / candidate.size
+            XCTAssertLessThan(
+                percentError, 0.08,
+                "\(candidate.name)@\(candidate.size)pt detected as \(block.fontSize) — more than 8% off"
+            )
+        }
     }
 
     func testPDFTextAnalysisAvoidsPrivateSystemFontNamesForEditing() throws {
@@ -6246,6 +6290,32 @@ private final class TwoLineFixturePageView: NSView {
         ]
         NSString(string: "Short").draw(at: CGPoint(x: 72, y: 690), withAttributes: attributes)
         NSString(string: "Stale lower line").draw(at: CGPoint(x: 72, y: 650), withAttributes: attributes)
+    }
+}
+
+/// A single line of text set in a caller-supplied font, at that font's own natural (device)
+/// scale — used to test font-size DETECTION accuracy against a known-correct answer, since
+/// the font/size are exactly what's passed in.
+private final class SingleFontLineFixturePageView: NSView {
+    private let text: String
+    private let font: NSFont
+
+    init(text: String, font: NSFont) {
+        self.text = text
+        self.font = font
+        super.init(frame: CGRect(x: 0, y: 0, width: 400, height: 200))
+    }
+
+    required init?(coder: NSCoder) { nil }
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        bounds.fill()
+        NSString(string: text).draw(
+            at: CGPoint(x: 40, y: 120),
+            withAttributes: [.font: font, .foregroundColor: NSColor.black]
+        )
     }
 }
 

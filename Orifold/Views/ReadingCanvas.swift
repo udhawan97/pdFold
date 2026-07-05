@@ -3012,8 +3012,17 @@ final class NoteEditorViewController: NSViewController {
 
     private func setDocumentFontSize(_ size: CGFloat) {
         let clamped = min(max(size, CGFloat(sizeStepper.minValue)), CGFloat(sizeStepper.maxValue))
-        guard abs(documentFontSize - clamped) >= 0.01 else {
-            documentFontSize = clamped
+        // `commitButton()` unconditionally re-parses whatever the size FIELD currently
+        // displays — which is `documentFontSize` rounded for display (see
+        // `formattedFontSize`, which rounds to the nearest whole number or, failing that,
+        // the nearest 0.1 — a worst-case display error just under 0.05) — even when the
+        // user never touched the field. Previously this branch still overwrote the precise
+        // detected size with that rounded string on every commit, silently quantizing the
+        // original layout's font size a little on every single save. Leave `documentFontSize`
+        // untouched when the parsed/clamped value is within that same display-rounding
+        // distance — only a value that differs by MORE than rounding could explain reflects
+        // an intentional user edit.
+        guard abs(documentFontSize - clamped) >= 0.05 else {
             refreshSizeControls()
             return
         }
