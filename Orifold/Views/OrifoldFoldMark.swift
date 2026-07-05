@@ -3,22 +3,26 @@ import AppKit
 
 /// Landing-screen brand moment: a sheet of paper folds through three deliberate
 /// creases — a diagonal valley fold, a half fold, a petal fold — then blossoms into a
-/// slender origami swan (a two-tone keeled body, a segmented neck that cascades into
-/// a graceful curve, a single swept wing, a small tail, and a reverse-folded head with
-/// the beak pointing right), holds, and dissolves so the real app icon (`AppIconMark`)
-/// can materialize on the same tile.
+/// detailed origami crane (tsuru): two wings sweeping up (a bright near wing and a
+/// darker far wing behind it for depth), a keeled two-tone body, a neck rising to a
+/// reverse-folded head with the beak pointing right, and a tail sweeping down-left.
+/// It holds, then dissolves so the real app icon (`AppIconMark`) can materialize on
+/// the same tile.
 ///
-/// Everything is vector-drawn in a single `Canvas` choreographed by `KeyframeAnimator`:
-/// the three opening folds are physically simulated (each flap reflects across its
-/// crease and rides a sine "lift" shadow), and the swan then emerges as a staggered
-/// per-part reveal — body, wing, a segment-by-segment neck cascade, tail, head — with
-/// every part unfolding from its nearest point on the folded packet's actual outline
-/// rather than an arbitrary interior point, so the paper visibly continues into the
-/// bird instead of popping in. A soft ground shadow and a single top-light sheen give
-/// it quiet depth without busywork. Once the run finishes the animator stops ticking,
-/// so the settled mark costs nothing.
+/// Everything is vector-drawn in a single `Canvas` choreographed by `KeyframeAnimator`.
+/// The three opening folds are physically simulated (each flap reflects across its
+/// crease and rides a sine "lift" shadow). The crane then emerges as a staggered
+/// per-part reveal — body, wings, neck, tail, head — with every facet unfolding from
+/// its nearest point on the folded packet's actual outline rather than an arbitrary
+/// point, so the paper visibly continues into the bird. The finished crane is richly
+/// rendered like real folded washi: warm-ivory facets shaded against a cool light,
+/// soft ambient occlusion pooling in the fold valleys, crisp ridge highlights, a
+/// deterministic paper-fiber grain clipped to the silhouette, a contact shadow, and a
+/// faint moon disc behind it (a quiet Japanese note). The grain is hashed from vertex
+/// indices, not randomized per frame, so it never shimmers. Once the run finishes the
+/// animator stops ticking, so the settled mark costs nothing.
 ///
-/// The hand-off to the finished logo is sequenced, not crossfaded: the swan fully
+/// The hand-off to the finished logo is sequenced, not crossfaded: the crane fully
 /// dissolves first, then the icon materializes on a tile drawn to match the icon's
 /// real background, so two different shapes never overlap mid-transition. It settles
 /// into a barely perceptible idle breath rather than looping.
@@ -32,7 +36,7 @@ struct OrifoldFoldMark: View {
     /// Delay before the fold plays on first appearance, so the screen settles first.
     private let autoplayDelay: TimeInterval = 1.0
     /// Total keyframe runtime, used to time the post-resolve idle breath.
-    private let animationRuntime: TimeInterval = 4.55
+    private let animationRuntime: TimeInterval = 4.2
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var playCount = 0
@@ -86,44 +90,41 @@ struct OrifoldFoldMark: View {
                     LinearKeyframe(0.0, duration: 0.85)
                     CubicKeyframe(1.0, duration: 0.45)
                 }
-                // Fold 3: a petal fold narrows the packet further — the last
-                // deliberate crease before the paper opens into the bird.
+                // Fold 3: a petal fold narrows the packet into a slender triangle.
                 KeyframeTrack(\.fold3) {
                     LinearKeyframe(0.0, duration: 1.30)
                     CubicKeyframe(1.0, duration: 0.45)
                 }
-                // Blossom: the packet opens into the swan, part by part.
+                // Blossom: the packet opens into the crane, part by part.
                 KeyframeTrack(\.bloomBody) {
                     LinearKeyframe(0.0, duration: 1.75)
                     CubicKeyframe(1.0, duration: 0.50)
                 }
-                KeyframeTrack(\.bloomTail) {
-                    LinearKeyframe(0.0, duration: 2.00)
-                    CubicKeyframe(1.0, duration: 0.45)
-                }
+                // Wings sweep up — the biggest, most dramatic reveal.
                 KeyframeTrack(\.bloomWing) {
                     LinearKeyframe(0.0, duration: 1.90)
+                    CubicKeyframe(1.0, duration: 0.62)
+                }
+                KeyframeTrack(\.bloomTail) {
+                    LinearKeyframe(0.0, duration: 2.08)
+                    CubicKeyframe(1.0, duration: 0.48)
+                }
+                KeyframeTrack(\.bloomNeck) {
+                    LinearKeyframe(0.0, duration: 2.20)
                     CubicKeyframe(1.0, duration: 0.55)
                 }
-                // The neck cascades in segment by segment (see the per-segment
-                // stagger in `drawSwan`), so it
-                // gets the longest span of any part.
-                KeyframeTrack(\.bloomNeck) {
-                    LinearKeyframe(0.0, duration: 2.05)
-                    CubicKeyframe(1.0, duration: 0.85)
-                }
                 KeyframeTrack(\.bloomHead) {
-                    LinearKeyframe(0.0, duration: 2.75)
+                    LinearKeyframe(0.0, duration: 2.52)
                     CubicKeyframe(1.0, duration: 0.50)
                 }
-                // Hold the finished swan for a beat, then dissolve it away…
+                // Hold the finished crane for a beat, then dissolve it away…
                 KeyframeTrack(\.paperOut) {
-                    LinearKeyframe(0.0, duration: 3.55)
+                    LinearKeyframe(0.0, duration: 3.20)
                     CubicKeyframe(1.0, duration: 0.40)
                 }
                 // …and only then materialize the finished logo on the same tile.
                 KeyframeTrack(\.iconIn) {
-                    LinearKeyframe(0.0, duration: 4.00)
+                    LinearKeyframe(0.0, duration: 3.65)
                     CubicKeyframe(1.0, duration: 0.45)
                 }
             }
@@ -178,79 +179,135 @@ private struct FoldState: Equatable {
     var fold2: Double
     /// Petal fold (wide packet → slender triangle).
     var fold3: Double
-    /// Staggered blossom phases: the swan opens part by part.
+    /// Staggered blossom phases: the crane opens part by part.
     var bloomBody: Double
-    var bloomTail: Double
     var bloomWing: Double
+    var bloomTail: Double
     var bloomNeck: Double
     var bloomHead: Double
-    /// Swan dissolves away (the tile stays put).
+    /// Crane dissolves away (the tile stays put).
     var paperOut: Double
     /// Finished logo materializes on top.
     var iconIn: Double
 
     static let start = FoldState(
         sheet: 0, fold1: 0, fold2: 0, fold3: 0,
-        bloomBody: 0, bloomTail: 0, bloomWing: 0, bloomNeck: 0, bloomHead: 0,
+        bloomBody: 0, bloomWing: 0, bloomTail: 0, bloomNeck: 0, bloomHead: 0,
         paperOut: 0, iconIn: 0
     )
 }
 
-// MARK: - Swan geometry
+// MARK: - Crane geometry
 //
 // All coordinates are tile-unit fractions ((0,0) = tile top-left, (1,1) = bottom-right).
-// The silhouette is centered and faces right, echoing the app icon's arrow direction.
+// A poised 3/4 crane, head/beak facing right to echo the app icon's arrow direction:
+// body centered, two wings up (bright near wing up-left, darker far wing up-right),
+// neck rising up-right to a beaked head, tail sweeping down-left.
 
-private enum SwanGeometry {
-    // Body: a two-tone keeled teardrop. bodyFront is a quad (an extra vertex over a
-    // plain triangle) for a rounder, less angular profile.
-    static let bodyTopL = CGPoint(x: 0.49, y: 0.49)
-    static let bodyTopR = CGPoint(x: 0.635, y: 0.525)
-    static let bodyMid = CGPoint(x: 0.60, y: 0.72)
-    static let bodyBottom = CGPoint(x: 0.545, y: 0.855)
-    static let bodyLeft = CGPoint(x: 0.345, y: 0.635)
+private enum BloomGroup {
+    case body, wing, tail, neck, head
 
-    static let bodyBack: [CGPoint] = [bodyTopL, bodyBottom, bodyLeft]
-    static let bodyFront: [CGPoint] = [bodyTopL, bodyTopR, bodyMid, bodyBottom]
+    func progress(_ state: FoldState) -> Double {
+        switch self {
+        case .body: return state.bloomBody
+        case .wing: return state.bloomWing
+        case .tail: return state.bloomTail
+        case .neck: return state.bloomNeck
+        case .head: return state.bloomHead
+        }
+    }
+}
 
-    // Neck: a ribbon along a curved centerline from the body up to the head, split
-    // into segments so it can cascade into place rather than unfold as one piece.
-    static let neckLine: [CGPoint] = [
-        bodyTopR,
-        CGPoint(x: 0.68, y: 0.42),
-        CGPoint(x: 0.735, y: 0.31),
-        CGPoint(x: 0.775, y: 0.205),
-        CGPoint(x: 0.80, y: 0.145),
+/// One paper facet. `hi`/`lo` are paper-tone values (0…1, see `paperTone`) for the two
+/// ends of the facet's shading gradient, oriented from `gradFrom` to `gradTo`.
+private struct CraneFacet {
+    let group: BloomGroup
+    let pts: [CGPoint]
+    let hi: Double
+    let lo: Double
+    let gradFrom: CGPoint
+    let gradTo: CGPoint
+}
+
+/// A fold line. `valley` folds pool soft shadow; ridges catch a thin highlight.
+private struct CraneCrease {
+    let group: BloomGroup
+    let a: CGPoint
+    let b: CGPoint
+    let valley: Bool
+    let strength: Double
+}
+
+private enum CraneGeometry {
+    static let bodyTop = CGPoint(x: 0.505, y: 0.470)
+    static let bodyR = CGPoint(x: 0.610, y: 0.600)
+    static let bodyBot = CGPoint(x: 0.520, y: 0.760)
+    static let bodyL = CGPoint(x: 0.380, y: 0.600)
+
+    // Paint order: back to front (far wing & tail behind, neck/head, body, near wing).
+    static let facets: [CraneFacet] = [
+        // Far wing — behind, up-right, darker (depth).
+        CraneFacet(group: .wing,
+                   pts: [CGPoint(x: 0.555, y: 0.485), CGPoint(x: 0.668, y: 0.205), CGPoint(x: 0.655, y: 0.515)],
+                   hi: 0.54, lo: 0.34, gradFrom: CGPoint(x: 0.668, y: 0.205), gradTo: CGPoint(x: 0.60, y: 0.515)),
+        // Tail — two facets, sweeping down-left.
+        CraneFacet(group: .tail,
+                   pts: [CGPoint(x: 0.430, y: 0.660), CGPoint(x: 0.150, y: 0.775), CGPoint(x: 0.410, y: 0.705)],
+                   hi: 0.86, lo: 0.66, gradFrom: CGPoint(x: 0.430, y: 0.660), gradTo: CGPoint(x: 0.150, y: 0.775)),
+        CraneFacet(group: .tail,
+                   pts: [CGPoint(x: 0.410, y: 0.705), CGPoint(x: 0.150, y: 0.775), CGPoint(x: 0.395, y: 0.745)],
+                   hi: 0.60, lo: 0.44, gradFrom: CGPoint(x: 0.410, y: 0.705), gradTo: CGPoint(x: 0.150, y: 0.775)),
+        // Body — shadowed back + lit front, split on the keel.
+        CraneFacet(group: .body,
+                   pts: [bodyTop, bodyBot, bodyL],
+                   hi: 0.72, lo: 0.52, gradFrom: bodyTop, gradTo: bodyL),
+        CraneFacet(group: .body,
+                   pts: [bodyTop, bodyR, bodyBot],
+                   hi: 1.00, lo: 0.80, gradFrom: bodyTop, gradTo: bodyBot),
+        // Neck — lower + upper, two-tone, rising up-right.
+        CraneFacet(group: .neck,
+                   pts: [CGPoint(x: 0.560, y: 0.520), CGPoint(x: 0.720, y: 0.300), CGPoint(x: 0.610, y: 0.560)],
+                   hi: 0.98, lo: 0.80, gradFrom: CGPoint(x: 0.720, y: 0.300), gradTo: CGPoint(x: 0.60, y: 0.560)),
+        CraneFacet(group: .neck,
+                   pts: [CGPoint(x: 0.610, y: 0.560), CGPoint(x: 0.720, y: 0.300), CGPoint(x: 0.665, y: 0.575)],
+                   hi: 0.80, lo: 0.62, gradFrom: CGPoint(x: 0.720, y: 0.300), gradTo: CGPoint(x: 0.66, y: 0.575)),
+        // Head + beak (points right).
+        CraneFacet(group: .head,
+                   pts: [CGPoint(x: 0.720, y: 0.300), CGPoint(x: 0.762, y: 0.240), CGPoint(x: 0.700, y: 0.345)],
+                   hi: 0.94, lo: 0.78, gradFrom: CGPoint(x: 0.762, y: 0.240), gradTo: CGPoint(x: 0.700, y: 0.345)),
+        CraneFacet(group: .head,
+                   pts: [CGPoint(x: 0.762, y: 0.240), CGPoint(x: 0.850, y: 0.300), CGPoint(x: 0.712, y: 0.320)],
+                   hi: 0.90, lo: 0.72, gradFrom: CGPoint(x: 0.850, y: 0.300), gradTo: CGPoint(x: 0.712, y: 0.320)),
+        // Near wing — shadowed back + bright front, sweeping up-left.
+        CraneFacet(group: .wing,
+                   pts: [CGPoint(x: 0.560, y: 0.520), CGPoint(x: 0.235, y: 0.130), CGPoint(x: 0.420, y: 0.545)],
+                   hi: 0.78, lo: 0.58, gradFrom: CGPoint(x: 0.235, y: 0.130), gradTo: CGPoint(x: 0.46, y: 0.55)),
+        CraneFacet(group: .wing,
+                   pts: [CGPoint(x: 0.650, y: 0.520), CGPoint(x: 0.235, y: 0.130), CGPoint(x: 0.560, y: 0.520)],
+                   hi: 1.00, lo: 0.82, gradFrom: CGPoint(x: 0.235, y: 0.130), gradTo: CGPoint(x: 0.65, y: 0.52)),
     ]
-    static let neckWidths: [Double] = [0.028, 0.026, 0.022, 0.017, 0.012]
-    static let neckShades: [Double] = [0.97, 0.945, 0.92, 0.895, 0.87]
 
-    // Head + beak, continuing from the neck's last point.
-    static let headBase = neckLine[4]
-    static let headTip = CGPoint(x: 0.850, y: 0.118)
-    static let headThroat = CGPoint(x: 0.822, y: 0.168)
-    static let beakTip = CGPoint(x: 0.935, y: 0.148)
-    static let head: [CGPoint] = [headBase, headTip, headThroat]
-    static let beak: [CGPoint] = [headTip, beakTip, headThroat]
+    static let creases: [CraneCrease] = [
+        CraneCrease(group: .body, a: bodyTop, b: bodyBot, valley: true, strength: 1.0),                                                  // body keel
+        CraneCrease(group: .neck, a: CGPoint(x: 0.560, y: 0.520), b: CGPoint(x: 0.720, y: 0.300), valley: false, strength: 0.8),         // neck ridge
+        CraneCrease(group: .wing, a: CGPoint(x: 0.560, y: 0.520), b: CGPoint(x: 0.235, y: 0.130), valley: true, strength: 0.9),          // near-wing keel
+        CraneCrease(group: .wing, a: CGPoint(x: 0.420, y: 0.545), b: CGPoint(x: 0.650, y: 0.520), valley: false, strength: 0.6),         // wing root ridge
+        CraneCrease(group: .tail, a: CGPoint(x: 0.410, y: 0.705), b: CGPoint(x: 0.150, y: 0.775), valley: true, strength: 0.5),          // tail median
+        CraneCrease(group: .head, a: CGPoint(x: 0.762, y: 0.240), b: CGPoint(x: 0.712, y: 0.320), valley: false, strength: 0.5),         // head fold
+        CraneCrease(group: .wing, a: CGPoint(x: 0.360, y: 0.360), b: CGPoint(x: 0.520, y: 0.510), valley: false, strength: 0.45),        // near-wing secondary fold
+        CraneCrease(group: .wing, a: CGPoint(x: 0.610, y: 0.505), b: CGPoint(x: 0.660, y: 0.300), valley: true, strength: 0.4),          // far-wing base valley
+    ]
 
-    // Wing: swept up and back, two facets sharing the root and an interior fold point.
-    static let wingRoot = bodyLeft
-    static let wingTip = CGPoint(x: 0.13, y: 0.11)
-    static let wingFold = CGPoint(x: 0.30, y: 0.30)
-    static let wingOuterEdge = CGPoint(x: 0.42, y: 0.50)
-    static let wingBack: [CGPoint] = [wingRoot, wingTip, wingFold]
-    static let wingFront: [CGPoint] = [wingRoot, wingFold, wingOuterEdge]
-
-    // Tail: small and tucked, echoing the body's proportions.
-    static let tailRoot = CGPoint(x: 0.475, y: 0.775)
-    static let tailTip = CGPoint(x: 0.205, y: 0.895)
-    static let tailFold = CGPoint(x: 0.375, y: 0.845)
-    static let tail: [CGPoint] = [tailRoot, tailTip, tailFold]
+    /// Deep valleys that pool soft ambient occlusion (center, radius) in tile units.
+    static let occlusion: [(center: CGPoint, radius: Double, group: BloomGroup)] = [
+        (CGPoint(x: 0.52, y: 0.55), 0.16, .wing),
+        (CGPoint(x: 0.60, y: 0.53), 0.11, .neck),
+        (CGPoint(x: 0.47, y: 0.70), 0.10, .body),
+    ]
 
     /// Outline of the folded packet left by fold 3 (matches the triangle drawn in
     /// `drawFoldStages`'s fold3 branch exactly): creaseTop → br → creaseBot. Every
-    /// part unfolds from its nearest point on this outline, so the swan visibly
-    /// emerges from the paper's actual folded edges instead of popping in.
+    /// part unfolds from its nearest point on this outline.
     static let packetTriangle: [CGPoint] = [
         CGPoint(x: 0.5, y: 0.5),
         CGPoint(x: 0.8, y: 0.8),
@@ -276,7 +333,7 @@ private enum FoldMarkRenderer {
         let tileRect = CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2, width: side, height: side)
         let tilePath = Path(roundedRect: tileRect, cornerRadius: side * 0.22, style: .continuous)
 
-        drawTile(in: &context, path: tilePath, rect: tileRect)
+        drawTile(in: &context, path: tilePath, rect: tileRect, side: side)
 
         // Keep all paper contained within the rounded tile.
         context.clip(to: tilePath)
@@ -293,7 +350,7 @@ private enum FoldMarkRenderer {
         }
 
         drawFoldStages(in: &context, side: side, state: state, at: at)
-        drawSwan(in: &context, side: side, state: state, at: at)
+        drawCrane(in: &context, tileRect: tileRect, side: side, state: state, at: at)
     }
 
     // MARK: Opening folds (square → triangle → wide packet → slender triangle)
@@ -304,7 +361,7 @@ private enum FoldMarkRenderer {
         state: FoldState,
         at: (CGPoint) -> CGPoint
     ) {
-        // The folded packet dissolves into the emerging swan body.
+        // The folded packet dissolves into the emerging crane body.
         let stageOpacity = 1 - min(1, state.bloomBody * 1.55)
         guard stageOpacity > 0.001 else { return }
 
@@ -318,9 +375,8 @@ private enum FoldMarkRenderer {
             layer.opacity = stageOpacity
 
             if state.fold3 > 0 {
-                // Petal fold: tr folds down across creaseTop–crease3 (a horizontal
-                // line), landing exactly on br — collapsing the wide packet into a
-                // slender triangle: creaseTop, br, creaseBot.
+                // Petal fold: tr folds down across creaseTop–crease3 onto br,
+                // collapsing the wide packet into a slender triangle.
                 var settled = Path()
                 settled.move(to: at(creaseTop)); settled.addLine(to: at(br)); settled.addLine(to: at(creaseBot))
                 settled.closeSubpath()
@@ -420,122 +476,186 @@ private enum FoldMarkRenderer {
         }
     }
 
-    // MARK: Swan blossom
+    // MARK: Crane blossom
 
-    private static func drawSwan(
+    private static func drawCrane(
         in context: inout GraphicsContext,
+        tileRect: CGRect,
         side: CGFloat,
         state: FoldState,
         at: (CGPoint) -> CGPoint
     ) {
-        let overall = max(state.bloomBody, state.bloomTail, state.bloomWing, state.bloomNeck, state.bloomHead)
+        let overall = max(state.bloomBody, state.bloomWing, state.bloomTail, state.bloomNeck, state.bloomHead)
         guard overall > 0.001 else { return }
 
-        // Soft ground shadow beneath the settling swan.
-        let groundOpacity = 0.12 * state.bloomBody
+        // Contact shadow beneath the settling crane — a single soft ellipse, darkest
+        // at its core and falling off smoothly, so it reads as grounded without
+        // looking like a separate dark puddle.
+        let groundOpacity = 0.15 * state.bloomBody
         if groundOpacity > 0.005 {
-            let center = at(CGPoint(x: 0.52, y: 0.83))
-            let rx = side * 0.24, ry = side * 0.04
-            let shadowRect = CGRect(x: center.x - rx, y: center.y - ry, width: rx * 2, height: ry * 2)
+            let center = at(CGPoint(x: 0.48, y: 0.79))
+            let rx = side * 0.22, ry = side * 0.04
             context.fill(
-                Path(ellipseIn: shadowRect),
+                Path(ellipseIn: CGRect(x: center.x - rx, y: center.y - ry, width: rx * 2, height: ry * 2)),
                 with: .radialGradient(
-                    Gradient(colors: [.black.opacity(groundOpacity), .clear]),
+                    Gradient(stops: [
+                        .init(color: .black.opacity(groundOpacity), location: 0),
+                        .init(color: .black.opacity(groundOpacity * 0.4), location: 0.6),
+                        .init(color: .clear, location: 1),
+                    ]),
                     center: center, startRadius: 0, endRadius: rx
                 )
             )
         }
 
+        // Resolve each visible facet's current (unfolding) path.
         var silhouette = Path()
-        var opaqueFacets: [(Path, Double, Double, Double, CGPoint, CGPoint)] = []  // path, opacity, shadeTop, shadeBottom, from, to
-
-        func addFacet(_ pts: [CGPoint], progress: Double, shadeTop: Double, shadeBottom: Double, from: CGPoint, to: CGPoint) {
-            guard progress > 0.001 else { return }
-            let eased = ease(progress)
-            let path = unfoldPath(pts, progress: eased, at: at)
+        var visible: [(facet: CraneFacet, path: Path, opacity: Double)] = []
+        for facet in CraneGeometry.facets {
+            let p = facet.group.progress(state)
+            guard p > 0.001 else { continue }
+            let eased = ease(p)
+            let path = unfoldPath(facet.pts, progress: eased, at: at)
             silhouette.addPath(path)
-            opaqueFacets.append((path, min(1, eased * 1.6), shadeTop, shadeBottom, at(from), at(to)))
+            visible.append((facet, path, min(1, eased * 1.6)))
         }
+        guard !visible.isEmpty else { return }
 
-        // Body.
-        addFacet(SwanGeometry.bodyBack, progress: state.bloomBody, shadeTop: 0.84, shadeBottom: 0.76,
-                 from: SwanGeometry.bodyTopL, to: SwanGeometry.bodyLeft)
-        addFacet(SwanGeometry.bodyFront, progress: state.bloomBody, shadeTop: 0.99, shadeBottom: 0.92,
-                 from: SwanGeometry.bodyTopL, to: SwanGeometry.bodyBottom)
-
-        // Tail.
-        addFacet(SwanGeometry.tail, progress: state.bloomTail, shadeTop: 0.90, shadeBottom: 0.84,
-                 from: SwanGeometry.tailRoot, to: SwanGeometry.tailTip)
-
-        // Wing.
-        addFacet(SwanGeometry.wingBack, progress: state.bloomWing, shadeTop: 0.80, shadeBottom: 0.73,
-                 from: SwanGeometry.wingRoot, to: SwanGeometry.wingTip)
-        addFacet(SwanGeometry.wingFront, progress: state.bloomWing, shadeTop: 0.99, shadeBottom: 0.91,
-                 from: SwanGeometry.wingFold, to: SwanGeometry.wingRoot)
-
-        // Neck: segments cascade in one after another rather than revealing together.
-        let segmentCount = SwanGeometry.neckLine.count - 1
-        let stagger = 0.16
-        let span = 1 - stagger * Double(segmentCount - 1)
-        for i in 0..<segmentCount {
-            let localRaw = (state.bloomNeck - stagger * Double(i)) / span
-            let local = max(0, min(1, localRaw))
-            guard local > 0.001 else { continue }
-            let quad = ribbonSegment(
-                a: SwanGeometry.neckLine[i], b: SwanGeometry.neckLine[i + 1],
-                widthA: SwanGeometry.neckWidths[i], widthB: SwanGeometry.neckWidths[i + 1]
-            )
-            addFacet(quad, progress: local, shadeTop: SwanGeometry.neckShades[i], shadeBottom: SwanGeometry.neckShades[i] - 0.05,
-                      from: SwanGeometry.neckLine[i], to: SwanGeometry.neckLine[i + 1])
-        }
-
-        // Head + beak.
-        addFacet(SwanGeometry.head, progress: state.bloomHead, shadeTop: 0.94, shadeBottom: 0.87,
-                 from: SwanGeometry.headBase, to: SwanGeometry.headTip)
-        addFacet(SwanGeometry.beak, progress: state.bloomHead, shadeTop: 0.90, shadeBottom: 0.82,
-                 from: SwanGeometry.headTip, to: SwanGeometry.beakTip)
-
-        guard !opaqueFacets.isEmpty else { return }
-
-        // One clean drop shadow for the whole silhouette, then facets tile over it.
+        // One soft drop shadow for the whole bird, then facets tile over it.
         context.drawLayer { layer in
-            layer.addFilter(.shadow(color: .black.opacity(0.16 * overall), radius: side * 0.035, x: side * 0.006, y: side * 0.020))
+            layer.addFilter(.shadow(color: .black.opacity(0.22 * overall), radius: side * 0.03, x: side * 0.006, y: side * 0.016))
             layer.fill(silhouette, with: .color(.white))
         }
 
-        for (path, opacity, shadeTop, shadeBottom, from, to) in opaqueFacets {
+        // A soft rim glow behind the silhouette lifts the paper off the tile — half
+        // of this blurred stroke sits under the facets about to be painted, half
+        // bleeds just past the outer edge as a faint halo.
+        context.drawLayer { layer in
+            layer.opacity = 0.35 * overall
+            layer.addFilter(.blur(radius: side * 0.006))
+            layer.stroke(silhouette, with: .color(.white.opacity(0.85)), lineWidth: side * 0.010)
+        }
+
+        // Facets — warm-ivory paper shaded against cool light, with a crisp hairline
+        // at each facet's own edge so adjoining panels read as distinct planes.
+        for entry in visible {
             context.drawLayer { layer in
-                layer.opacity = opacity
-                layer.fill(path, with: .linearGradient(
-                    Gradient(colors: [Color(white: shadeTop), Color(white: shadeBottom)]),
-                    startPoint: from, endPoint: to
+                layer.opacity = entry.opacity
+                layer.fill(entry.path, with: .linearGradient(
+                    Gradient(colors: [paperTone(entry.facet.hi), paperTone(entry.facet.lo)]),
+                    startPoint: at(entry.facet.gradFrom), endPoint: at(entry.facet.gradTo)
                 ))
+                layer.stroke(entry.path, with: .color(.black.opacity(0.05)), lineWidth: max(0.5, side * 0.0022))
             }
         }
 
-        // A single soft top-light sheen, clipped to the swan — quiet depth, no texture.
+        // One quiet specular streak where the light catches the paper most directly,
+        // along the near wing's leading ridge — clipped tight to the silhouette so it
+        // reads as a highlight on the paper, not a glow floating past its edge.
+        let specularP = state.bloomWing
+        if specularP > 0.05 {
+            context.drawLayer { layer in
+                layer.clip(to: silhouette)
+                let a = at(CGPoint(x: 0.560, y: 0.520))
+                let b = at(CGPoint(x: 0.30, y: 0.235))
+                var streak = Path()
+                streak.move(to: a); streak.addLine(to: b)
+                layer.addFilter(.blur(radius: side * 0.014))
+                layer.stroke(streak, with: .color(.white.opacity(0.32 * ease(specularP))),
+                            style: StrokeStyle(lineWidth: side * 0.05, lineCap: .round))
+            }
+        }
+
+        // Ambient occlusion pooling in the deep fold valleys.
+        context.drawLayer { layer in
+            layer.clip(to: silhouette)
+            for occ in CraneGeometry.occlusion {
+                let p = occ.group.progress(state)
+                guard p > 0.05 else { continue }
+                let c = at(occ.center)
+                let r = side * occ.radius
+                layer.fill(
+                    Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)),
+                    with: .radialGradient(
+                        Gradient(colors: [Color(.sRGB, red: 0.24, green: 0.30, blue: 0.42, opacity: 0.16 * ease(p)), .clear]),
+                        center: c, startRadius: 0, endRadius: r
+                    )
+                )
+            }
+        }
+
+        // Fold creases as a paired bevel — a dark shadow hairline immediately beside
+        // a bright ridge hairline, offset to either side of the fold — reads as an
+        // embossed, engraved seam rather than a single flat stroke.
+        for crease in CraneGeometry.creases {
+            let p = crease.group.progress(state)
+            guard p > 0.06 else { continue }
+            let a = at(crease.a), b = at(crease.b)
+            let fade = min(1, ease(p) * 1.5)
+            let n = perpendicular(crease.a, crease.b)
+            let offset = max(0.5, side * 0.0028)
+            let shadowOffset = CGPoint(x: n.x * offset, y: n.y * offset)
+            let liftOffset = CGPoint(x: -n.x * offset, y: -n.y * offset)
+
+            var shadowLine = Path()
+            shadowLine.move(to: CGPoint(x: a.x + shadowOffset.x, y: a.y + shadowOffset.y))
+            shadowLine.addLine(to: CGPoint(x: b.x + shadowOffset.x, y: b.y + shadowOffset.y))
+            context.stroke(shadowLine, with: .color(Color(.sRGB, red: 0.24, green: 0.29, blue: 0.40, opacity: (crease.valley ? 0.30 : 0.16) * crease.strength * fade)),
+                           style: StrokeStyle(lineWidth: max(0.7, side * 0.0042), lineCap: .round))
+
+            var liftLine = Path()
+            liftLine.move(to: CGPoint(x: a.x + liftOffset.x, y: a.y + liftOffset.y))
+            liftLine.addLine(to: CGPoint(x: b.x + liftOffset.x, y: b.y + liftOffset.y))
+            context.stroke(liftLine, with: .color(.white.opacity((crease.valley ? 0.35 : 0.60) * crease.strength * fade)),
+                           style: StrokeStyle(lineWidth: max(0.5, side * 0.0028), lineCap: .round))
+        }
+
+        // Washi paper grain + top-light sheen, clipped to the bird. The grain is
+        // hashed from its index (deterministic across frames → never shimmers), and
+        // fades in with the overall bloom.
         context.drawLayer { layer in
             layer.clip(to: silhouette)
             layer.opacity = overall
+
+            let fibers = max(60, Int(side * 1.6))
+            for i in 0..<fibers {
+                let fi = Double(i)
+                let hx = abs(hash(fi * 12.9898))
+                let hy = abs(hash(fi * 78.233))
+                let angle = hash(fi * 3.17) * 0.5   // near-horizontal fibers
+                let px = tileRect.minX + hx * side
+                let py = tileRect.minY + hy * side
+                let len = side * 0.02 * (0.5 + abs(hash(fi * 5.1)))
+                var seg = Path()
+                seg.move(to: CGPoint(x: px, y: py))
+                seg.addLine(to: CGPoint(x: px + cos(angle) * len, y: py + sin(angle) * len))
+                let dark = i % 3 == 0
+                layer.stroke(seg, with: .color(dark ? .black.opacity(0.05) : .white.opacity(0.07)), lineWidth: max(0.5, side * 0.0016))
+            }
+
             layer.fill(
                 Path(CGRect(x: at(.zero).x, y: at(.zero).y, width: side, height: side)),
                 with: .linearGradient(
-                    Gradient(colors: [.white.opacity(0.06), .clear, .black.opacity(0.025)]),
-                    startPoint: at(CGPoint(x: 0.75, y: 0.05)),
+                    Gradient(colors: [.white.opacity(0.10), .clear, .black.opacity(0.04)]),
+                    startPoint: at(CGPoint(x: 0.78, y: 0.05)),
                     endPoint: at(CGPoint(x: 0.25, y: 0.95))
                 )
             )
         }
+    }
 
-        // A few tasteful crease lines — body median and wing root only.
-        func crease(_ a: CGPoint, _ b: CGPoint, _ progress: Double, opacity: Double) {
-            guard progress > 0.05 else { return }
-            var line = Path()
-            line.move(to: at(a)); line.addLine(to: at(b))
-            context.stroke(line, with: .color(.black.opacity(opacity * min(1, progress * 1.6))), lineWidth: 0.7)
-        }
-        crease(SwanGeometry.bodyTopL, SwanGeometry.bodyBottom, state.bloomBody, opacity: 0.10)
-        crease(SwanGeometry.wingRoot, SwanGeometry.wingFold, state.bloomWing, opacity: 0.08)
+    /// Warm-ivory paper tone. `v` in 0…1: 1 = brightest lit paper, 0 = deepest fold
+    /// shadow. Highlights lean warm, shadows lean cool, as real paper does under a
+    /// cool sky light.
+    private static func paperTone(_ v: Double) -> Color {
+        let t = max(0, min(1, v))
+        let warm = (r: 1.00, g: 0.985, b: 0.96)
+        let cool = (r: 0.72, g: 0.76, b: 0.82)
+        return Color(.sRGB,
+                     red: cool.r + (warm.r - cool.r) * t,
+                     green: cool.g + (warm.g - cool.g) * t,
+                     blue: cool.b + (warm.b - cool.b) * t,
+                     opacity: 1)
     }
 
     /// Unfolds a facet's points from their nearest anchor on the folded packet's
@@ -543,7 +663,7 @@ private enum FoldMarkRenderer {
     private static func unfoldPath(_ pts: [CGPoint], progress: Double, at: (CGPoint) -> CGPoint) -> Path {
         var path = Path()
         let resolved = pts.map { pt -> CGPoint in
-            let anchor = nearestPointOnPolygon(pt, polygon: SwanGeometry.packetTriangle)
+            let anchor = nearestPointOnPolygon(pt, polygon: CraneGeometry.packetTriangle)
             return at(lerp(anchor, pt, t: progress))
         }
         path.move(to: resolved[0])
@@ -552,25 +672,9 @@ private enum FoldMarkRenderer {
         return path
     }
 
-    /// One quad of a ribbon between two centerline points, offset by their half-widths.
-    private static func ribbonSegment(a: CGPoint, b: CGPoint, widthA: Double, widthB: Double) -> [CGPoint] {
-        let n = perpendicular(a, b)
-        let a1 = CGPoint(x: a.x + n.x * widthA, y: a.y + n.y * widthA)
-        let a2 = CGPoint(x: a.x - n.x * widthA, y: a.y - n.y * widthA)
-        let b1 = CGPoint(x: b.x + n.x * widthB, y: b.y + n.y * widthB)
-        let b2 = CGPoint(x: b.x - n.x * widthB, y: b.y - n.y * widthB)
-        return [a2, a1, b1, b2]
-    }
-
-    private static func perpendicular(_ a: CGPoint, _ b: CGPoint) -> CGPoint {
-        let dx = b.x - a.x, dy = b.y - a.y
-        let len = max(0.0001, (dx * dx + dy * dy).squareRoot())
-        return CGPoint(x: -dy / len, y: dx / len)
-    }
-
     // MARK: Tile
 
-    private static func drawTile(in context: inout GraphicsContext, path: Path, rect: CGRect) {
+    private static func drawTile(in context: inout GraphicsContext, path: Path, rect: CGRect, side: CGFloat) {
         // Glacier-blue tile matched to the app icon: dark navy on the left/bottom
         // ramping to bright teal on the right/top (sampled from AppIcon-512).
         let gradient = Gradient(colors: [
@@ -581,8 +685,22 @@ private enum FoldMarkRenderer {
             path,
             with: .linearGradient(
                 gradient,
-                startPoint: CGPoint(x: rect.minX, y: rect.maxY),   // bottom-left, dark
-                endPoint: CGPoint(x: rect.maxX, y: rect.minY)       // top-right, bright
+                startPoint: CGPoint(x: rect.minX, y: rect.maxY),
+                endPoint: CGPoint(x: rect.maxX, y: rect.minY)
+            )
+        )
+
+        // Faint moon disc behind the crane — a quiet Japanese note (tsukimi).
+        let moonCenter = CGPoint(x: rect.minX + rect.width * 0.71, y: rect.minY + rect.height * 0.30)
+        let moonRadius = side * 0.20
+        context.fill(
+            Path(ellipseIn: CGRect(x: moonCenter.x - moonRadius, y: moonCenter.y - moonRadius, width: moonRadius * 2, height: moonRadius * 2)),
+            with: .radialGradient(
+                Gradient(colors: [
+                    Color(.sRGB, red: 0.86, green: 0.95, blue: 0.97, opacity: 0.26),
+                    Color(.sRGB, red: 0.70, green: 0.90, blue: 0.95, opacity: 0.0)
+                ]),
+                center: moonCenter, startRadius: 0, endRadius: moonRadius
             )
         )
 
@@ -593,12 +711,10 @@ private enum FoldMarkRenderer {
             path,
             with: .radialGradient(
                 Gradient(colors: [
-                    Color(.sRGB, red: 0.50, green: 0.82, blue: 0.86, opacity: 0.30),
+                    Color(.sRGB, red: 0.50, green: 0.82, blue: 0.86, opacity: 0.22),
                     Color.clear
                 ]),
-                center: glowCenter,
-                startRadius: 0,
-                endRadius: glowRadius
+                center: glowCenter, startRadius: 0, endRadius: glowRadius
             )
         )
 
@@ -616,6 +732,12 @@ private enum FoldMarkRenderer {
 
     // MARK: Geometry helpers
 
+    /// Deterministic hash in roughly [-1, 1] — a fract(sin(x)*k) style pseudo-random.
+    private static func hash(_ x: Double) -> Double {
+        let v = sin(x) * 43758.5453
+        return (v - v.rounded(.down)) * 2 - 1
+    }
+
     private static func reflect(_ p: CGPoint, across a: CGPoint, _ b: CGPoint) -> CGPoint {
         let dx = b.x - a.x
         let dy = b.y - a.y
@@ -628,6 +750,14 @@ private enum FoldMarkRenderer {
 
     private static func lerp(_ a: CGPoint, _ b: CGPoint, t: Double) -> CGPoint {
         CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+    }
+
+    /// Unit vector perpendicular to a–b (tile-unit space; direction is arbitrary but
+    /// consistent, which is all the crease bevel needs).
+    private static func perpendicular(_ a: CGPoint, _ b: CGPoint) -> CGPoint {
+        let dx = b.x - a.x, dy = b.y - a.y
+        let len = max(0.0001, (dx * dx + dy * dy).squareRoot())
+        return CGPoint(x: -dy / len, y: dx / len)
     }
 
     private static func ease(_ t: Double) -> Double {
