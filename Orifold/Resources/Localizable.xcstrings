@@ -19681,6 +19681,47 @@
         }
       }
     },
+    "error.export.emptyWorkspace": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There's nothing to export yet. Add a document first."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todavía no hay nada que exportar. Agrega un documento primero."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il n'y a encore rien à exporter. Ajoutez d'abord un document."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अभी निर्यात के लिए कुछ भी नहीं है। पहले एक दस्तावेज़ जोड़ें।"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前没有可导出的内容。请先添加一个文档。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "書き出す内容がまだありません。先にドキュメントを追加してください。"
+          }
+        }
+      }
+    },
     "error.export.noPagesToExport": {
       "extractionState": "manual",
       "localizations": {

@@ -336,6 +336,14 @@ final class WorkspaceViewModel {
         !isImporting && activeCompressionTask == nil && activeOCRTask == nil && !loadedPDFs.isEmpty
     }
 
+    /// True once there's genuinely nothing to export or save — zero documents,
+    /// zero pages, and no active selection. Export/save flows should treat this
+    /// as a no-op rather than routing into the PDF assembly pipeline, which
+    /// rejects zero-page documents as an error.
+    var isWorkspaceEmpty: Bool {
+        document.workspace.documents.isEmpty && pageCount == 0 && selectedPageRefID == nil
+    }
+
     weak var undoManager: UndoManager?
 
     private let engine: PDFEngine
@@ -3612,6 +3620,10 @@ final class WorkspaceViewModel {
     /// file is actually verified on disk -- the compressed-PDF branch writes
     /// asynchronously, so `true` here only means "started", not "written".
     func exportWorkspace(as format: WorkspaceExportFormat, options: WorkspaceExportOptions = WorkspaceExportOptions()) -> Bool {
+        guard !isWorkspaceEmpty else {
+            exportError = ExportError(message: L10n.string("error.export.emptyWorkspace"))
+            return false
+        }
         guard canPerformMutatingAction() else { return false }
         switch format {
         case .pdf:
@@ -3637,6 +3649,10 @@ final class WorkspaceViewModel {
 
     @discardableResult
     func exportPlainPDF(options: WorkspaceExportOptions = WorkspaceExportOptions()) -> Bool {
+        guard !isWorkspaceEmpty else {
+            exportError = ExportError(message: L10n.string("error.export.emptyWorkspace"))
+            return false
+        }
         guard canPerformMutatingAction() else { return false }
         if options.compressionPreset != nil {
             return exportCompressedPDF(options: options)
@@ -3646,6 +3662,10 @@ final class WorkspaceViewModel {
 
     @discardableResult
     func saveFlattenedPDF(to url: URL? = nil, options: WorkspaceExportOptions = WorkspaceExportOptions()) -> Bool {
+        guard !isWorkspaceEmpty else {
+            exportError = ExportError(message: L10n.string("error.export.emptyWorkspace"))
+            return false
+        }
         guard canPerformMutatingAction() else { return false }
         return saveFlattenedPDF(to: url, options: options, triggerPet: true)
     }

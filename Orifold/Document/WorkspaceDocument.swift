@@ -610,6 +610,14 @@ final class WorkspaceDocument: ReferenceFileDocument {
         guard configuration.contentType.conforms(to: .pdf) else {
             throw CocoaError(.fileWriteUnknown)
         }
+        // An emptied-out workspace (last document deleted) has nothing to preserve.
+        // Autosave/close-save must not fail here — that's the save-before-close path,
+        // distinct from an explicit user-triggered Export, which is guarded separately
+        // in WorkspaceViewModel and surfaces its own "nothing to export" message.
+        guard !snapshot.workspace.documents.isEmpty else {
+            let emptyData = PDFSerializer.data(from: PDFDocument()) ?? Data()
+            return FileWrapper(regularFileWithContents: emptyData)
+        }
         let pdfData = try exportedPDFDataThrowing(
             from: snapshot,
             options: WorkspaceExportOptions(embedsEditableWorkspaceState: true)

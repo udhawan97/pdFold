@@ -5454,6 +5454,114 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedPageRefIDs, [second.refs[0].id])
     }
 
+    // MARK: - Empty workspace after deleting the last document
+
+    func testRemovingLastDocumentClearsSelectionAndMarksWorkspaceEmpty() throws {
+        let document = WorkspaceDocument()
+        let only = try makeMemberWithPDF(name: "Only", pageTexts: ["one"])
+        document.workspace.documents = [only.member]
+        document.workspace.pageOrder = only.refs
+        document.memberPDFData[only.member.id] = only.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+
+        viewModel.selectPage(only.refs[0])
+        XCTAssertFalse(viewModel.isWorkspaceEmpty)
+
+        viewModel.removeDocument(only.member)
+
+        XCTAssertTrue(viewModel.memberDocuments.isEmpty)
+        XCTAssertEqual(viewModel.pageCount, 0)
+        XCTAssertNil(viewModel.selectedPageRefID)
+        XCTAssertTrue(viewModel.selectedPageRefIDs.isEmpty)
+        XCTAssertTrue(viewModel.isWorkspaceEmpty)
+    }
+
+    func testRemovingAllDocumentsOneAtATimeLeavesNoStaleSelection() throws {
+        let document = WorkspaceDocument()
+        let first = try makeMemberWithPDF(name: "First", pageTexts: ["one"])
+        let second = try makeMemberWithPDF(name: "Second", pageTexts: ["two"])
+        document.workspace.documents = [first.member, second.member]
+        document.workspace.pageOrder = first.refs + second.refs
+        document.memberPDFData[first.member.id] = first.pdfData
+        document.memberPDFData[second.member.id] = second.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+
+        viewModel.removeDocument(first.member)
+        viewModel.removeDocument(second.member)
+
+        XCTAssertTrue(viewModel.document.workspace.documents.isEmpty)
+        XCTAssertTrue(viewModel.document.workspace.pageOrder.isEmpty)
+        XCTAssertNil(viewModel.selectedPageRefID)
+        XCTAssertTrue(viewModel.selectedPageRefIDs.isEmpty)
+        XCTAssertTrue(viewModel.isWorkspaceEmpty)
+    }
+
+    /// After deleting the last document, an explicit Export click must show a
+    /// friendly "nothing to export" message rather than surfacing the internal
+    /// "no pages" assembly error, and it must not crash or loop.
+    func testExportingEmptyWorkspaceShowsFriendlyMessageInsteadOfAssemblyError() throws {
+        let document = WorkspaceDocument()
+        let only = try makeMemberWithPDF(name: "Only", pageTexts: ["one"])
+        document.workspace.documents = [only.member]
+        document.workspace.pageOrder = only.refs
+        document.memberPDFData[only.member.id] = only.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+        viewModel.removeDocument(only.member)
+
+        XCTAssertNil(viewModel.exportError)
+
+        let result = viewModel.exportWorkspace(as: .pdf)
+
+        XCTAssertFalse(result)
+        let message = try XCTUnwrap(viewModel.exportError?.message)
+        XCTAssertEqual(message, L10n.string("error.export.emptyWorkspace"))
+        XCTAssertNotEqual(message, PDFKitEngine.ExportAssemblyError.emptyDocument.localizedDescription)
+
+        // Dismissing the alert must fully clear the pending error so it can't reopen.
+        viewModel.exportError = nil
+        XCTAssertNil(viewModel.exportError)
+    }
+
+    /// The save-before-close path (`fileWrapper`, invoked by macOS autosave/close)
+    /// must never throw for an emptied-out workspace -- that would trap the user
+    /// in a "could not prepare this PDF for export" loop when just trying to exit.
+    func testFileWrapperDoesNotThrowForEmptyWorkspaceSnapshot() throws {
+        let document = WorkspaceDocument()
+        let only = try makeMemberWithPDF(name: "Only", pageTexts: ["one"])
+        document.workspace.documents = [only.member]
+        document.workspace.pageOrder = only.refs
+        document.memberPDFData[only.member.id] = only.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+        viewModel.removeDocument(only.member)
+
+        let snapshot = try document.snapshot(contentType: .pdf)
+        XCTAssertTrue(snapshot.workspace.documents.isEmpty)
+        XCTAssertThrowsError(try document.exportedPDFDataThrowing(from: snapshot)) { error in
+            XCTAssertEqual(error as? PDFKitEngine.ExportAssemblyError, .emptyDocument)
+        }
+    }
+
+    /// Deleting one of several documents must leave the remaining document fully
+    /// exportable -- the empty-workspace guard must not misfire for a non-empty
+    /// workspace.
+    func testRemainingDocumentStillExportsAfterDeletingAnother() throws {
+        let document = WorkspaceDocument()
+        let first = try makeMemberWithPDF(name: "First", pageTexts: ["one"])
+        let second = try makeMemberWithPDF(name: "Second", pageTexts: ["two"])
+        document.workspace.documents = [first.member, second.member]
+        document.workspace.pageOrder = first.refs + second.refs
+        document.memberPDFData[first.member.id] = first.pdfData
+        document.memberPDFData[second.member.id] = second.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+
+        viewModel.removeDocument(first.member)
+
+        XCTAssertFalse(viewModel.isWorkspaceEmpty)
+        let exportedData = try document.exportedPDFDataThrowing(from: try document.snapshot(contentType: .pdf))
+        let exportedPDF = try XCTUnwrap(PDFDocument(data: exportedData))
+        XCTAssertEqual(exportedPDF.pageCount, 1)
+    }
+
     @MainActor
     func testImportingAfterTargetPageInsertsDocumentAfterTargetDocument() async throws {
         let document = WorkspaceDocument()
