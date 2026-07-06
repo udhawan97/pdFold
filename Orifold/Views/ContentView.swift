@@ -150,8 +150,28 @@ private struct ExportSuccessPanel: View {
     }
 }
 
+/// Isolated from `ContentView`'s modifier chain so its `onAppear`/`onChange`/`onDisappear`
+/// closures don't add to that chain's already-heavy type-checking cost.
+private struct RecentsLifecycleModifier: ViewModifier {
+    let fileURL: URL?
+    let isEmpty: Bool
+    let onOpen: () -> Void
+    let onClose: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear(perform: onOpen)
+            .onChange(of: fileURL) { _, _ in onOpen() }
+            .onChange(of: isEmpty) { _, nowEmpty in
+                if !nowEmpty { onOpen() }
+            }
+            .onDisappear(perform: onClose)
+    }
+}
+
 struct ContentView: View {
     var document: WorkspaceDocument
+    var fileURL: URL?
     @State private var viewModel: WorkspaceViewModel
     @State private var showInspector = false
     @State private var inspectorTab: InspectorView.Tab = .info
@@ -173,9 +193,25 @@ struct ContentView: View {
         reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
-    init(document: WorkspaceDocument) {
+    init(document: WorkspaceDocument, fileURL: URL? = nil) {
         self.document = document
+        self.fileURL = fileURL
         _viewModel = State(initialValue: WorkspaceViewModel(document: document))
+    }
+
+    private func recordRecentOpenIfNeeded() {
+        guard let fileURL, !viewModel.memberDocuments.isEmpty else { return }
+        RecentsStore.shared.recordOpen(url: fileURL)
+    }
+
+    private func recordRecentVisitOnClose() {
+        guard let fileURL, !viewModel.memberDocuments.isEmpty else { return }
+        RecentsStore.shared.recordVisit(
+            url: fileURL,
+            pageCount: viewModel.pageCount,
+            currentPage: max(0, viewModel.currentPageNumber - 1),
+            combinedPDF: viewModel.combinedPDF
+        )
     }
 
     var body: some View {
@@ -233,6 +269,12 @@ struct ContentView: View {
         .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.18), value: viewModel.memberDocuments.isEmpty)
         .preferredColorScheme(viewModel.appAppearanceMode.colorScheme)
         .tint(Color.dsAccent)
+        .modifier(RecentsLifecycleModifier(
+            fileURL: fileURL,
+            isEmpty: viewModel.memberDocuments.isEmpty,
+            onOpen: recordRecentOpenIfNeeded,
+            onClose: recordRecentVisitOnClose
+        ))
         .overlay(alignment: .bottomTrailing) {
             if !viewModel.memberDocuments.isEmpty {
                 PetOverlay().padding(18)

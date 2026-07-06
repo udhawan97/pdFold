@@ -9,6 +9,7 @@ struct EmptyStateView: View {
     @State private var hasIntroducedOptions = false
     @State private var optionGuidance: String?
     @State private var chooseFilesNudge = 0
+    @State private var recentsStore = RecentsStore.shared
 
     private var shouldReduceMotion: Bool {
         reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -104,11 +105,13 @@ struct EmptyStateView: View {
                             .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.15), value: isDropTargeted)
                     }
                     .dsElevation()
+
+                    RecentFilesSection(store: recentsStore, onOpen: openRecentFile)
                 }
                 .padding(.horizontal, .dsXXL)
-                .padding(.top, 96)
+                .padding(.top, recentsStore.entries.isEmpty ? 96 : 56)
                 .padding(.bottom, .dsXXL)
-                .frame(maxWidth: 640)
+                .frame(maxWidth: recentsStore.entries.isEmpty ? 640 : 700)
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
@@ -234,6 +237,17 @@ struct EmptyStateView: View {
         configureImportOpenPanel(panel)
         if panel.runModal() == .OK {
             importFilesWithBatchLimit(urls: panel.urls, into: viewModel)
+        }
+    }
+
+    private func openRecentFile(_ url: URL) {
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
+            if let error {
+                viewModel.importError = WorkspaceViewModel.ImportError(
+                    fileName: url.lastPathComponent,
+                    message: error.localizedDescription
+                )
+            }
         }
     }
 }

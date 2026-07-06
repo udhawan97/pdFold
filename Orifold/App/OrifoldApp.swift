@@ -8,7 +8,7 @@ struct OrifoldApp: App {
 
     var body: some Scene {
         DocumentGroup(newDocument: { WorkspaceDocument() }) { config in
-            ContentView(document: config.document)
+            ContentView(document: config.document, fileURL: config.fileURL)
                 .environmentObject(languageManager)
                 .environment(\.locale, languageManager.effectiveLocale)
         }
