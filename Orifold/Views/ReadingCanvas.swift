@@ -2169,12 +2169,12 @@ final class NoteEditorViewController: NSViewController {
         controls.addSubview(align)
 
         let swatches: [(NSColor, CGFloat, String, Int)] = [
-            (.labelColor, 204, "Default", 0),
-            (.dsTextPrimaryNS, 234, "Orifold blue", 1),
-            (.systemRed, 264, "Red", 2),
-            (.white, 294, "White", 3)
+            (.labelColor, 204, "readingCanvas.formatting.textColor.default.tooltip", 0),
+            (.dsTextPrimaryNS, 234, "readingCanvas.formatting.textColor.orifoldBlue.tooltip", 1),
+            (.systemRed, 264, "readingCanvas.formatting.textColor.red.tooltip", 2),
+            (.white, 294, "readingCanvas.formatting.textColor.white.tooltip", 3)
         ]
-        for (color, x, name, tag) in swatches {
+        for (color, x, tooltipKey, tag) in swatches {
             let button = NSButton(title: "", target: self, action: #selector(changeTextColor(_:)))
             button.frame = CGRect(x: x, y: 21, width: 20, height: 20)
             button.bezelStyle = .shadowlessSquare
@@ -2182,7 +2182,7 @@ final class NoteEditorViewController: NSViewController {
             button.isBordered = false
             button.image = nil
             button.attributedTitle = NSAttributedString(string: "")
-            button.toolTip = L10n.string("\(name) text")
+            button.toolTip = L10n.string(String.LocalizationValue(tooltipKey))
             button.wantsLayer = true
             button.layer?.backgroundColor = color.cgColor
             button.layer?.cornerRadius = 10
@@ -2408,13 +2408,19 @@ final class NoteEditorViewController: NSViewController {
     private let originalAlignment: NSTextAlignment
     private let originalUnderline: Bool
     private static let defaultInsertedTextColor = NSColor.black
-    private static let defaultTextColorChoices: [TextColorChoice] = [
-        TextColorChoice(name: "Black", color: .black, isDetected: false),
-        TextColorChoice(name: "White", color: .white, isDetected: false),
-        TextColorChoice(name: "Red", color: .systemRed, isDetected: false),
-        TextColorChoice(name: "Blue", color: .systemBlue, isDetected: false),
-        TextColorChoice(name: "Green", color: .systemGreen, isDetected: false)
-    ]
+    // Computed (not `static let`) so each new text-edit session re-resolves
+    // these names against the language active at that moment, rather than
+    // freezing them to whatever language was current the first time any
+    // text edit was opened in this process.
+    private static var defaultTextColorChoices: [TextColorChoice] {
+        [
+            TextColorChoice(name: L10n.string("readingCanvas.textColorChoice.black.name"), color: .black, isDetected: false),
+            TextColorChoice(name: L10n.string("readingCanvas.textColorChoice.white.name"), color: .white, isDetected: false),
+            TextColorChoice(name: L10n.string("readingCanvas.textColorChoice.red.name"), color: .systemRed, isDetected: false),
+            TextColorChoice(name: L10n.string("readingCanvas.textColorChoice.blue.name"), color: .systemBlue, isDetected: false),
+            TextColorChoice(name: L10n.string("readingCanvas.textColorChoice.green.name"), color: .systemGreen, isDetected: false)
+        ]
+    }
     private static let maxDetectedTextColors = 24
 
     private struct TextColorChoice {
@@ -3531,7 +3537,7 @@ final class NoteEditorViewController: NSViewController {
             let normalized = normalizedColor(color)
             guard normalized.alphaComponent > 0.05,
                   !choices.contains(where: { colorsApproximatelyEqual($0.color, normalized, tolerance: 0.025) }) else { return }
-            choices.append(TextColorChoice(name: "Detected \(hexString(for: normalized))", color: normalized, isDetected: true))
+            choices.append(TextColorChoice(name: L10n.format("readingCanvas.textColorChoice.detected.name", hexString(for: normalized)), color: normalized, isDetected: true))
         }
 
         appendDetected(initialColor)

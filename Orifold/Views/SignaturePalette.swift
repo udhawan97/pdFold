@@ -232,7 +232,7 @@ struct SignaturePalette: View {
             )
         } catch {
             viewModel.exportError = WorkspaceViewModel.ExportError(
-                message: L10n.string("Orifold could not prepare that signing identity: \(error.localizedDescription)")
+                message: L10n.format("signaturePalette.error.signingFailed", error.localizedDescription)
             )
         }
     }
