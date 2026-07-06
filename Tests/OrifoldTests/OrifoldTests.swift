@@ -3646,11 +3646,19 @@ final class InlineTextEditPlacementTests: XCTestCase {
     /// past the English-sized minimum whenever the actual title needs more room.
     func testMeasuredButtonWidthAccommodatesLongerLocalizedTitles() throws {
         // Read the French translation straight out of the source Localizable.xcstrings
-        // JSON rather than through a compiled fr.lproj strings table: `swift build`/
-        // `swift test` copy the .xcstrings file verbatim instead of compiling it into
-        // per-locale .lproj bundles the way Xcode's build system does, so no fr.lproj
-        // exists under the SPM CLI test runner at all.
-        let catalogURL = try XCTUnwrap(Bundle.module.url(forResource: "Localizable", withExtension: "xcstrings"))
+        // JSON rather than through a compiled fr.lproj strings table: both `swift
+        // test` and Xcode's build system compile/copy the catalog into per-locale
+        // resources and drop (or never expose) the raw .xcstrings from the built
+        // test bundle, so no bundle lookup — `Bundle.module` or otherwise — can find
+        // it at runtime. Resolve it from this source file's own path instead, which
+        // is identical under both build systems.
+        let sourceFileURL = URL(fileURLWithPath: #filePath)
+        let catalogURL = sourceFileURL
+            .deletingLastPathComponent() // OrifoldTests
+            .deletingLastPathComponent() // Tests
+            .deletingLastPathComponent() // repo root
+            .appendingPathComponent("Orifold/Resources/Localizable.xcstrings")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: catalogURL.path), "Expected to find Localizable.xcstrings relative to the test source file")
         let catalogData = try Data(contentsOf: catalogURL)
         let catalog = try XCTUnwrap(try JSONSerialization.jsonObject(with: catalogData) as? [String: Any])
         let strings = try XCTUnwrap(catalog["strings"] as? [String: Any])
