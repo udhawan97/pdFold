@@ -27,7 +27,7 @@
 <br>
 <br>
 
-<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Release v7" src="https://img.shields.io/badge/release-v7-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
+<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Release v7" src="https://img.shields.io/badge/release-v7-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="6 languages" src="https://img.shields.io/badge/i18n-6%20languages-8B5CF6?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
 
 <br>
 <br>
@@ -148,6 +148,8 @@ Everything below runs on your Mac. The cloud was not consulted.
 | 🧼 | **Sanitize for sharing** — strip auto-run actions, embedded JavaScript, hidden metadata | A file that carries nothing you didn't intend to send |
 | 🔒 | **Protect & export** — real AES-256 password, or export DOCX, Markdown, HTML, PNG, JPEG | The format the next person actually needs, locked when it matters |
 | 📖 | **Read comfortably** — distraction-free Reader Mode, plus Night Mode with Gentle/Paper/Amber warmth presets | Long documents that don't fight your eyes or your focus |
+| 🕘 | **Pick up where you left off** — a Recently Viewed shelf on the empty-state screen, with local thumbnails | One click back into the file you had open yesterday |
+| 🌐 | **Work in your language** — full UI in English, Spanish, French, Hindi, Simplified Chinese, and Japanese | An app that speaks your language, switchable from the landing screen |
 
 > [!TIP]
 > **Meet Gami & Ori 🤝** — Orifold ships with a small built-in companion who reacts to what you do with short tips and the occasional wisecrack (Gami: "Highlighted. Future-you will pretend they read the rest." · Ori: "This PDF is under my silent judgment."). Helpful when you're new, easy to silence when you're not: toggle **Show Orifold Buddy** from the app's menu.
@@ -162,6 +164,7 @@ Everything below runs on your Mac. The cloud was not consulted.
 | **Import** | Open PDFs, Word documents, HTML, Markdown, text, CSV, JSON, XML, and common image formats — up to 50 files per workspace; corrupt PDFs are repaired via qpdf recovery when the native reader gives up |
 | **Organize** | Reorder documents and pages, rotate, delete, add section banners, navigate from the sidebar |
 | **Read & search** | Native PDF canvas, page indicator, inspector, workspace-wide search, password unlock prompts, distraction-free Reader Mode, Night Mode with Gentle/Paper/Amber warmth-and-dimming presets |
+| **Recently viewed** | An empty-state shelf of the last files you opened, with locally cached page thumbnails — nothing about it ever leaves the machine |
 | **Annotate** | Highlight, notes, ink, underline, strikeout, text boxes, and in-place editing of detected PDF text |
 | **Comments & metadata** | Workspace comments, tags, document details, inspector-visible annotation lists |
 | **Signatures** | Draw and place signatures, export signed PDFs locally |
@@ -173,6 +176,8 @@ Everything below runs on your Mac. The cloud was not consulted.
 | **Protection** | Real AES-256 (PDF 2.0 / R6) password protection with permission checks and post-export verification |
 | **Export integrity** | Every exported PDF passes a qpdf structural check before it reaches disk |
 | **Export** | PDF, DOCX, Markdown, plain text, HTML, PNG pages, JPEG pages, or print |
+| **Languages** | Full interface localization in English, Spanish, French, Hindi, Simplified Chinese, and Japanese, switchable from the landing screen and persisted across launches |
+| **Companion** | Gami (dog) or Ori (cat) — an optional origami buddy that lives in the workspace and reacts to highlighting, signing, exporting, and warnings; toggle from the app menu |
 | **Install & update** | One-line installer, Desktop launch/update helpers, clean uninstaller, Homebrew cask |
 </details>
 
@@ -241,8 +246,9 @@ curl -fsSL https://raw.githubusercontent.com/udhawan97/Orifold/main/scripts/unin
 | | |
 | --- | --- |
 | **Language** | Swift 5.9+, 100% SwiftUI interface |
-| **Codebase** | 54 Swift source files, ~26,000 lines |
-| **Tests** | 320 tests gating every release |
+| **Codebase** | 61 Swift source files, ~29,000 lines |
+| **Tests** | 354 tests gating every release |
+| **Languages** | English, Spanish, French, Hindi, Simplified Chinese, Japanese — coverage enforced by a test |
 | **PDF engines** | PDFKit (composition) + PDFium (image compression) + qpdf (repair, AES-256, sanitize, structural validation) + Vision (OCR) |
 | **Architecture** | Unidirectional flow: views → one observable view model → protocol-seamed local engines → staged export pipeline |
 | **Distribution** | GitHub Actions builds the release zip; installer, Homebrew cask, and uninstaller ship from this repo |
@@ -258,8 +264,8 @@ curl -fsSL https://raw.githubusercontent.com/udhawan97/Orifold/main/scripts/unin
 
 | Layer | Responsibility |
 | --- | --- |
-| SwiftUI app | Document window, sidebar, canvas, annotation toolbar, search, inspector, password prompts, export controls |
-| Workspace state | Imported documents, page order, undo snapshots, comments, tags, signatures, form summaries, decorations |
+| SwiftUI app | Document window, sidebar, canvas, annotation toolbar, search, inspector, password prompts, export controls, empty-state Recently Viewed shelf, language switcher |
+| Workspace state | Imported documents, page order, undo snapshots, comments, tags, signatures, form summaries, decorations, recent-file history |
 | PDF services | PDFKit composition, PDFium image compression, qpdf repair/AES-256/sanitize/structural validation, Vision OCR, form flattening, decoration baking, signing helpers |
 | Local storage | Saved PDF data, workspace metadata, source payloads, comments, signatures, page edit state |
 | Release tooling | One-line installer, package builder, Desktop update launcher, uninstaller, GitHub Actions release asset, validation tests |
@@ -287,10 +293,10 @@ Orifold/
   App/             App entry point and command wiring
   DesignSystem/    Shared visual tokens and styling
   Document/        macOS document package read/write support
-  Engine/          PDF loading, repair, conversion, OCR, compression, encryption, sanitize, forms, export
-  Models/          Workspace, page, annotation, comment, export, and decoration models
+  Engine/          PDF loading, repair, conversion, OCR, compression, encryption, sanitize, forms, export, Recently Viewed store
+  Models/          Workspace, page, annotation, comment, export, decoration, and recent-file models
   Pet/             Gami & Ori, the in-app companions
-  Resources/       App metadata, entitlements, assets
+  Resources/       App metadata, entitlements, assets, Localizable.xcstrings (6 languages)
   Signing/         Signing identities, CMS construction, timestamping, verification
   ViewModels/      Workspace state, document operations, search, export, undo
   Views/           SwiftUI interface components
