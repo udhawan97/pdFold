@@ -303,8 +303,7 @@ final class WorkspaceViewModel {
     var highlightFormFields = false
     var selectedFormFieldIndex: Int? = nil
     var appAppearanceMode: AppAppearanceMode = .system
-    var isNightModeEnabled = false
-    var nightModeSettings = NightModeSettings.default
+    var documentComfortSettings = DocumentComfortSettings.default
 
     var hasPendingSignaturePlacement: Bool {
         pendingSignatureData != nil && pendingSignatureOptions != nil

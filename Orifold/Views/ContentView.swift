@@ -179,18 +179,15 @@ struct ContentView: View {
     @State private var isShowingExportSheet = false
     @State private var isWorkspaceDropTargeted = false
     @State private var isNavigationDropTargeted = false
-    @State private var isShowingNightModeControls = false
+    @State private var isShowingDocumentComfortPopover = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("orifoldAppAppearanceMode") private var persistedAppAppearanceMode = AppAppearanceMode.system.rawValue
-    @AppStorage("orifoldNightModeEnabled") private var persistedNightModeEnabled = false
-    @AppStorage("orifoldNightModeWarmth") private var persistedNightModeWarmth = NightModeSettings.default.warmth
-    @AppStorage("orifoldNightModeIntensity") private var persistedNightModeIntensity = NightModeSettings.default.intensity
-    @AppStorage("orifoldNightModeDimming") private var persistedNightModeDimming = NightModeSettings.default.dimming
+    @AppStorage("orifoldDocumentComfortSettings") private var persistedDocumentComfortSettingsData = Data()
     @Environment(\.undoManager) private var undoManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var shouldReduceMotion: Bool {
-        reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || viewModel.documentComfortSettings.reduceAnimations
     }
 
     init(document: WorkspaceDocument, fileURL: URL? = nil) {
@@ -224,6 +221,12 @@ struct ContentView: View {
                         handleDrop(providers: providers, insertingAfter: targetPageRefID)
                     }
                         .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 320)
+                        .overlay {
+                            if viewModel.documentComfortSettings.focusMode {
+                                Color.black.opacity(0.35).allowsHitTesting(false)
+                            }
+                        }
+                        .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.2), value: viewModel.documentComfortSettings.focusMode)
                 } detail: {
                     HStack(spacing: 0) {
                         ReadingCanvas(viewModel: viewModel)
@@ -251,9 +254,15 @@ struct ContentView: View {
                             Rectangle().fill(Color.dsSeparator).frame(width: 0.5)
                             InspectorView(viewModel: viewModel, selectedTab: $inspectorTab)
                                 .frame(width: 280)
+                                .overlay {
+                                    if viewModel.documentComfortSettings.focusMode {
+                                        Color.black.opacity(0.35).allowsHitTesting(false)
+                                    }
+                                }
                         }
                     }
                     .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.18), value: showInspector)
+                    .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.2), value: viewModel.documentComfortSettings.focusMode)
                     .overlay { workspaceDropOverlay }
                     .onDrop(
                         of: importDropContentTypes,
@@ -295,8 +304,7 @@ struct ContentView: View {
         .onAppear {
             viewModel.undoManager = undoManager
             setAppAppearanceMode(persistedAppAppearanceModeValue)
-            viewModel.isNightModeEnabled = persistedNightModeEnabled
-            viewModel.nightModeSettings = persistedNightModeSettings
+            viewModel.documentComfortSettings = persistedDocumentComfortSettings
         }
         .onChange(of: undoManager) { _, um in viewModel.undoManager = um }
         .onChange(of: viewModel.appAppearanceMode) { _, mode in
@@ -306,11 +314,8 @@ struct ContentView: View {
         .onChange(of: persistedAppAppearanceMode) { _, _ in
             syncPersistedAppAppearanceMode()
         }
-        .onChange(of: viewModel.isNightModeEnabled) { _, enabled in
-            persistedNightModeEnabled = enabled
-        }
-        .onChange(of: viewModel.nightModeSettings) { _, settings in
-            persistedNightModeSettings = settings
+        .onChange(of: viewModel.documentComfortSettings) { _, settings in
+            persistedDocumentComfortSettings = settings
         }
         .onChange(of: viewModel.selectedCommentID) { _, newValue in
             guard newValue != nil else { return }
@@ -452,27 +457,19 @@ struct ContentView: View {
             .help("toolbar.inspector.help")
 
             Button {
-                viewModel.isNightModeEnabled.toggle()
+                isShowingDocumentComfortPopover.toggle()
             } label: {
-                Label("toolbar.nightMode.label", systemImage: viewModel.isNightModeEnabled ? "moon.stars.fill" : "moon.stars")
+                Label("toolbar.documentComfort.label", systemImage: "eyeglasses")
             }
             .acceptsImportDrops { providers in
                 handleDrop(providers: providers)
             }
-            .help(viewModel.isNightModeEnabled ? "toolbar.nightMode.turnOff.help" : "toolbar.nightMode.turnOn.help")
-
-            Button {
-                isShowingNightModeControls.toggle()
-            } label: {
-                Label("toolbar.nightTone.label", systemImage: "slider.horizontal.3")
-            }
-            .acceptsImportDrops { providers in
-                handleDrop(providers: providers)
-            }
-            .help("toolbar.nightTone.help")
-            .popover(isPresented: $isShowingNightModeControls, arrowEdge: .top) {
-                NightModeControls(viewModel: viewModel)
-                    .frame(width: 320)
+            .foregroundStyle(viewModel.documentComfortSettings.isAtDefault ? Color.dsTextPrimary : Color.dsAccent)
+            .help("toolbar.documentComfort.help")
+            .accessibilityLabel(Text("toolbar.documentComfort.accessibilityLabel"))
+            .popover(isPresented: $isShowingDocumentComfortPopover, arrowEdge: .top) {
+                DocumentComfortPopover(viewModel: viewModel)
+                    .frame(width: 340)
             }
 
             GuideButton(autoShow: true)
@@ -484,19 +481,15 @@ struct ContentView: View {
 
     // MARK: - Helpers
 
-    private var persistedNightModeSettings: NightModeSettings {
+    private var persistedDocumentComfortSettings: DocumentComfortSettings {
         get {
-            NightModeSettings(
-                warmth: persistedNightModeWarmth,
-                intensity: persistedNightModeIntensity,
-                dimming: persistedNightModeDimming
-            ).clamped
+            guard let decoded = try? JSONDecoder().decode(DocumentComfortSettings.self, from: persistedDocumentComfortSettingsData) else {
+                return .default
+            }
+            return decoded.clamped
         }
         nonmutating set {
-            let settings = newValue.clamped
-            persistedNightModeWarmth = settings.warmth
-            persistedNightModeIntensity = settings.intensity
-            persistedNightModeDimming = settings.dimming
+            persistedDocumentComfortSettingsData = (try? JSONEncoder().encode(newValue.clamped)) ?? Data()
         }
     }
 
@@ -612,15 +605,16 @@ private struct ReaderModePill: View {
             Button {
                 isShowingToneControls.toggle()
             } label: {
-                Image(systemName: viewModel.isNightModeEnabled ? "moon.stars.fill" : "slider.horizontal.3")
+                Image(systemName: "eyeglasses")
                     .frame(width: 22, height: 22)
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(viewModel.isNightModeEnabled ? Color.dsAccent : Color.dsTextTertiary)
+            .foregroundStyle(viewModel.documentComfortSettings.isAtDefault ? Color.dsTextTertiary : Color.dsAccent)
             .help("contentView.readerModePill.toneControls.help")
+            .accessibilityLabel(Text("toolbar.documentComfort.accessibilityLabel"))
             .popover(isPresented: $isShowingToneControls, arrowEdge: .top) {
-                NightModeControls(viewModel: viewModel)
-                    .frame(width: 320)
+                DocumentComfortPopover(viewModel: viewModel)
+                    .frame(width: 340)
             }
 
             Button(action: openNotes) {
@@ -652,80 +646,198 @@ private struct ReaderModePill: View {
     }
 }
 
-private struct NightModeControls: View {
+/// The unified "Document Comfort" control: viewer-only eye-care presets and live sliders that
+/// never touch PDF content or exported output (see `DocumentComfortSettings`).
+private struct DocumentComfortPopover: View {
     @Bindable var viewModel: WorkspaceViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: .dsMD) {
-            VStack(alignment: .leading, spacing: .dsSM) {
-                Label("contentView.nightModeControls.application.label", systemImage: "macwindow")
-                    .font(.dsHeadline())
-                Picker("contentView.nightModeControls.applicationAppearance.picker", selection: appAppearanceModeBinding) {
-                    ForEach(AppAppearanceMode.allCases) { mode in
-                        Label(mode.title, systemImage: mode.systemImage)
-                            .tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
+            header
 
             Divider()
 
-            Toggle(isOn: $viewModel.isNightModeEnabled) {
-                Label("toolbar.nightMode.label", systemImage: viewModel.isNightModeEnabled ? "moon.stars.fill" : "moon.stars")
-                    .font(.dsHeadline())
-            }
+            appThemeSection
 
-            HStack(spacing: .dsSM) {
-                ForEach(NightModePreset.allCases) { preset in
-                    Button {
-                        viewModel.isNightModeEnabled = true
-                        viewModel.nightModeSettings = preset.settings
-                    } label: {
-                        Label(preset.title, systemImage: preset.systemImage)
-                            .labelStyle(.titleAndIcon)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
+            Divider()
+
+            pageModeSection
+
+            Divider()
+
+            eyeCareSection
+
+            Divider()
+
+            readingFocusSection
+
+            Divider()
+
+            resetRow
+        }
+        .padding(.dsLG)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("documentComfort.title")
+                .font(.dsHeadline())
+            Text("documentComfort.subtitle")
+                .font(.dsCaption())
+                .foregroundStyle(Color.dsTextSecondary)
+        }
+    }
+
+    private var appThemeSection: some View {
+        VStack(alignment: .leading, spacing: .dsSM) {
+            Label("contentView.nightModeControls.application.label", systemImage: "macwindow")
+                .font(.dsCaption())
+                .foregroundStyle(Color.dsTextSecondary)
+            Picker("contentView.nightModeControls.applicationAppearance.picker", selection: appAppearanceModeBinding) {
+                ForEach(AppAppearanceMode.allCases) { mode in
+                    Label(mode.title, systemImage: mode.systemImage)
+                        .tag(mode)
                 }
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+    }
 
-            VStack(alignment: .leading, spacing: .dsSM) {
-                nightModeSlider(
-                    title: "contentView.nightModeControls.warmth.title",
-                    systemImage: "thermometer.sun",
-                    value: Binding(
-                        get: { viewModel.nightModeSettings.warmth },
-                        set: { viewModel.nightModeSettings.warmth = $0 }
-                    )
-                )
-                nightModeSlider(
-                    title: "contentView.nightModeControls.tone.title",
-                    systemImage: "circle.lefthalf.filled",
-                    value: Binding(
-                        get: { viewModel.nightModeSettings.intensity },
-                        set: { viewModel.nightModeSettings.intensity = $0 }
-                    )
-                )
-                nightModeSlider(
-                    title: "contentView.nightModeControls.dimming.title",
-                    systemImage: "sun.min",
-                    value: Binding(
-                        get: { viewModel.nightModeSettings.dimming },
-                        set: { viewModel.nightModeSettings.dimming = $0 }
-                    )
-                )
-            }
-
-            HStack {
-                Spacer()
-                Button("contentView.nightModeControls.reset.button") {
-                    viewModel.nightModeSettings = .default
+    private var pageModeSection: some View {
+        VStack(alignment: .leading, spacing: .dsSM) {
+            sectionLabel("documentComfort.pageMode.section", systemImage: "doc.richtext")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: .dsSM)], alignment: .leading, spacing: .dsSM) {
+                ForEach(PageMode.allCases) { mode in
+                    pageModeChip(mode)
                 }
             }
         }
-        .padding(.dsLG)
+    }
+
+    private func pageModeChip(_ mode: PageMode) -> some View {
+        let isSelected = viewModel.documentComfortSettings.pageMode == mode
+        return Button {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                viewModel.documentComfortSettings.pageMode = mode
+            }
+        } label: {
+            Label(mode.title, systemImage: mode.systemImage)
+                .labelStyle(.titleAndIcon)
+                .font(.dsCaption())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+        }
+        .buttonStyle(.borderless)
+        .background(
+            isSelected ? Color.dsAccent.opacity(0.18) : Color.dsSeparator.opacity(0.35),
+            in: RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous)
+                .strokeBorder(isSelected ? Color.dsAccent : Color.clear, lineWidth: 1.5)
+        }
+        .foregroundStyle(isSelected ? Color.dsAccent : Color.dsTextPrimary)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .help(mode.title)
+    }
+
+    private var eyeCareSection: some View {
+        VStack(alignment: .leading, spacing: .dsSM) {
+            sectionLabel("documentComfort.eyeCare.section", systemImage: "eye")
+
+            comfortSlider(
+                title: "documentComfort.brightness.title",
+                systemImage: "sun.max",
+                value: Binding(
+                    get: { viewModel.documentComfortSettings.brightness },
+                    set: { viewModel.documentComfortSettings.brightness = $0 }
+                ),
+                range: 50...150
+            )
+            comfortSlider(
+                title: "documentComfort.contrast.title",
+                systemImage: "circle.lefthalf.filled",
+                value: Binding(
+                    get: { viewModel.documentComfortSettings.contrast },
+                    set: { viewModel.documentComfortSettings.contrast = $0 }
+                ),
+                range: 50...150
+            )
+            comfortSlider(
+                title: "documentComfort.warmth.title",
+                systemImage: "thermometer.sun",
+                value: Binding(
+                    get: { viewModel.documentComfortSettings.warmth },
+                    set: { viewModel.documentComfortSettings.warmth = $0 }
+                ),
+                range: 0...100
+            )
+
+            Toggle(isOn: Binding(
+                get: { viewModel.documentComfortSettings.reduceGlare },
+                set: { viewModel.documentComfortSettings.reduceGlare = $0 }
+            )) {
+                Label("documentComfort.reduceGlare.title", systemImage: "sparkles")
+                    .font(.dsCaption())
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+            Toggle(isOn: Binding(
+                get: { viewModel.documentComfortSettings.softenWhitePages },
+                set: { viewModel.documentComfortSettings.softenWhitePages = $0 }
+            )) {
+                Label("documentComfort.softenWhitePages.title", systemImage: "doc.text.image")
+                    .font(.dsCaption())
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+        }
+    }
+
+    private var readingFocusSection: some View {
+        VStack(alignment: .leading, spacing: .dsSM) {
+            sectionLabel("documentComfort.readingFocus.section", systemImage: "target")
+
+            Toggle(isOn: Binding(
+                get: { viewModel.documentComfortSettings.focusMode },
+                set: { viewModel.documentComfortSettings.focusMode = $0 }
+            )) {
+                Label("documentComfort.focusMode.title", systemImage: "viewfinder")
+                    .font(.dsCaption())
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .help("documentComfort.focusMode.help")
+
+            Toggle(isOn: Binding(
+                get: { viewModel.documentComfortSettings.reduceAnimations },
+                set: { viewModel.documentComfortSettings.reduceAnimations = $0 }
+            )) {
+                Label("documentComfort.reduceAnimations.title", systemImage: "wand.and.stars")
+                    .font(.dsCaption())
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .help("documentComfort.reduceAnimations.help")
+        }
+    }
+
+    private var resetRow: some View {
+        HStack {
+            Spacer()
+            Button("documentComfort.reset.button") {
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    viewModel.documentComfortSettings = .default
+                }
+            }
+            .disabled(viewModel.documentComfortSettings.isAtDefault)
+        }
     }
 
     private var appAppearanceModeBinding: Binding<AppAppearanceMode> {
@@ -746,7 +858,12 @@ private struct NightModeControls: View {
         }
     }
 
-    private func nightModeSlider(title: LocalizedStringKey, systemImage: String, value: Binding<Double>) -> some View {
+    private func sectionLabel(_ key: LocalizedStringKey, systemImage: String) -> some View {
+        Label(key, systemImage: systemImage)
+            .font(.dsHeadline())
+    }
+
+    private func comfortSlider(title: LocalizedStringKey, systemImage: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
         HStack(spacing: .dsSM) {
             Image(systemName: systemImage)
                 .frame(width: 18)
@@ -756,9 +873,9 @@ private struct NightModeControls: View {
                 .foregroundStyle(Color.dsTextSecondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-                .frame(width: 78, alignment: .leading)
-            Slider(value: value, in: 0...1, step: 0.01)
-            Text("\(Int(value.wrappedValue * 100))%")
+                .frame(width: 92, alignment: .leading)
+            Slider(value: value, in: range, step: 1)
+            Text("\(Int(value.wrappedValue))%")
                 .font(.dsCaption())
                 .foregroundStyle(Color.dsTextSecondary)
                 .monospacedDigit()

@@ -355,7 +355,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
         view.displaysPageBreaks = false
         view.backgroundColor = .dsCanvasNS
         view.pageOverlayViewProvider = context.coordinator
-        view.setNightModeEnabled(viewModel.isNightModeEnabled, settings: viewModel.nightModeSettings)
+        view.applyDocumentComfortSettings(viewModel.documentComfortSettings)
 
         // Wire up delete key handler
         view.onDeleteKey = { [weak coordinator = context.coordinator] in
@@ -481,7 +481,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
         context.coordinator.viewModel = viewModel
         context.coordinator.inkOverlay.isHidden = (viewModel.currentTool != .ink)
         context.coordinator.inkOverlay.inkColor = viewModel.inkColor
-        nsView.setNightModeEnabled(viewModel.isNightModeEnabled, settings: viewModel.nightModeSettings)
+        nsView.applyDocumentComfortSettings(viewModel.documentComfortSettings)
         context.coordinator.refreshSignatureOverlay()
         context.coordinator.refreshDecorationOverlays()
         context.coordinator.refreshCommentOverlays()
@@ -1147,48 +1147,36 @@ final class OrifoldPDFView: PDFView {
     var onTabKey: ((Bool) -> Bool)?
     var onSelectionCommitted: (() -> Void)?
     var onCommentMenu: (() -> Void)?
-    private let nightToneOverlay = NightToneOverlayView()
-    private var isNightModeEnabled = false
-    private var nightModeSettings = NightModeSettings.default
+    private let comfortOverlay = DocumentComfortOverlayView()
+    private var comfortSettings = DocumentComfortSettings.default
 
     override var acceptsFirstResponder: Bool { true }
 
-    func setNightModeEnabled(_ enabled: Bool, settings: NightModeSettings) {
+    func applyDocumentComfortSettings(_ settings: DocumentComfortSettings) {
         let clampedSettings = settings.clamped
-        guard enabled != isNightModeEnabled ||
-              clampedSettings != nightModeSettings ||
-              nightToneOverlay.superview !== self else { return }
-        isNightModeEnabled = enabled
-        nightModeSettings = clampedSettings
-        backgroundColor = enabled
-            ? clampedSettings.canvasBackgroundColor
-            : .dsCanvasNS
-        nightToneOverlay.apply(settings: clampedSettings)
-        if enabled {
-            installNightToneOverlayIfNeeded()
-        } else if nightToneOverlay.superview !== self {
-            nightToneOverlay.removeFromSuperview()
-        }
-        nightToneOverlay.isHidden = !enabled
-        nightToneOverlay.alphaValue = enabled ? 1 : 0
-        layoutNightToneOverlay()
+        guard clampedSettings != comfortSettings || comfortOverlay.superview !== self else { return }
+        comfortSettings = clampedSettings
+        backgroundColor = clampedSettings.canvasBackgroundColor
+        installComfortOverlayIfNeeded()
+        comfortOverlay.apply(settings: clampedSettings)
+        layoutComfortOverlay()
     }
 
-    private func installNightToneOverlayIfNeeded() {
-        if nightToneOverlay.superview === self { return }
-        nightToneOverlay.removeFromSuperview()
-        addSubview(nightToneOverlay, positioned: .above, relativeTo: nil)
+    private func installComfortOverlayIfNeeded() {
+        if comfortOverlay.superview === self { return }
+        comfortOverlay.removeFromSuperview()
+        addSubview(comfortOverlay, positioned: .above, relativeTo: nil)
     }
 
-    private func layoutNightToneOverlay() {
-        guard nightToneOverlay.superview === self else { return }
-        nightToneOverlay.frame = bounds
-        nightToneOverlay.autoresizingMask = [.width, .height]
+    private func layoutComfortOverlay() {
+        guard comfortOverlay.superview === self else { return }
+        comfortOverlay.frame = bounds
+        comfortOverlay.autoresizingMask = [.width, .height]
     }
 
     override func layout() {
         super.layout()
-        layoutNightToneOverlay()
+        layoutComfortOverlay()
     }
 
     override func keyDown(with event: NSEvent) {
@@ -1231,15 +1219,28 @@ final class OrifoldPDFView: PDFView {
     }
 }
 
-private final class NightToneOverlayView: NSView {
+/// Composites `DocumentComfortSettings` above the rendered page using cheap, static
+/// `CALayer` blend-mode layers (no per-frame Core Image work), so scrolling stays smooth
+/// regardless of how many comfort controls are active.
+private final class DocumentComfortOverlayView: NSView {
     override var isOpaque: Bool { false }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    private let toneLayer = CALayer()
+    private let brightenLayer = CALayer()
+    private let contrastLayer = CALayer()
+    private let desaturationLayer = CALayer()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layerContentsRedrawPolicy = .onSetNeedsDisplay
-        configureCompositing()
+        for sublayer in [toneLayer, brightenLayer, contrastLayer, desaturationLayer] {
+            layer?.addSublayer(sublayer)
+        }
+        toneLayer.compositingFilter = "multiplyBlendMode"
+        brightenLayer.compositingFilter = "screenBlendMode"
+        contrastLayer.compositingFilter = "overlayBlendMode"
+        desaturationLayer.compositingFilter = "saturationBlendMode"
         apply(settings: .default)
     }
 
@@ -1247,20 +1248,21 @@ private final class NightToneOverlayView: NSView {
         nil
     }
 
-    func apply(settings: NightModeSettings) {
-        if layer == nil {
-            wantsLayer = true
-            configureCompositing()
+    override func layout() {
+        super.layout()
+        for sublayer in [toneLayer, brightenLayer, contrastLayer, desaturationLayer] {
+            sublayer.frame = bounds
         }
+    }
+
+    func apply(settings: DocumentComfortSettings) {
         CATransaction.begin()
         defer { CATransaction.commit() }
         CATransaction.setDisableActions(true)
-        layer?.backgroundColor = settings.overlayColor.cgColor
-    }
-
-    private func configureCompositing() {
-        layer?.compositingFilter = "multiplyBlendMode"
-        layer?.opacity = layer?.compositingFilter == nil ? 0.72 : 1
+        toneLayer.backgroundColor = settings.toneOverlayColor.cgColor
+        brightenLayer.backgroundColor = settings.brightenOverlayColor.cgColor
+        contrastLayer.backgroundColor = settings.contrastOverlayColor.cgColor
+        desaturationLayer.backgroundColor = settings.desaturationOverlayColor.cgColor
     }
 }
 
