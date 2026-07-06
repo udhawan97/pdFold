@@ -12,10 +12,10 @@ export default defineConfig({
 			description:
 				'Fold chaos into one clean PDF. Free, open-source, 100% local PDF workspace for macOS.',
 			logo: {
-				src: './public/assets/orifold-crane-fold.svg',
+				src: './public/assets/orifold-app-icon-128.png',
 				replacesTitle: false,
 			},
-			favicon: '/assets/orifold-crane-fold.svg',
+			favicon: '/assets/orifold-app-icon-32.png',
 			customCss: ['./src/styles/tokens.css', './src/styles/theme.css'],
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/udhawan97/Orifold' }],
 			editLink: {
