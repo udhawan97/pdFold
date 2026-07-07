@@ -908,7 +908,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
             viewModel.selectedStampDecorationID = nil
             goToAnnotation(annotation, on: page, in: pdfView)
             guard annotation.type == "Text" || annotation.type == "FreeText" else {
-                viewModel.showEditMessage("Only notes and text boxes can be edited directly. Use delete to remove this markup.", isError: false)
+                viewModel.showEditMessage(L10n.string("status.editAnnotation.notEditable"), isError: false)
                 return
             }
             let rect = pdfView.convert(annotation.bounds, from: page)
