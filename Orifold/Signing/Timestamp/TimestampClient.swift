@@ -263,6 +263,11 @@ enum TimestampAuthorityFallbackChain {
 
         var lastError: Error = TimestampClientError.invalidResponse("no timestamp authority configured")
         for option in order {
+            // Without this, cancelling the enclosing signing operation only stops the
+            // CALLER from waiting on this loop (via `fetchTimestampSynchronously`'s polling
+            // wrapper) — the loop itself kept running, silently making further network
+            // requests to remaining TSAs nobody was going to use the result of.
+            try Task.checkCancellation()
             onAttempt?(option)
             do {
                 return try await client.fetchTimestamp(for: signatureValue, tsaURL: option.url)

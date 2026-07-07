@@ -367,9 +367,14 @@ private struct CertificateTrustCheckRow: View {
     private func resultBadge(for evaluation: CertificateTrustEvaluation) -> some View {
         switch evaluation.verdict {
         case .trusted:
+            // Honest-language note: `SecTrustEvaluateWithError` reports this same verdict
+            // whether revocation was actually checked and came back clean, OR the OCSP/CRL
+            // responder was simply unreachable — it doesn't distinguish the two. Say so
+            // rather than implying a stronger revocation guarantee than Orifold can back up.
             Label("certificateSheet.manage.trustResult.trusted", systemImage: "checkmark.seal.fill")
                 .font(.dsCaption())
                 .foregroundStyle(Color.dsSuccessAccent)
+                .help("certificateSheet.manage.trustResult.trusted.help")
         case .revoked:
             Label("certificateSheet.manage.trustResult.revoked", systemImage: "xmark.seal.fill")
                 .font(.dsCaption())
