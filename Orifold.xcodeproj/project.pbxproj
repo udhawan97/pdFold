@@ -70,6 +70,10 @@
 		9A5A1851AB3768D9443EA3A2 /* CQPDF in Frameworks */ = {isa = PBXBuildFile; productRef = 8A215D0E279B5B42BE971B23 /* CQPDF */; };
 		9C13AFBEA8BBE48022EE7458 /* AnnotationIndexEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2069D39A0187FAD569685A2E /* AnnotationIndexEntry.swift */; };
 		9DE41BE088CB945335E706EA /* PetBuddy.swift in Sources */ = {isa = PBXBuildFile; fileRef = E857EC112A731E150BE0DAE9 /* PetBuddy.swift */; };
+		560C88E04F1646D88AC5019C /* GamiExclusionContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56572C400CA34399BB406EAF /* GamiExclusionContext.swift */; };
+		F64ECD39F77844158CAFD9DD /* GamiHintBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C95E119B6B14554BA23F17E /* GamiHintBubble.swift */; };
+		9DEAA77A5EF3477D9B0D56B5 /* GamiPlacementResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 159B5FAD69784FF3A9301E8E /* GamiPlacementResolver.swift */; };
+		D3EBC421059F467FBB0CBBCF /* GamiPlacementResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B8CDA02D975417CB1DE2636 /* GamiPlacementResolverTests.swift */; };
 		A17E1AC9A20DFBB537B3ECA4 /* SwiftASN1 in Frameworks */ = {isa = PBXBuildFile; productRef = C0FC659B12381CCDD655FB82 /* SwiftASN1 */; };
 		A2648E54544EA0F4C314D401 /* RecentFileEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F0D1DAE96D66FE39415EFB /* RecentFileEntry.swift */; };
 		A607BC4C34E4DD14266CA28C /* TOCView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB697409149B4B455E7F3A13 /* TOCView.swift */; };
@@ -221,6 +225,10 @@
 		E2E6DDC1DD7EADB46FF86B8A /* BoundaryPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundaryPage.swift; sourceTree = "<group>"; };
 		E3B051321CC974DE14719728 /* QPDFServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QPDFServiceTests.swift; sourceTree = "<group>"; };
 		E857EC112A731E150BE0DAE9 /* PetBuddy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetBuddy.swift; sourceTree = "<group>"; };
+		56572C400CA34399BB406EAF /* GamiExclusionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamiExclusionContext.swift; sourceTree = "<group>"; };
+		5C95E119B6B14554BA23F17E /* GamiHintBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamiHintBubble.swift; sourceTree = "<group>"; };
+		159B5FAD69784FF3A9301E8E /* GamiPlacementResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamiPlacementResolver.swift; sourceTree = "<group>"; };
+		2B8CDA02D975417CB1DE2636 /* GamiPlacementResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamiPlacementResolverTests.swift; sourceTree = "<group>"; };
 		EDDD646A0A8A5E95AD82CDBE /* CMSSignatureBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CMSSignatureBuilderTests.swift; sourceTree = "<group>"; };
 		F67111D76700765A6BF5F41B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F9FC86F73FD6BED822903F81 /* SecurityScopedAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedAccess.swift; sourceTree = "<group>"; };
@@ -330,6 +338,9 @@
 		73AE6F67A9EB1088A435DF49 /* Pet */ = {
 			isa = PBXGroup;
 			children = (
+				56572C400CA34399BB406EAF /* GamiExclusionContext.swift */,
+				5C95E119B6B14554BA23F17E /* GamiHintBubble.swift */,
+				159B5FAD69784FF3A9301E8E /* GamiPlacementResolver.swift */,
 				E857EC112A731E150BE0DAE9 /* PetBuddy.swift */,
 				8225EBA056A88D15C874C2C2 /* PetSpecies.swift */,
 			);
@@ -477,6 +488,7 @@
 				4B44F4FC778B68881DBAA6EB /* LocalizationCoverageTests.swift */,
 				1F8068580359DBDD38EB7801 /* OrifoldTests.swift */,
 				232DB1F9C4B84727BB90D64B /* CertificateTrustEvaluatorTests.swift */,
+				2B8CDA02D975417CB1DE2636 /* GamiPlacementResolverTests.swift */,
 				6C86A44C1039DEDF1D7951D7 /* PDFOCRTests.swift */,
 				C8435C48AB8FDF829FF58120 /* PDFSigningTests.swift */,
 				9224708EB7D2E14889CE70DD /* PDFSmokeTests.swift */,
@@ -656,6 +668,7 @@
 				BB444AF8FAC84CE1106D0268 /* SourceDocumentRoundTripTests.swift in Sources */,
 				E85110B1370137ABE301992C /* TimestampClientTests.swift in Sources */,
 				EAFF1751927A4652ACC2E2B9 /* CertificateTrustEvaluatorTests.swift in Sources */,
+				D3EBC421059F467FBB0CBBCF /* GamiPlacementResolverTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -707,6 +720,9 @@
 				3BCB655CFB42BCA4FFFD5BA9 /* PageRef.swift in Sources */,
 				8164A5219C9A5E3017CD5FBF /* PasswordPromptView.swift in Sources */,
 				9DE41BE088CB945335E706EA /* PetBuddy.swift in Sources */,
+				560C88E04F1646D88AC5019C /* GamiExclusionContext.swift in Sources */,
+				F64ECD39F77844158CAFD9DD /* GamiHintBubble.swift in Sources */,
+				9DEAA77A5EF3477D9B0D56B5 /* GamiPlacementResolver.swift in Sources */,
 				1E4A9284AD104A54F9AF2876 /* PetSpecies.swift in Sources */,
 				17F9BF4A253DF40D4E624B40 /* QPDFService.swift in Sources */,
 				D0F73B009A4457FFE3B6F198 /* ReadingCanvas.swift in Sources */,
