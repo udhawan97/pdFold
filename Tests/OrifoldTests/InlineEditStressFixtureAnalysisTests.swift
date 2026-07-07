@@ -184,6 +184,34 @@ final class InlineEditStressFixtureAnalysisTests: XCTestCase {
         assertSaneGeometry(analysis.blocks)
     }
 
+    func testInvisibleRenderModeTextIsClassifiedAsHiddenOCRLayer() throws {
+        let document = InlineEditStressFixture.buildDocument()
+        let data = try XCTUnwrap(document.dataRepresentation())
+        let analysis = try analyze(.renderModes, document: document, data: data)
+        let invisible = try XCTUnwrap(analysis.blocks.first(where: { $0.text.contains("Invisible") }))
+        XCTAssertEqual(invisible.editability, .hiddenOCRLayer, "Tr 3 invisible text must be flagged as a hidden OCR-layer block, not treated as ordinary direct text")
+
+        let fillOnly = try XCTUnwrap(analysis.blocks.first(where: { $0.text.contains("Fill only") }))
+        XCTAssertEqual(fillOnly.editability, .direct, "ordinary Tr 0 fill text must not be misclassified as hidden")
+    }
+
+    /// Near-zero fill alpha is detected as `.lowVisibility`. Fully-opaque white-on-white text
+    /// is a known, documented gap this pass doesn't cover -- distinguishing "ink color
+    /// matches the page background" from "ink color happens to be light" needs a page
+    /// background sampler this analysis pass doesn't have, and guessing from color alone
+    /// risks misclassifying legitimate white text on a dark background (a common real design
+    /// pattern) as low-visibility.
+    func testNearZeroAlphaTextIsClassifiedAsLowVisibilityButOpaqueWhiteIsNot() throws {
+        let document = InlineEditStressFixture.buildDocument()
+        let data = try XCTUnwrap(document.dataRepresentation())
+        let analysis = try analyze(.lowVisibility, document: document, data: data)
+        let nearZeroAlpha = try XCTUnwrap(analysis.blocks.first(where: { $0.text.contains("Near-zero alpha") }))
+        XCTAssertEqual(nearZeroAlpha.editability, .lowVisibility)
+
+        let visibleControl = try XCTUnwrap(analysis.blocks.first(where: { $0.text.contains("Visible control") }))
+        XCTAssertEqual(visibleControl.editability, .direct)
+    }
+
     func testClippedTextTracksVisibleGeometryWithoutCrashing() throws {
         let document = InlineEditStressFixture.buildDocument()
         let data = try XCTUnwrap(document.dataRepresentation())

@@ -22,6 +22,15 @@ enum PDFTextEditability: String, Codable {
     case overlayOnly
     /// The click landed on genuinely blank space; the user is adding brand-new text.
     case insertion
+    /// Real embedded text drawn with an invisible PDF render mode (`Tr 3`) — the classic
+    /// "OCR text layer sitting under a scanned image" pattern. Still real, hittable, editable
+    /// text; the UI surfaces this so editing it doesn't look like it silently did nothing.
+    case hiddenOCRLayer
+    /// Real embedded text whose fill color is essentially fully transparent (e.g. white text
+    /// on a white page). Distinct from `hiddenOCRLayer` — this is a genuine render-mode-fill
+    /// signal (near-zero alpha), not PDF's dedicated invisible mode — but the user experience
+    /// is the same: editing it won't visibly show anything without an explanation.
+    case lowVisibility
 }
 
 /// Where a block's text/geometry came from, for diagnostics and future OCR wiring.

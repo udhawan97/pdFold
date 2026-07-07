@@ -669,6 +669,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 viewModel.showEditMessage(L10n.string("readingCanvas.textEdit.chip.reconstructed"), isError: false)
             case .overlayOnly:
                 viewModel.showEditMessage(L10n.string("readingCanvas.textEdit.chip.scannedPage"), isError: false)
+            case .hiddenOCRLayer:
+                viewModel.showEditMessage(L10n.string("readingCanvas.textEdit.chip.hiddenOCRLayer"), isError: false)
+            case .lowVisibility:
+                viewModel.showEditMessage(L10n.string("readingCanvas.textEdit.chip.lowVisibility"), isError: false)
             case .direct, .insertion:
                 break
             }

@@ -85,6 +85,33 @@ private func FPDFText_GetStrokeColor(
 @_silgen_name("FPDFText_IsGenerated")
 private func FPDFText_IsGenerated(_ textPage: OpaquePointer?, _ index: Int32) -> Int32
 
+@_silgen_name("FPDFPage_CountObjects")
+private func FPDFPage_CountObjects(_ page: OpaquePointer?) -> Int32
+
+@_silgen_name("FPDFPage_GetObject")
+private func FPDFPage_GetObject(_ page: OpaquePointer?, _ index: Int32) -> OpaquePointer?
+
+@_silgen_name("FPDFPageObj_GetType")
+private func FPDFPageObj_GetType(_ pageObject: OpaquePointer?) -> Int32
+
+@_silgen_name("FPDFPageObj_GetBounds")
+private func FPDFPageObj_GetBounds(
+    _ pageObject: OpaquePointer?,
+    _ left: UnsafeMutablePointer<Float>?,
+    _ bottom: UnsafeMutablePointer<Float>?,
+    _ right: UnsafeMutablePointer<Float>?,
+    _ top: UnsafeMutablePointer<Float>?
+) -> Int32
+
+@_silgen_name("FPDFTextObj_GetTextRenderMode")
+private func FPDFTextObj_GetTextRenderMode(_ textObject: OpaquePointer?) -> Int32
+
+/// PDFium's `FPDF_PAGEOBJ_TEXT` page-object type constant.
+private let kPDFPageObjectTypeText: Int32 = 1
+
+/// PDFium's `FPDF_TEXTRENDERMODE_INVISIBLE` (PDF spec `Tr 3`) constant.
+private let kPDFTextRenderModeInvisible: Int32 = 3
+
 /// PDF font-descriptor `/Flags` bit for an italic/oblique face (bit 7, value 64). Set even
 /// when the embedded font's PostScript name carries no "Italic"/"Oblique" token, so it is
 /// the only reliable slant signal for many documents.
@@ -125,6 +152,53 @@ final class PDFTextAnalysisEngine {
         /// True when PDFium synthesized this glyph (e.g. a missing/unmappable glyph filled
         /// in) rather than reading it from the document's own embedded font.
         var isGenerated: Bool
+        /// The PDF render mode (`Tr`) of whichever page object this glyph's bounds best
+        /// match, resolved via `renderModeRegions`. nil when no page-object region could be
+        /// matched (e.g. a degenerate/zero-size glyph with no usable bounds).
+        var renderMode: Int32?
+    }
+
+    /// One text page-object's declared bounds and PDF render mode (`Tr`), used to look up
+    /// which render mode applies to a given glyph. PDFium's char-level text API (used for
+    /// everything else in this file) has no render-mode accessor of its own — only the
+    /// page-object API does — so this is a separate pass matched back to glyphs by bounds.
+    private struct RenderModeRegion {
+        var bounds: CGRect
+        var mode: Int32
+    }
+
+    private func renderModeRegions(page: OpaquePointer?) -> [RenderModeRegion] {
+        let count = FPDFPage_CountObjects(page)
+        guard count > 0 else { return [] }
+        var regions: [RenderModeRegion] = []
+        regions.reserveCapacity(Int(count))
+        for index in 0..<count {
+            guard let object = FPDFPage_GetObject(page, index),
+                  FPDFPageObj_GetType(object) == kPDFPageObjectTypeText else { continue }
+            var left: Float = 0
+            var bottom: Float = 0
+            var right: Float = 0
+            var top: Float = 0
+            guard FPDFPageObj_GetBounds(object, &left, &bottom, &right, &top) != 0,
+                  right > left, top > bottom else { continue }
+            let mode = FPDFTextObj_GetTextRenderMode(object)
+            regions.append(RenderModeRegion(
+                bounds: CGRect(x: CGFloat(left), y: CGFloat(bottom), width: CGFloat(right - left), height: CGFloat(top - bottom)),
+                mode: mode
+            ))
+        }
+        return regions
+    }
+
+    /// The render mode of whichever region's bounds most tightly contain `bounds`'s center —
+    /// "most tightly" (smallest matching region) so a small glyph inside a larger overlapping
+    /// text object resolves to its own object's mode rather than an unrelated bigger one.
+    private func renderMode(for bounds: CGRect, in regions: [RenderModeRegion]) -> Int32? {
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        return regions
+            .filter { $0.bounds.insetBy(dx: -0.5, dy: -0.5).contains(center) }
+            .min { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }?
+            .mode
     }
 
     func analyze(data: Data, pageIndex: Int, pageRefID: UUID? = nil, fallbackPage: PDFPage? = nil) -> PDFTextPageAnalysis {
@@ -183,6 +257,7 @@ final class PDFTextAnalysisEngine {
             let count = Int(FPDFText_CountChars(textPage))
             guard count > 0 else { return PDFTextPageAnalysis(pageRefID: pageRefID, blocks: []) }
 
+            let regions = renderModeRegions(page: page)
             var samples: [CharacterSample] = []
             samples.reserveCapacity(count)
             for index in 0..<count {
@@ -220,7 +295,8 @@ final class PDFTextAnalysisEngine {
                     angleDegrees: angleDegrees,
                     transform: transform,
                     strokeColor: strokeColor(textPage: textPage, index: index),
-                    isGenerated: isGenerated
+                    isGenerated: isGenerated,
+                    renderMode: bounds.flatMap { renderMode(for: $0, in: regions) }
                 ))
             }
 
@@ -615,6 +691,7 @@ final class PDFTextAnalysisEngine {
         let strokeColor = dominantStrokeColor(among: inkSamples)
         let hasSyntheticGlyphs = inkSamples.contains(where: \.isGenerated)
         let pageRotation = sourcePage?.rotation ?? 0
+        let editability = editability(for: inkSamples, color: color)
         let run = PDFTextRun(
             text: text,
             bounds: bounds,
@@ -642,12 +719,31 @@ final class PDFTextAnalysisEngine {
             pageRotation: pageRotation,
             baseline: bounds.minY,
             confidence: confidence,
-            editability: .direct,
+            editability: editability,
             textSource: .pdfiumGlyphs,
             strokeColor: strokeColor,
             transform: transform,
             hasSyntheticGlyphs: hasSyntheticGlyphs
         )
+    }
+
+    /// A near-zero fill alpha below this threshold is treated as effectively invisible ink —
+    /// loose enough to catch anti-aliasing/rounding noise in a genuinely-transparent fill
+    /// without misclassifying merely-light (but intentionally visible) text.
+    private static let lowVisibilityAlphaThreshold: CGFloat = 0.05
+
+    /// `.hiddenOCRLayer` takes priority over `.lowVisibility` when a run somehow qualifies as
+    /// both — an explicit invisible render mode is a stronger, more specific signal than an
+    /// incidental near-zero fill alpha reading.
+    private func editability(for inkSamples: [CharacterSample], color: CodableColor) -> PDFTextEditability {
+        let invisibleCount = inkSamples.filter { $0.renderMode == kPDFTextRenderModeInvisible }.count
+        if !inkSamples.isEmpty, invisibleCount * 2 > inkSamples.count {
+            return .hiddenOCRLayer
+        }
+        if color.alpha < Self.lowVisibilityAlphaThreshold {
+            return .lowVisibility
+        }
+        return .direct
     }
 
     /// A line/segment can open with a differently-styled run (a hyperlink, an inline code

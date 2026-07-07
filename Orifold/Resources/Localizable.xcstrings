@@ -31530,6 +31530,88 @@
         }
       }
     },
+    "readingCanvas.textEdit.chip.hiddenOCRLayer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hidden text layer — invisible in the original document"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capa de texto oculta: invisible en el documento original"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calque de texte caché — invisible dans le document original"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "छिपी हुई टेक्स्ट परत — मूल दस्तावेज़ में अदृश्य"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "非表示のテキストレイヤー — 元のドキュメントでは見えません"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏文本层 — 在原始文档中不可见"
+          }
+        }
+      }
+    },
+    "readingCanvas.textEdit.chip.lowVisibility": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Low-visibility text — nearly invisible in the original document"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texto de baja visibilidad: casi invisible en el documento original"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texte à faible visibilité — presque invisible dans le document original"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कम-दृश्यता वाला टेक्स्ट — मूल दस्तावेज़ में लगभग अदृश्य"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "視認性の低いテキスト — 元のドキュメントではほぼ見えません"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "低可见度文本 — 在原始文档中几乎不可见"
+          }
+        }
+      }
+    },
     "readingCanvas.textEdit.chip.reconstructed": {
       "extractionState": "manual",
       "localizations": {
