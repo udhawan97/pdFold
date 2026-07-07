@@ -372,8 +372,81 @@ final class PDFTextAnalysisEngine {
             ?? unionBounds(lineBlocks.map(\.bounds))?.insetBy(dx: -24, dy: -24)
             ?? .zero
         let merged = mergeWrappedLines(assignColumnBounds(to: lineBlocks, pageBounds: pageBounds))
-        return tightenColumnsToParagraphMargins(merged)
+        return inferAlignment(tightenColumnsToParagraphMargins(merged))
             .sorted { $0.bounds.minY > $1.bounds.minY }
+    }
+
+    /// Best-effort paragraph alignment inferred purely from geometry — PDFium reports no
+    /// paragraph-alignment attribute directly, and this only ever replaces a silent `nil`
+    /// (which every consumer already coalesces to `.left`), so a missed detection is
+    /// invisible while a wrong one would visibly move text on Format Painter apply.
+    ///
+    /// Deliberately does NOT compare a block's lines against its OWN `columnBounds`:
+    /// `assignColumnBounds` always pins a column's left edge to that same block's own
+    /// `bounds.minX` (see `assignColumnBounds`, `leftEdge = max(pageBounds.minX + 8,
+    /// block.bounds.minX)`), so every block — including a visibly centered or right-aligned
+    /// isolated heading with no same-row neighbor — would trivially measure as flush-left
+    /// against its own column and centered/right alignment could never be detected. Instead,
+    /// judge every block's lines against the PAGE's typical left/right text margins.
+    ///
+    /// That reference is the MEDIAN left/right extent across all detected blocks, not the
+    /// min/max: a single outlier block (a page number, footer, or watermark sitting
+    /// unusually far left or right) would otherwise silently drag the "typical" margin for
+    /// every OTHER block on the page — a page number at the gutter could make ordinary
+    /// left-aligned body text measure as far from the (wrongly narrow) left margin as it is
+    /// from the right one, misreading it as centered or right-aligned. The median is
+    /// resistant to exactly one such outlier. A median needs enough samples to mean
+    /// anything, though — on a page with only a couple of detected blocks it degenerates back
+    /// to "one block's own edge," so skip inference entirely below that threshold and leave
+    /// alignment at the safe, uninferred `.left` default rather than guess from too little
+    /// data.
+    private func inferAlignment(_ blocks: [EditableTextBlock]) -> [EditableTextBlock] {
+        guard blocks.count >= 3 else { return blocks }
+        let sortedLefts = blocks.map(\.bounds.minX).sorted()
+        let sortedRights = blocks.map(\.bounds.maxX).sorted()
+        let typicalLeft = sortedLefts[sortedLefts.count / 2]
+        let typicalRight = sortedRights[sortedRights.count / 2]
+        return blocks.map { block in
+            guard !block.lines.isEmpty else { return block }
+            var updated = block
+            updated.alignment = inferredAlignment(for: block.lines, typicalLeft: typicalLeft, typicalRight: typicalRight)
+            return updated
+        }
+    }
+
+    private func inferredAlignment(for lines: [PDFTextLine], typicalLeft: CGFloat, typicalRight: CGFloat) -> CodableTextAlignment {
+        // Proportional to typical glyph sidebearing rather than a fixed pixel count, so it
+        // scales sensibly across the wide range of detected font sizes.
+        let tolerance: CGFloat = 4
+        var leftFlushCount = 0
+        var rightFlushCount = 0
+        var centeredCount = 0
+        for line in lines {
+            let bounds = line.bounds.standardized
+            let leftMargin = bounds.minX - typicalLeft
+            let rightMargin = typicalRight - bounds.maxX
+            let isLeftFlush = leftMargin <= tolerance
+            let isRightFlush = rightMargin <= tolerance
+            if isLeftFlush, isRightFlush {
+                // Fills the typical margins edge to edge — not diagnostic either way.
+                continue
+            } else if isRightFlush {
+                rightFlushCount += 1
+            } else if isLeftFlush {
+                leftFlushCount += 1
+            } else if abs(leftMargin - rightMargin) <= tolerance * 2 {
+                centeredCount += 1
+            }
+        }
+        let total = leftFlushCount + rightFlushCount + centeredCount
+        guard total > 0 else { return .left }
+        if rightFlushCount * 2 > total, rightFlushCount >= leftFlushCount {
+            return .right
+        }
+        if centeredCount * 2 > total {
+            return .center
+        }
+        return .left
     }
 
     /// After wrapped lines are merged into paragraphs, pull each full-width body
@@ -576,21 +649,26 @@ final class PDFTextAnalysisEngine {
                 .replacingOccurrences(of: "\n", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return nil }
-            let bounds = selection.bounds(for: page)
-            guard bounds.width > 2, bounds.height > 2 else { return nil }
+            let rawBounds = selection.bounds(for: page)
+            guard rawBounds.width > 2, rawBounds.height > 2 else { return nil }
             let fontName = "Helvetica"
-            let estimatedSize = effectiveFontSize(fromInkHeight: bounds.height, fontName: fontName)
+            let estimatedSize = effectiveFontSize(fromInkHeight: rawBounds.height, fontName: fontName)
             return EditableTextBlock(
                 pageRefID: pageRefID,
                 text: text,
-                bounds: bounds.insetBy(dx: -2, dy: -2),
-                lines: [],
+                bounds: rawBounds.insetBy(dx: -2, dy: -2),
+                // Each fallback block is exactly one PDFKit line selection, so its own
+                // (tighter, un-inset) selection rect is the true erase geometry — using it
+                // here instead of leaving `lines` empty stops `PDFEditedPageRenderer`'s
+                // erase patch from falling back to the wider hit-test-tolerance `bounds`
+                // above (which carries an extra -2pt allowance not needed for erasing).
+                lines: [PDFTextLine(text: text, bounds: rawBounds, runs: [], confidence: .medium)],
                 columnBounds: columnBounds,
                 fontName: fontName,
                 fontSize: estimatedSize > 0 ? estimatedSize : 12,
                 textColor: .documentText,
                 rotation: CGFloat(page.rotation),
-                baseline: bounds.minY,
+                baseline: rawBounds.minY,
                 confidence: .medium,
                 editability: .replace,
                 textSource: .pdfKitString

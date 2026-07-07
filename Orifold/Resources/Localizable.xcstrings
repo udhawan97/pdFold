@@ -19769,37 +19769,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copy the nearby PDF text's style so you can paste it onto another text edit."
+            "value": "Copy the nearby PDF text's style so you can paste it onto another text edit. (⇧⌘C)"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copiar el estilo del texto cercano del PDF para pegarlo en otra edición de texto."
+            "value": "Copiar el estilo del texto cercano del PDF para pegarlo en otra edición de texto. (⇧⌘C)"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copier le style du texte PDF voisin pour le coller sur une autre modification de texte."
+            "value": "Copier le style du texte PDF voisin pour le coller sur une autre modification de texte. (⇧⌘C)"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "आस-पास के PDF टेक्स्ट की स्टाइल कॉपी करें ताकि आप उसे किसी और टेक्स्ट संपादन पर पेस्ट कर सकें।"
+            "value": "आस-पास के PDF टेक्स्ट की स्टाइल कॉपी करें ताकि आप उसे किसी और टेक्स्ट संपादन पर पेस्ट कर सकें। (⇧⌘C)"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "近くのPDFテキストのスタイルをコピーして、別のテキスト編集に貼り付けられるようにします。"
+            "value": "近くのPDFテキストのスタイルをコピーして、別のテキスト編集に貼り付けられるようにします。(⇧⌘C)"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "拷贝附近 PDF 文本的样式，以便粘贴到其他文本编辑中。"
+            "value": "拷贝附近 PDF 文本的样式，以便粘贴到其他文本编辑中。(⇧⌘C)"
           }
         }
       }
@@ -20425,37 +20425,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Paste the previously copied style onto this edit."
+            "value": "Paste the previously copied style onto this edit. (⇧⌘V)"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pegar en esta edición el estilo copiado anteriormente."
+            "value": "Pegar en esta edición el estilo copiado anteriormente. (⇧⌘V)"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Coller le style précédemment copié sur cette modification."
+            "value": "Coller le style précédemment copié sur cette modification. (⇧⌘V)"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "पहले कॉपी की गई स्टाइल इस संपादन पर पेस्ट करें।"
+            "value": "पहले कॉपी की गई स्टाइल इस संपादन पर पेस्ट करें। (⇧⌘V)"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "以前コピーしたスタイルをこの編集に貼り付けます。"
+            "value": "以前コピーしたスタイルをこの編集に貼り付けます。(⇧⌘V)"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将先前拷贝的样式粘贴到此编辑中。"
+            "value": "将先前拷贝的样式粘贴到此编辑中。(⇧⌘V)"
           }
         }
       }
@@ -27262,6 +27262,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "已复制附近PDF文本的样式。点击另一处文本编辑即可自动粘贴,或在此处按“粘贴样式”。"
+          }
+        }
+      }
+    },
+    "status.textEdit.copiedNearbyFormatPinned": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copied nearby PDF text style — pinned. Click any text edit to paste it; click Copy again to unpin."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estilo de texto del PDF cercano copiado y fijado. Haz clic en cualquier edición de texto para pegarlo; vuelve a pulsar Copiar para desactivarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Style de texte PDF voisin copié et épinglé. Cliquez sur n'importe quelle modification de texte pour le coller ; cliquez de nouveau sur Copier pour désépingler."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "नज़दीकी PDF टेक्स्ट स्टाइल कॉपी करके पिन कर दी गई। इसे पेस्ट करने के लिए किसी भी टेक्स्ट एडिट पर क्लिक करें; अनपिन करने के लिए फिर से कॉपी दबाएँ।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "近くのPDFテキストのスタイルをコピーして固定しました。任意のテキスト編集をクリックすると貼り付けられます。固定を解除するには、もう一度「コピー」を押してください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已复制并固定附近PDF文本的样式。点击任意文本编辑即可粘贴;再次点击“复制”可取消固定。"
           }
         }
       }

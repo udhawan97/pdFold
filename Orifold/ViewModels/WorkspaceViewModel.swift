@@ -308,6 +308,10 @@ final class WorkspaceViewModel {
     var editingStatus: EditingStatus? = nil
     var copiedInlineTextFormat: PDFTextEditFormat? = nil
     var isInlineTextFormatPainterArmed = false
+    /// True once the user has pinned Format Painter (⌥-click Copy Style) so it stays armed
+    /// and re-applies to every subsequently opened editor, instead of disarming after one
+    /// paste — mirrors Word's double-click-to-lock Format Painter behavior.
+    var isFormatPainterPinned = false
     var operationProgress = WorkspaceOperationProgress()
     var formSummary = PDFFormSummary()
     var highlightFormFields = false
@@ -1842,9 +1846,17 @@ final class WorkspaceViewModel {
     /// the next unrelated edit the user opens would be more surprising than helpful right
     /// after rolling the document back or forward. Format-painter state armed BEFORE the
     /// undo/redo is no longer meaningfully tied to what the user is looking at afterward.
-    private func disarmFormatPainter() {
-        guard isInlineTextFormatPainterArmed else { return }
+    /// Also called when the user switches tools away from Edit Text (`AnnotationToolPicker
+    /// .select`) or explicitly restores a block's original format — not `private` so those
+    /// call sites can reach it. Deliberately NOT called when an editor is merely cancelled/
+    /// Escaped: Copy Style is only reachable from inside an editor, so "Copy in A, Cancel A
+    /// without committing, then open B to Paste" is the normal, expected way to move a style
+    /// between two blocks — disarming on that cancel would wipe the just-copied style before
+    /// it ever reaches B.
+    func disarmFormatPainter() {
+        guard isInlineTextFormatPainterArmed || isFormatPainterPinned else { return }
         isInlineTextFormatPainterArmed = false
+        isFormatPainterPinned = false
         copiedInlineTextFormat = nil
     }
 
