@@ -1,10 +1,20 @@
 # Docs media capture manifest
 
 **Status: 6 of 14 slots are real photographic captures; the remaining 8 are hand-illustrated,
-app-faithful SVGs.** Both live in `docs-site/public/assets/screenshots/` and
+app-faithful SVGs** shown as honestly-captioned `<Figure>` illustrations (never claimed as
+recordings). Both live in `docs-site/public/assets/screenshots/` and
 `docs-site/public/assets/gifs/` and are wired into their pages' `<Figure src="...">` prop; the
 `Figure` component's dashed-placeholder fallback (see `docs-site/src/components/Figure.astro`)
 is not in use anywhere in the built site.
+
+**Component infrastructure (added in the premium makeover):** a `Media.astro` component now
+exists for real short clips — `<video>` (MP4/WebM) + poster, IntersectionObserver play/pause,
+reduced-motion → poster only, and an honest "clip pending capture" placeholder when no source is
+supplied. When the four first-tier flows below are captured (combine, edit-text, sign,
+export-save), swap the illustrated `gifs/*.svg` `<Figure>` for `<Media mp4=... poster=... />` with
+**zero other code changes**. Until then the illustrated Figures stay — they inform the reader and
+are captioned as illustrations, which beats an empty placeholder. Diagrams were also renamed from
+`orifold-v3-*` to `orifold-{architecture,workspace}-diagram.svg`.
 
 Captured for real (v0.8.1, dark mode, native window, no Dock/menu bar in frame):
 `first-workspace-empty-state.png`, `the-orifold-window-annotated.png`,

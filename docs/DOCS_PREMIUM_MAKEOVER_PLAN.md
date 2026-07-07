@@ -1,7 +1,7 @@
 # Orifold Documentation — Premium Makeover Plan (v3)
 
 **Status:** Planning only. Not implemented. Hand this document to Sonnet for execution.
-**Supersedes:** `docs/DOCS_MAKEOVER_PLAN.md` (the v1→v2 plan) and `docs/DOCS_SITE_PLAN.md` (the original v1 build spec). Both stay in the repo as history; where they disagree with this document, this document wins.
+**Supersedes:** `docs/archive/DOCS_MAKEOVER_PLAN.md` (the v1→v2 plan) and `docs/archive/DOCS_SITE_PLAN.md` (the original v1 build spec) — both moved to `docs/archive/` during implementation. They stay as history; where they disagree with this document, this document wins.
 **Baseline audited:** Orifold **v0.8.1** — the shipped Astro Starlight site in `docs-site/` (56 pages, 11 sidebar sections), the 476-line `README.md`, `docs/assets/`, and `docs/assets/MEDIA_MANIFEST.md` (6 of 14 media slots are now real captures).
 **Quality bar:** Apple / Anthropic / Linear / Vercel / SpaceX — minimal, calm, intentional, credible, lightly playful.
 **Hard constraints:** free/open-source tooling only · no framework JS runtime on content pages · Lighthouse ≥ 95 perf & a11y · `prefers-reduced-motion` honored everywhere · no synthetic asset presented as a real capture · every claim must match the shipped app.
