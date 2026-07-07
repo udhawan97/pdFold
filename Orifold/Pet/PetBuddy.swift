@@ -1200,6 +1200,10 @@ private struct PetControlPopover: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    // Passed into species.displayName(locale:) below so this view's `body`
+    // actually reads it — SwiftUI only re-invokes `body` on a locale change
+    // for views that read `\.locale` during the previous evaluation.
+    @Environment(\.locale) private var locale
     @State private var didAnimateIn = false
 
     private var shouldReduceMotion: Bool {
@@ -1299,7 +1303,7 @@ private struct PetControlPopover: View {
             OrifoldFoldMark(size: 28, interactive: false, figure: .forSpecies(buddy.species))
                 .clipShape(RoundedRectangle(cornerRadius: .dsRadiusSm, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
-                Text(buddy.species.displayName)
+                Text(buddy.species.displayName(locale: locale))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.dsTextPrimary)
                 Text("gami.popover.subtitle")
@@ -1349,6 +1353,11 @@ struct PetSpeciesSwitcher: View {
     var onSelect: (PetSpecies) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    // Passed into species.displayName(locale:)/accessibilityLabel(locale:) below
+    // so this view's `body` actually reads it — SwiftUI only re-invokes `body`
+    // on a locale change for views that read `\.locale` during the previous
+    // evaluation.
+    @Environment(\.locale) private var locale
 
     var body: some View {
         HStack(spacing: 4) {
@@ -1360,7 +1369,7 @@ struct PetSpeciesSwitcher: View {
                     HStack(spacing: 4) {
                         Image(systemName: species.symbolName)
                             .font(.system(size: 11, weight: .semibold))
-                        Text(species.displayName)
+                        Text(species.displayName(locale: locale))
                             .font(.system(size: 11, weight: .medium))
                     }
                     .frame(maxWidth: .infinity)
@@ -1379,7 +1388,7 @@ struct PetSpeciesSwitcher: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(species.accessibilityLabel)
+                .accessibilityLabel(species.accessibilityLabel(locale: locale))
                 .accessibilityAddTraits(isSelected ? [.isSelected] : [])
             }
         }

@@ -8,6 +8,7 @@ struct SearchView: View {
     @FocusState private var fieldFocused: Bool
     @State private var isConfirmingReplaceAll = false
     @State private var replaceResultMessage: String?
+    @State private var replaceResultWasSkipped = false
     // Passed into L10n.string()/L10n.format() below so this view's `body`
     // actually reads it — SwiftUI only re-invokes `body` on a locale change
     // for views that read `\.locale` during the previous evaluation.
@@ -193,7 +194,7 @@ struct SearchView: View {
             if let replaceResultMessage {
                 Text(replaceResultMessage)
                     .font(.dsCaption())
-                    .foregroundStyle(Color.dsSuccessAccent)
+                    .foregroundStyle(replaceResultWasSkipped ? Color.dsWarningAccent : Color.dsSuccessAccent)
             } else if !viewModel.searchQuery.isEmpty {
                 Text(replaceStatusLabel)
                     .font(.dsCaption())
@@ -214,7 +215,8 @@ struct SearchView: View {
         ) {
             Button("search.replace.confirm.replace") {
                 let count = viewModel.replaceAllCommentMatches()
-                replaceResultMessage = L10n.format(count == 1 ? "search.replace.result.one" : "search.replace.result.other", count)
+                replaceResultWasSkipped = false
+                replaceResultMessage = L10n.format(count == 1 ? "search.replace.result.one" : "search.replace.result.other", count, locale: locale)
             }
             Button("search.replace.confirm.cancel", role: .cancel) {}
         } message: {
@@ -236,8 +238,11 @@ struct SearchView: View {
 
     private func replaceCurrentMatch() {
         guard let comment = viewModel.replaceableCommentMatches.first else { return }
-        viewModel.replaceMatches(in: comment)
-        replaceResultMessage = L10n.string("search.replace.result.one")
+        let didReplace = viewModel.replaceMatches(in: comment)
+        replaceResultWasSkipped = !didReplace
+        replaceResultMessage = didReplace
+            ? L10n.string("search.replace.result.one", locale: locale)
+            : L10n.string("search.replace.skippedEmpty", locale: locale)
     }
 }
 

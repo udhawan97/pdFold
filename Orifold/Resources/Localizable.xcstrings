@@ -15622,6 +15622,662 @@
         }
       }
     },
+    "pet.dog.export.1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export complete. Tail wag officially approved."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exportación completa. Meneo de cola oficialmente aprobado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export terminé. Frétillement de queue officiellement approuvé."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "एक्सपोर्ट पूरा। पूँछ हिलाना आधिकारिक रूप से मंज़ूर।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "書き出し完了。しっぽフリフリ、公式に承認。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出完成。摇尾巴，正式批准。"
+          }
+        }
+      }
+    },
+    "pet.dog.export.2": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delivered clean, no smudges. Who's a good file?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entregado limpio, sin manchas. ¿Quién es un buen archivo?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Livré nickel, sans bavure. C'est qui le bon fichier ?"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "साफ़-सुथरा तैयार, कोई दाग़ नहीं। कौन है अच्छी फ़ाइल?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "汚れひとつなくお届け。いい子のファイルはどれかな？"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "干净利落，没有污渍。谁是乖乖文件呀？"
+          }
+        }
+      }
+    },
+    "pet.dog.greeting.1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PDF patrol reporting for duty."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuando quieras. He estado vigilando los márgenes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quand tu veux. Je surveillais les marges."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "जब आप तैयार हों। मैं मार्जिन की रखवाली कर रहा था।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "いつでもどうぞ。余白を見張っていたよ。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "随时待命。我一直在看守页边距。"
+          }
+        }
+      }
+    },
+    "pet.dog.greeting.2": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You edit. I supervise with enthusiasm."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Página nueva, olorcito fresco. Dejémosla impecable."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouvelle page, odeur fraîche. Rendons-la impeccable."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "नया पन्ना, नई ख़ुशबू। इसे करीने से बनाते हैं।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいページ、新しい匂い。きれいに仕上げよう。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新的一页，新的气味。咱们把它弄整齐。"
+          }
+        }
+      }
+    },
+    "pet.dog.hoverTip.1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You hovered! I've been preparing for this moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estoy vigilando los márgenes. Sospechosamente bien portados hoy."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Je surveille les marges. Étonnamment sages aujourd'hui."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "मैं मार्जिन की रखवाली कर रहा हूँ। आज संदिग्ध रूप से अच्छे व्यवहार में हैं।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "余白を見張ってるよ。今日は妙におとなしいね。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我在看守页边距。今天乖得有点可疑。"
+          }
+        }
+      }
+    },
+    "pet.dog.hoverTip.2": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PDF patrol reporting for duty."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Necesitas ayuda? Yo huelo los crímenes de formato."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besoin d'aide ? Je flaire les crimes de mise en forme."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "मदद चाहिए? मैं फ़ॉर्मैटिंग के अपराध सूँघ लेता हूँ।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手伝おうか？書式の犯罪なら嗅ぎつけるよ。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要帮忙吗？排版上的小毛病，我一嗅便知。"
+          }
+        }
+      }
+    },
+    "pet.dog.hoverTip.3": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I sniffed the margins. Something smells aligned."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Patrulla de PDF activada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Patrouille PDF active."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PDF गश्त सक्रिय है।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PDFパトロール中。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PDF 巡逻，已启动。"
+          }
+        }
+      }
+    },
+    "pet.dog.hoverTip.4": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Need help? I can emotionally support the export button."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Necesitas ayuda? Puedo dar apoyo emocional al botón de exportar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besoin d'aide ? Je peux soutenir moralement le bouton d'export."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "मदद चाहिए? मैं एक्सपोर्ट बटन को भावनात्मक सहारा दे सकता हूँ।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "お手伝いしましょうか？書き出しボタンを心から応援できます。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要帮忙吗？我可以给导出按钮提供情感支持。"
+          }
+        }
+      }
+    },
+    "pet.dog.hoverTip.5": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I'm guarding this document like it owes you money."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigilo este documento como si te debiera dinero."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Je garde ce document comme s'il te devait de l'argent."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "मैं इस दस्तावेज़ की ऐसे रखवाली कर रहा हूँ जैसे यह आपका कर्ज़दार हो।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この書類を、借金でもあるかのように見張っています。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我守着这份文档，就像它欠你钱一样。"
+          }
+        }
+      }
+    },
+    "pet.dog.hoverTip.6": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Still here. Still loyal. Still judging bad spacing."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sigo aquí. Sigo leal. Sigo juzgando el mal espaciado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toujours là. Toujours loyal. Toujours à juger les mauvais espacements."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अब भी यहीं हूँ। अब भी वफ़ादार। अब भी ख़राब स्पेसिंग को परख रहा हूँ।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだここにいます。まだ忠実です。まだ雑な余白を見張っています。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还在这儿。依然忠诚。依然在挑剔糟糕的间距。"
+          }
+        }
+      }
+    },
+    "pet.dog.intro.greeting": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hi, I'm Gami — your paper pup."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¡Hola! Soy Gami, tu cachorro de papel."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salut, je suis Gami — ton chiot en papier."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "नमस्ते, मैं Gami हूँ — तुम्हारा कागज़ी पिल्ला।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "こんにちは、ぼくは Gami — きみの紙の子犬だよ。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "嗨，我是 Gami——你的纸小狗。"
+          }
+        }
+      }
+    },
+    "pet.dog.intro.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything stays on this Mac. I'll fetch tips as you edit — never your files."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todo se queda en este Mac. Te traeré consejos mientras editas, nunca tus archivos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tout reste sur ce Mac. Je t'apporte des astuces pendant que tu édites, jamais tes fichiers."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "सब कुछ इसी Mac पर रहता है। संपादन के दौरान मैं सुझाव लाऊँगा — आपकी फ़ाइलें कभी नहीं।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてこのMacの中だけ。編集中はヒントを持ってくるよ——ファイルは持ち出さない。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一切都留在这台 Mac 上。你编辑时我会叼来小提示——但绝不会碰你的文件。"
+          }
+        }
+      }
+    },
+    "pet.dog.save.1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved and safe. I'll guard it like the last treat."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardado y a salvo. Lo cuidaré como la última golosina."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistré et à l'abri. Je le garde comme la dernière friandise."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "सहेजा और सुरक्षित। इसे आख़िरी दावत की तरह संभालूँगा।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存して安心。最後のおやつみたいに守るよ。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存，很安全。我会像守护最后一块零食一样守着它。"
+          }
+        }
+      }
+    },
+    "pet.dog.save.2": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved! Nothing gets past me."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¡Guardado! Nada se me escapa."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistré ! Rien ne m'échappe."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "सहेज लिया! मुझसे कुछ नहीं छूटता।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存完了！僕の目は誤魔化せない。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存！什么都逃不过我。"
+          }
+        }
+      }
+    },
+    "pet.dog.warning.1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Something smells off. I'll sit right here while you fix it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algo huele mal. Me quedaré aquí sentado mientras lo arreglas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quelque chose cloche. Je reste assis ici pendant que tu répares."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कुछ गड़बड़ महसूस हो रही है। जब तक तुम इसे ठीक करो, मैं यहीं बैठा रहूँगा।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "何か様子がおかしいです。直すあいだ、ここに座って待っています。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有点不对劲。你修的时候，我就守在这儿。"
+          }
+        }
+      }
+    },
+    "pet.dog.warning.2": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uh oh — I sniffed a problem. You've got this."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uy… olí un problema. Tú puedes con esto."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oh oh — j'ai flairé un problème. Tu vas y arriver."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अरे — मुझे कोई गड़बड़ सूँघ आई। तुम यह कर लोगे।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "おっと、問題のにおいがします。あなたなら大丈夫。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "糟糕——我嗅到了问题。你可以搞定的。"
+          }
+        }
+      }
+    },
     "pet.event.addFile.1": {
       "extractionState": "manual",
       "localizations": {
@@ -35667,6 +36323,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "查看全部"
+          }
+        }
+      }
+    },
+    "search.replace.skippedEmpty": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replacing this would leave the comment empty, so it was skipped."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reemplazar esto dejaría el comentario vacío, así que se omitió."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce remplacement laisserait le commentaire vide, il a donc été ignoré."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इसे बदलने से टिप्पणी खाली रह जाएगी, इसलिए इसे छोड़ दिया गया।"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此替换会使评论变为空白，因此已跳过。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この置換を行うとコメントが空になるため、スキップされました。"
           }
         }
       }
