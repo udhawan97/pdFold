@@ -2357,10 +2357,13 @@ final class NoteEditorViewController: NSViewController {
     private let textView = InlineEditableTextView()
     private let moveHandle = InlineMoveHandle()
     private let resizeHandle = InlineResizeHandle()
-    /// Hit area is much larger than the visible pill so the user isn't forced into
-    /// pixel-perfect aim to grab it (see InlineMoveHandle's minimum 28-36px hit target).
-    private let moveHandleAreaSize = CGSize(width: 64, height: 32)
+    private let moveHandleHint = InlineMoveHandleHint()
+    /// Hit area is much larger than the visible grip tab so the user isn't forced into
+    /// pixel-perfect aim to grab it (see InlineMoveHandle's minimum 32-44px hit target).
+    private let moveHandleAreaSize = CGSize(width: 64, height: 36)
     private let moveHandleGap: CGFloat = 2
+    private static let moveHandleHintShownDefaultsKey = "readingCanvas.moveHandleHint.shown"
+    private var didDismissMoveHandleHint = false
     private let familyPopup = NSPopUpButton()
     private let sizeStepper = NSStepper()
     private let sizeField = NSTextField(string: "")
@@ -2595,8 +2598,6 @@ final class NoteEditorViewController: NSViewController {
         textView.isVerticallyResizable = true
         textView.autoresizingMask = []
         textView.wantsLayer = true
-        textView.layer?.borderWidth = 1
-        textView.layer?.borderColor = NSColor.dsAccentNS.withAlphaComponent(0.75).cgColor
         textView.layer?.cornerRadius = 2
         addSubview(textView)
 
@@ -2617,6 +2618,9 @@ final class NoteEditorViewController: NSViewController {
         }
         moveHandle.onDragStateChanged = { [weak self] isDragging in
             self?.setSelectionBorderActive(isDragging)
+            if isDragging {
+                self?.dismissMoveHandleHint(animated: true)
+            }
         }
         addSubview(moveHandle)
 
@@ -2624,6 +2628,9 @@ final class NoteEditorViewController: NSViewController {
             self?.resizeEditor(by: delta)
         }
         addSubview(resizeHandle)
+
+        addSubview(moveHandleHint)
+        showMoveHandleHintIfNeeded()
 
         toolbar.wantsLayer = true
         toolbar.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.96).cgColor
@@ -3072,6 +3079,30 @@ final class NoteEditorViewController: NSViewController {
             width: 16,
             height: 16
         )
+        let hintSize = moveHandleHint.intrinsicSize
+        moveHandleHint.frame = CGRect(
+            x: min(max(moveHandle.frame.midX - hintSize.width / 2, 4), max(4, bounds.width - hintSize.width - 4)),
+            y: moveHandle.frame.maxY + 6,
+            width: hintSize.width,
+            height: hintSize.height
+        )
+    }
+
+    /// Shown once ever (persisted via UserDefaults), the first time a text box is edited,
+    /// so casual users learn the handle is draggable without being nagged on every edit.
+    private func showMoveHandleHintIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.moveHandleHintShownDefaultsKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.moveHandleHintShownDefaultsKey)
+        moveHandleHint.show()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { [weak self] in
+            self?.dismissMoveHandleHint(animated: true)
+        }
+    }
+
+    private func dismissMoveHandleHint(animated: Bool) {
+        guard !didDismissMoveHandleHint else { return }
+        didDismissMoveHandleHint = true
+        moveHandleHint.hide(animated: animated)
     }
 
     /// Grows the text box to fit what's currently typed, so a short original word (e.g.
@@ -3148,11 +3179,11 @@ final class NoteEditorViewController: NSViewController {
         return bounds
     }
 
-    /// Brightens/thickens the selection border while the move handle is being dragged,
-    /// purely a visual cue — it never touches font, layout, or the text frame itself.
+    /// Switches the editable area's outline from a soft dashed idle affordance to a
+    /// brighter solid glow while the move handle is being dragged, purely a visual cue —
+    /// it never touches font, layout, or the text frame itself, and is never exported.
     private func setSelectionBorderActive(_ active: Bool) {
-        textView.layer?.borderWidth = active ? 2 : 1
-        textView.layer?.borderColor = NSColor.dsAccentNS.withAlphaComponent(active ? 0.95 : 0.75).cgColor
+        textView.isSelectionActive = active
     }
 
     private func moveEditor(by delta: CGPoint) {
@@ -3936,6 +3967,55 @@ final class InlineEditableTextView: NSTextView {
     private var isMoving = false
     private var lastPoint: CGPoint?
 
+    /// Idle: a soft dashed outline marks the editable area as selected/movable, without
+    /// implying resize is available. Active (while the move handle is being dragged): a
+    /// brighter solid glow gives continuous confirmation the box is being moved. Purely
+    /// decorative — drawn as a layer on top of the text, never part of the PDF content
+    /// or the exported bitmap of this box.
+    private let selectionOutlineLayer = CAShapeLayer()
+    var isSelectionActive = false {
+        didSet {
+            guard isSelectionActive != oldValue else { return }
+            updateSelectionOutlineAppearance()
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        if selectionOutlineLayer.superlayer == nil, let layer {
+            selectionOutlineLayer.fillColor = NSColor.clear.cgColor
+            layer.addSublayer(selectionOutlineLayer)
+            updateSelectionOutlineAppearance()
+        }
+        selectionOutlineLayer.frame = bounds
+        selectionOutlineLayer.path = CGPath(
+            roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+            cornerWidth: 3,
+            cornerHeight: 3,
+            transform: nil
+        )
+    }
+
+    private func updateSelectionOutlineAppearance() {
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.15)
+        if isSelectionActive {
+            selectionOutlineLayer.lineDashPattern = nil
+            selectionOutlineLayer.lineWidth = 2
+            selectionOutlineLayer.strokeColor = NSColor.dsAccentNS.withAlphaComponent(0.95).cgColor
+            layer?.shadowColor = NSColor.dsAccentNS.cgColor
+            layer?.shadowOpacity = 0.45
+            layer?.shadowRadius = 8
+            layer?.shadowOffset = .zero
+        } else {
+            selectionOutlineLayer.lineDashPattern = [4, 3]
+            selectionOutlineLayer.lineWidth = 1.2
+            selectionOutlineLayer.strokeColor = NSColor.dsAccentNS.withAlphaComponent(0.55).cgColor
+            layer?.shadowOpacity = 0
+        }
+        CATransaction.commit()
+    }
+
     override func cancelOperation(_ sender: Any?) {
         onEscape?()
     }
@@ -3996,9 +4076,12 @@ final class InlineEditableTextView: NSTextView {
     }
 }
 
-/// A grab handle for moving the selected text block: a small centered pill/grip is drawn
-/// for visual affordance, but the view's own bounds — much larger than the pill — is the
-/// actual draggable hit area, so the user doesn't need pixel-perfect aim to grab it.
+/// A floating grab handle for moving the selected text block: a small rounded "tab" with
+/// a six-dot grip icon is drawn for visual affordance, but the view's own bounds — much
+/// larger than the tab (a comfortable 32-44px target) — is the actual draggable hit area,
+/// so the user doesn't need pixel-perfect aim to grab it. Purely a canvas-chrome control:
+/// it lives in the overlay view hierarchy alongside the toolbar/resize handle and is never
+/// part of the PDF content or export.
 final class InlineMoveHandle: NSView {
     var onDrag: ((CGPoint) -> Void)?
     var onDragStateChanged: ((Bool) -> Void)?
@@ -4007,21 +4090,27 @@ final class InlineMoveHandle: NSView {
     private var isDragging = false
     private var trackingArea: NSTrackingArea?
 
-    static let pillSize = CGSize(width: 40, height: 6)
+    static let tabSize = CGSize(width: 44, height: 20)
 
-    private let pillLayer = CALayer()
-    private let dotLayers = (0..<3).map { _ in CALayer() }
+    private let tabLayer = CALayer()
+    private let dotLayers = (0..<6).map { _ in CALayer() }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        toolTip = "Drag to move text block"
+        toolTip = L10n.string("readingCanvas.moveHandle.tooltip")
+        setAccessibilityLabel(L10n.string("readingCanvas.moveHandle.accessibilityLabel"))
+        setAccessibilityRole(.button)
 
-        pillLayer.cornerRadius = Self.pillSize.height / 2
-        layer?.addSublayer(pillLayer)
+        tabLayer.cornerRadius = 8
+        tabLayer.cornerCurve = .continuous
+        tabLayer.borderWidth = 1
+        tabLayer.shadowColor = NSColor.black.cgColor
+        tabLayer.shadowOffset = CGSize(width: 0, height: -1)
+        layer?.addSublayer(tabLayer)
         for dot in dotLayers {
-            dot.cornerRadius = 1
-            pillLayer.addSublayer(dot)
+            dot.cornerRadius = 1.25
+            tabLayer.addSublayer(dot)
         }
         updateAppearance()
     }
@@ -4030,18 +4119,23 @@ final class InlineMoveHandle: NSView {
 
     override func layout() {
         super.layout()
-        let size = Self.pillSize
-        pillLayer.frame = CGRect(
+        let size = Self.tabSize
+        tabLayer.frame = CGRect(
             x: (bounds.width - size.width) / 2,
             y: bounds.height - size.height - 4,
             width: size.width,
             height: size.height
         )
-        let dotSize: CGFloat = 2
-        let spacing: CGFloat = 7
+        // Six dots in a 3x2 grid, the universal "grip" affordance.
+        let dotSize: CGFloat = 2.5
+        let colSpacing: CGFloat = 7
+        let rowSpacing: CGFloat = 5
         for (index, dot) in dotLayers.enumerated() {
-            let x = size.width / 2 + (CGFloat(index) - 1) * spacing - dotSize / 2
-            dot.frame = CGRect(x: x, y: (size.height - dotSize) / 2, width: dotSize, height: dotSize)
+            let col = index % 3
+            let row = index / 3
+            let x = size.width / 2 + (CGFloat(col) - 1) * colSpacing - dotSize / 2
+            let y = size.height / 2 + (CGFloat(row) - 0.5) * rowSpacing - dotSize / 2
+            dot.frame = CGRect(x: x, y: y, width: dotSize, height: dotSize)
         }
     }
 
@@ -4097,18 +4191,87 @@ final class InlineMoveHandle: NSView {
         onDragStateChanged?(false)
     }
 
+    /// Default: subtle glassy blue, lightly visible. Hover: stronger blue border/fill
+    /// plus a small lift (shadow + upward nudge). Active drag: strongest fill/border.
     private func updateAppearance() {
         let base = NSColor.dsAccentNS
-        let alpha: CGFloat = isDragging ? 0.95 : (isHovering ? 0.85 : 0.55)
-        let scale: CGFloat = isDragging ? 1.15 : (isHovering ? 1.05 : 1)
+        let fillAlpha: CGFloat = isDragging ? 0.55 : (isHovering ? 0.32 : 0.16)
+        let borderAlpha: CGFloat = isDragging ? 0.9 : (isHovering ? 0.7 : 0.4)
+        let shadowOpacity: Float = isDragging ? 0.35 : (isHovering ? 0.28 : 0.12)
+        let shadowRadius: CGFloat = isDragging ? 6 : (isHovering ? 5 : 2)
+        let liftY: CGFloat = isHovering || isDragging ? 1 : 0
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.12)
-        pillLayer.backgroundColor = base.withAlphaComponent(alpha).cgColor
-        pillLayer.transform = CATransform3DMakeScale(scale, scale, 1)
+        tabLayer.backgroundColor = base.withAlphaComponent(fillAlpha).cgColor
+        tabLayer.borderColor = base.withAlphaComponent(borderAlpha).cgColor
+        tabLayer.shadowOpacity = shadowOpacity
+        tabLayer.shadowRadius = shadowRadius
+        tabLayer.transform = CATransform3DMakeTranslation(0, liftY, 0)
         for dot in dotLayers {
-            dot.backgroundColor = NSColor.white.withAlphaComponent(isHovering || isDragging ? 0.95 : 0.85).cgColor
+            dot.backgroundColor = base.withAlphaComponent(isHovering || isDragging ? 0.95 : 0.75).cgColor
         }
         CATransaction.commit()
+    }
+}
+
+/// A one-time "Drag handle to reposition text" bubble shown the first time a user enters
+/// inline text editing, so casual users discover the box is draggable without being
+/// nagged on every subsequent edit (see `InlineTextEditorOverlay.showMoveHandleHintIfNeeded`,
+/// which gates this behind a UserDefaults flag). Purely a transient visual cue — never
+/// part of the PDF content or export.
+final class InlineMoveHandleHint: NSView {
+    private let label = NSTextField(labelWithString: L10n.string("readingCanvas.moveHandle.hint"))
+
+    var intrinsicSize: CGSize {
+        let textSize = label.attributedStringValue.size()
+        return CGSize(width: ceil(textSize.width) + 20, height: 26)
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        alphaValue = 0
+        layer?.backgroundColor = NSColor.dsAccentNS.cgColor
+        layer?.cornerRadius = 6
+        layer?.cornerCurve = .continuous
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.2
+        layer?.shadowRadius = 6
+        layer?.shadowOffset = CGSize(width: 0, height: -1)
+
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = .white
+        label.alignment = .center
+        addSubview(label)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        label.frame = bounds.insetBy(dx: 8, dy: 4)
+    }
+
+    func show() {
+        isHidden = false
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            animator().alphaValue = 1
+        }
+    }
+
+    func hide(animated: Bool) {
+        guard animated else {
+            alphaValue = 0
+            isHidden = true
+            return
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.2
+            animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            self?.isHidden = true
+        })
     }
 }
 

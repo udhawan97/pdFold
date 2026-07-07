@@ -326,6 +326,8 @@ Build and test:
 
 ```zsh
 swift build
+swiftlint lint --quiet
+swift test --filter PDFSmokeTests  # fast PDF load/export sanity check
 swift test
 xcodebuild build -quiet -project Orifold.xcodeproj -scheme Orifold -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO
 xcodebuild test -quiet -project Orifold.xcodeproj -scheme Orifold -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
@@ -380,6 +382,7 @@ zsh -n "Uninstall Orifold.command"
 zsh -n "Install or Update Orifold.app/Contents/MacOS/OrifoldInstaller"
 plutil -lint "Install or Update Orifold.app/Contents/Info.plist"
 swift build
+swiftlint lint --quiet
 swift test
 xcodebuild build -quiet -project Orifold.xcodeproj -scheme Orifold -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO
 xcodebuild test -quiet -project Orifold.xcodeproj -scheme Orifold -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO

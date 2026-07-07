@@ -65,8 +65,16 @@ jobs:
           zsh -n "Uninstall Orifold.command"
           zsh -n "Install or Update Orifold.app/Contents/MacOS/OrifoldInstaller"
 
+      - name: SwiftLint
+        run: |
+          command -v swiftlint || brew install swiftlint
+          swiftlint lint --quiet
+
       - name: Swift Package build
         run: swift build
+
+      - name: PDF smoke test
+        run: swift test --filter PDFSmokeTests
 
       - name: Swift Package tests
         run: swift test
