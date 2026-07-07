@@ -49,6 +49,24 @@ protocol SigningIdentity {
     func sign(_ data: Data) throws -> Data
 }
 
+extension SigningIdentity {
+    /// `nil` only in the (unreachable in practice — swift-certificates is an unconditional
+    /// dependency) non-X509 fallback build, where the DER-backed `Certificate` stand-in
+    /// carries no parsed validity dates.
+    var certificateExpiryDate: Date? {
+        #if canImport(X509)
+        return certificate.notValidAfter
+        #else
+        return nil
+        #endif
+    }
+
+    var isCertificateExpired: Bool {
+        guard let certificateExpiryDate else { return false }
+        return certificateExpiryDate < Date()
+    }
+}
+
 enum SigningIdentityError: Error, Equatable, CustomStringConvertible {
     case securityStatus(operation: String, status: OSStatus)
     case securityFrameworkError(operation: String, message: String)

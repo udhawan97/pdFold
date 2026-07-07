@@ -27,6 +27,12 @@ enum SigningError: Error, Equatable {
     /// (and this app's own re-parse) can't traverse. Refuse instead of risking corruption.
     case unsupportedPDFStructure
     case cancelled
+    /// The selected identity's certificate `notValidAfter` date has already passed.
+    /// Nothing upstream of `signAndExportCryptographicPDF` checked this — a placement
+    /// made while a certificate was still valid could otherwise be silently signed and
+    /// exported after it expired, producing a PDF that looks successfully signed but
+    /// whose certificate no reader will consider currently valid.
+    case identityExpired
 }
 
 // MARK: - Module D contracts (PDF incremental signer)
@@ -944,7 +950,18 @@ enum SignatureSelfCheck {
 
     static func verify(signedPDF: Data) -> Result {
         let text = String(decoding: signedPDF, as: UTF8.self)
-        guard let match = text.lastRegexMatch(#"/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]"#),
+        // Anchor to the actual signature dictionary (`/Type /Sig … /ByteRange […] … >>`),
+        // not just "the last /ByteRange found anywhere in the file" — an appearance-stream
+        // XObject appended AFTER the signature object (rendered text, font data) could
+        // otherwise happen to contain the literal bytes `/ByteRange [...]` and get mistaken
+        // for the real one, producing a wrong verdict either direction.
+        guard let sigTypeRange = text.range(of: "/Type /Sig", options: .backwards) else {
+            return Result(coversWholeDocument: false, byteRange: nil)
+        }
+        let dictClose = text.range(of: ">>", range: sigTypeRange.upperBound..<text.endIndex)?.lowerBound ?? text.endIndex
+        let dictScope = String(text[sigTypeRange.lowerBound..<dictClose])
+
+        guard let match = dictScope.firstRegexMatch(#"/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]"#),
               match.count == 5,
               let a = Int(match[1]), let b = Int(match[2]), let c = Int(match[3]), let d = Int(match[4]) else {
             return Result(coversWholeDocument: false, byteRange: nil)

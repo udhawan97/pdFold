@@ -39196,6 +39196,88 @@
           }
         }
       }
+    },
+    "certificateSheet.manage.trustResult.trusted.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chain trusted by this Mac, and not reported as revoked. If the certificate's revocation server couldn't be reached (e.g. no network), that's also reported as trusted rather than \"unknown\" — this reflects a limitation of the underlying check, not a stronger guarantee."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cadena de confianza en esta Mac, y no señalada como revocada. Si no se pudo contactar con el servidor de revocación del certificado (por ejemplo, sin red), esto también se informa como confiable en lugar de \"desconocido\": esto refleja una limitación de la comprobación subyacente, no una garantía más sólida."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaîne approuvée par ce Mac, et non signalée comme révoquée. Si le serveur de révocation du certificat n'a pas pu être contacté (par exemple, absence de réseau), cela est également signalé comme fiable plutôt que \"inconnu\" — cela reflète une limite de la vérification sous-jacente, pas une garantie plus forte."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इस Mac द्वारा श्रृंखला विश्वसनीय है, और इसे निरस्त नहीं बताया गया है। यदि प्रमाणपत्र के निरसन सर्वर से संपर्क नहीं हो सका (जैसे, कोई नेटवर्क नहीं), तो इसे भी \"अज्ञात\" के बजाय विश्वसनीय बताया जाता है — यह अंतर्निहित जांच की एक सीमा दर्शाता है, कोई मजबूत गारंटी नहीं।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このMacによってチェーンは信頼されており、失効とは報告されていません。証明書の失効確認サーバーに接続できなかった場合（ネットワークがないなど）も、「不明」ではなく信頼済みとして報告されます。これは基盤となるチェックの制限を反映したものであり、より強い保証ではありません。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 Mac 信任该证书链，且未报告为已吊销。如果无法联系到证书的吊销服务器（例如无网络），也会报告为受信任而非“未知”——这反映了底层检查的局限性，而非更强的保证。"
+          }
+        }
+      }
+    },
+    "error.export.identityExpired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This certificate has already expired. Choose a different Digital ID, or create/import a new one, before signing."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este certificado ya ha caducado. Elige otra identificación digital, o crea/importa una nueva, antes de firmar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce certificat a déjà expiré. Choisissez une autre identité numérique, ou créez-en/importez-en une nouvelle, avant de signer."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यह प्रमाणपत्र पहले ही समाप्त हो चुका है। हस्ताक्षर करने से पहले एक अलग डिजिटल आईडी चुनें, या नई बनाएं/आयात करें।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この証明書はすでに有効期限が切れています。署名する前に、別のデジタルIDを選択するか、新しく作成/インポートしてください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此证书已过期。请在签署前选择其他数字身份证明，或新建/导入一个。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

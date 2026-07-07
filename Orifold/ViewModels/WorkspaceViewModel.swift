@@ -3530,6 +3530,13 @@ final class WorkspaceViewModel {
             exportError = ExportError(message: String(localized: "Orifold could not prepare the signing identity: \(error.localizedDescription)", locale: L10n.currentLocale))
             return
         }
+        // Review found nothing in the actual signing path ever checked this — a placement
+        // made while a certificate was valid could otherwise be silently signed and
+        // exported after it expired, producing a PDF that looks successfully signed.
+        guard !identity.isCertificateExpired else {
+            exportError = ExportError(message: L10n.string("error.export.identityExpired"))
+            return
+        }
         guard let pageIndex = pageIndex(forSignaturePlacement: placement) else {
             exportError = ExportError(message: L10n.string("error.export.locatePageForSignature"))
             return
@@ -3726,7 +3733,11 @@ final class WorkspaceViewModel {
         onAttempt: (@Sendable (TimestampAuthorityOption) -> Void)? = nil
     ) throws -> TimeStampToken {
         let semaphore = DispatchSemaphore(value: 0)
-        final class TimestampBox {
+        // @unchecked Sendable, matching SigningOutcomeBox just above: writes happen on the
+        // detached fetch task, the read happens after semaphore.wait() establishes a
+        // happens-before edge — safe, but the annotation keeps that reasoning explicit and
+        // consistent instead of silently relying on this package's relaxed Swift 5 mode.
+        final class TimestampBox: @unchecked Sendable {
             var result: Result<TimeStampToken, Error>?
         }
         let box = TimestampBox()
