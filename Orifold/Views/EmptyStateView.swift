@@ -7,7 +7,7 @@ struct EmptyStateView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isDropTargeted = false
     @State private var hasIntroducedOptions = false
-    @State private var optionGuidance: String?
+    @State private var optionGuidance: LocalizedStringKey?
     @State private var chooseFilesNudge = 0
     @State private var recentsStore = RecentsStore.shared
     @State private var draggedKind: ImportDragKind?
@@ -24,13 +24,17 @@ struct EmptyStateView: View {
         reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
+    // Stores translation *keys*, not resolved strings: `Text`/`Label` re-resolve a
+    // `LocalizedStringKey` against the current environment locale on every render,
+    // whereas a pre-resolved `String` (e.g. via `L10n.string()`) is frozen at
+    // whatever language was active when this array was built and never updates.
     private let featureOptions: [EmptyStateOption] = [
-        EmptyStateOption(icon: "square.stack.3d.down.right", title: L10n.string("emptyState.option.assemble.title"), accent: .dsAccent, guidance: L10n.string("emptyState.option.assemble.guidance")),
-        EmptyStateOption(icon: "highlighter", title: L10n.string("emptyState.option.markUp.title"), accent: .dsAnnotationSky, guidance: L10n.string("emptyState.option.markUp.guidance")),
-        EmptyStateOption(icon: "checklist", title: L10n.string("emptyState.option.fillForms.title"), accent: .dsAnnotationSage, guidance: L10n.string("emptyState.option.fillForms.guidance")),
-        EmptyStateOption(icon: "text.viewfinder", title: L10n.string("emptyState.option.searchScans.title"), accent: .dsAccentBright, guidance: L10n.string("emptyState.option.searchScans.guidance")),
-        EmptyStateOption(icon: "seal", title: L10n.string("emptyState.option.stamp.title"), accent: .dsSignatureAccent, guidance: L10n.string("emptyState.option.stamp.guidance")),
-        EmptyStateOption(icon: "lock.shield", title: L10n.string("emptyState.option.protect.title"), accent: .dsAnnotationLavender, guidance: L10n.string("emptyState.option.protect.guidance"))
+        EmptyStateOption(icon: "square.stack.3d.down.right", titleKey: "emptyState.option.assemble.title", accent: .dsAccent, guidanceKey: "emptyState.option.assemble.guidance"),
+        EmptyStateOption(icon: "highlighter", titleKey: "emptyState.option.markUp.title", accent: .dsAnnotationSky, guidanceKey: "emptyState.option.markUp.guidance"),
+        EmptyStateOption(icon: "checklist", titleKey: "emptyState.option.fillForms.title", accent: .dsAnnotationSage, guidanceKey: "emptyState.option.fillForms.guidance"),
+        EmptyStateOption(icon: "text.viewfinder", titleKey: "emptyState.option.searchScans.title", accent: .dsAccentBright, guidanceKey: "emptyState.option.searchScans.guidance"),
+        EmptyStateOption(icon: "seal", titleKey: "emptyState.option.stamp.title", accent: .dsSignatureAccent, guidanceKey: "emptyState.option.stamp.guidance"),
+        EmptyStateOption(icon: "lock.shield", titleKey: "emptyState.option.protect.title", accent: .dsAnnotationLavender, guidanceKey: "emptyState.option.protect.guidance")
     ]
 
     var body: some View {
@@ -189,7 +193,7 @@ struct EmptyStateView: View {
     }
 
     private func showGuidance(for option: EmptyStateOption) {
-        optionGuidance = option.guidance
+        optionGuidance = option.guidanceKey
         chooseFilesNudge += 1
         guard !shouldReduceMotion else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
@@ -451,11 +455,11 @@ struct EmptyStateView: View {
 
 private struct EmptyStateOption: Identifiable {
     var icon: String
-    var title: String
+    var titleKey: LocalizedStringKey
     var accent: Color
-    var guidance: String
+    var guidanceKey: LocalizedStringKey
 
-    var id: String { title }
+    var id: String { icon }
 }
 
 private struct EmptyStatePill: View {
@@ -480,7 +484,7 @@ private struct EmptyStatePill: View {
                     .symbolRenderingMode(.hierarchical)
                     .rotationEffect(reduceMotion || !isHovered ? .zero : .degrees(-5))
                     .symbolEffect(.bounce, value: reduceMotion ? false : isHovered)
-                Text(option.title)
+                Text(option.titleKey)
                     .font(.system(size: 11, weight: .medium))
             }
             .padding(.horizontal, 10)
@@ -547,7 +551,7 @@ private struct EmptyStatePill: View {
             }
         }
         .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.82).delay(entranceDelay), value: isIntroduced)
-        .accessibilityLabel(option.title)
+        .accessibilityLabel(Text(option.titleKey))
         .accessibilityHint("emptyState.pill.accessibilityHint")
     }
 }

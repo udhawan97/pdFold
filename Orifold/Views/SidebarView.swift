@@ -324,6 +324,10 @@ struct MemberDocRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
     @State private var isHovered = false
+    // Passed into L10n.format()/L10n.string() below so this view's `body` actually
+    // reads it — SwiftUI only re-invokes `body` on a locale change for views that
+    // read `\.locale` during the previous evaluation.
+    @Environment(\.locale) private var locale
     @State private var isRenaming = false
     @State private var renameText = ""
     @FocusState private var isRenameFieldFocused: Bool
@@ -354,15 +358,15 @@ struct MemberDocRow: View {
 
     private var pagesPhrase: String {
         member.pageRefs.count == 1
-            ? L10n.format("sidebar.pageCount.one", member.pageRefs.count)
-            : L10n.format("sidebar.pageCount.other", member.pageRefs.count)
+            ? L10n.format("sidebar.pageCount.one", member.pageRefs.count, locale: locale)
+            : L10n.format("sidebar.pageCount.other", member.pageRefs.count, locale: locale)
     }
 
     private var commentsPhrase: String? {
         guard commentCount > 0 else { return nil }
         return commentCount == 1
-            ? L10n.format("sidebar.doc.commentCount.one", commentCount)
-            : L10n.format("sidebar.doc.commentCount.other", commentCount)
+            ? L10n.format("sidebar.doc.commentCount.one", commentCount, locale: locale)
+            : L10n.format("sidebar.doc.commentCount.other", commentCount, locale: locale)
     }
 
     private var metadataLine: String {
@@ -372,7 +376,7 @@ struct MemberDocRow: View {
     private var combinedAccessibilityLabel: String {
         var parts = [member.displayName, pagesPhrase]
         if let commentsPhrase { parts.append(commentsPhrase) }
-        if isSelected { parts.append(L10n.string("sidebar.doc.selected.accessibilitySuffix")) }
+        if isSelected { parts.append(L10n.string("sidebar.doc.selected.accessibilitySuffix", locale: locale)) }
         return parts.joined(separator: ", ")
     }
 
@@ -699,6 +703,10 @@ struct ThumbnailCell: View {
     @State private var thumbnail: NSImage? = nil
     @State private var isHovered = false
     @State private var isConfirmingDelete = false
+    // Passed into L10n.format()/L10n.string() below so this view's `body` actually
+    // reads it — SwiftUI only re-invokes `body` on a locale change for views that
+    // read `\.locale` during the previous evaluation.
+    @Environment(\.locale) private var locale
 
     private static let thumbSize = CGSize(width: 48, height: 64)
     private var isSelected: Bool {
@@ -740,7 +748,7 @@ struct ThumbnailCell: View {
                         .frame(minWidth: 15, minHeight: 15)
                         .background(Color.dsAccent, in: Circle())
                         .offset(x: 5, y: -5)
-                        .accessibilityLabel(L10n.format("sidebar.commentsOnPage.accessibilityLabel", commentCount))
+                        .accessibilityLabel(L10n.format("sidebar.commentsOnPage.accessibilityLabel", commentCount, locale: locale))
                 }
             }
             .shadow(color: .black.opacity(0.10), radius: 3, x: 0, y: 1)
@@ -748,21 +756,21 @@ struct ThumbnailCell: View {
             .contextMenu {
                 let selection = viewModel.pageRefsForCurrentSelection(including: pageRef)
                 let selectionLabel = selection.count == 1
-                    ? L10n.string("sidebar.selection.page")
-                    : L10n.format("sidebar.selection.pages", selection.count)
-                Button(L10n.format("sidebar.rotateCW", selectionLabel))  {
+                    ? L10n.string("sidebar.selection.page", locale: locale)
+                    : L10n.format("sidebar.selection.pages", selection.count, locale: locale)
+                Button(L10n.format("sidebar.rotateCW", selectionLabel, locale: locale))  {
                     viewModel.rotatePages(selection, by: 90)
                     thumbnail = nil
                 }
-                Button(L10n.format("sidebar.rotateCCW", selectionLabel)) {
+                Button(L10n.format("sidebar.rotateCCW", selectionLabel, locale: locale)) {
                     viewModel.rotatePages(selection, by: -90)
                     thumbnail = nil
                 }
-                Button(L10n.format("sidebar.duplicate", selectionLabel)) {
+                Button(L10n.format("sidebar.duplicate", selectionLabel, locale: locale)) {
                     viewModel.duplicatePages(selection)
                     thumbnail = nil
                 }
-                Button(L10n.format("sidebar.export", selectionLabel)) {
+                Button(L10n.format("sidebar.export", selectionLabel, locale: locale)) {
                     viewModel.exportPages(selection)
                 }
                 Divider()
@@ -770,13 +778,13 @@ struct ThumbnailCell: View {
                     openFiles(insertingAfter: pageRef)
                 }
                 Divider()
-                Button(L10n.format("sidebar.delete", selectionLabel), role: .destructive) {
+                Button(L10n.format("sidebar.delete", selectionLabel, locale: locale), role: .destructive) {
                     isConfirmingDelete = true
                 }
             }
 
             // Label
-            Text(L10n.format("sidebar.pageLabel.short", pageNumber))
+            Text(L10n.format("sidebar.pageLabel.short", pageNumber, locale: locale))
                 .font(.dsCaption())
                 .fontWeight(isSelected ? .semibold : .regular)
                 .foregroundStyle(isSelected ? Color.dsAccent : Color.dsTextSecondary)
@@ -837,7 +845,7 @@ struct ThumbnailCell: View {
             if count == 1 {
                 Text("sidebar.deletePages.confirmation.messageSingular")
             } else {
-                Text(L10n.format("sidebar.removePages.confirmation.plural", count))
+                Text(L10n.format("sidebar.removePages.confirmation.plural", count, locale: locale))
             }
         }
     }

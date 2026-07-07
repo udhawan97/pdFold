@@ -189,6 +189,10 @@ struct ContentView: View {
     @AppStorage("orifoldDocumentComfortSettings") private var persistedDocumentComfortSettingsData = Data()
     @Environment(\.undoManager) private var undoManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // `.popover` content on macOS doesn't inherit the `.environment(\.locale:)`
+    // override applied at the scene root — it resets to the system default —
+    // so it must be re-applied explicitly to each popover's presented content.
+    @EnvironmentObject private var languageManager: LanguageManager
 
     private var shouldReduceMotion: Bool {
         reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || viewModel.documentComfortSettings.reduceAnimations
@@ -290,7 +294,8 @@ struct ContentView: View {
         ))
         .overlay(alignment: .bottomTrailing) {
             if !viewModel.memberDocuments.isEmpty {
-                PetOverlay().padding(18)
+                PetOverlay(isChromeBusy: viewModel.operationProgress.isActive)
+                    .padding(.gamiEdgeInset)
             }
         }
         .overlay(alignment: .bottom) {
@@ -328,21 +333,31 @@ struct ContentView: View {
         }
         .popover(isPresented: $viewModel.isShowingSearch, arrowEdge: .top) {
             SearchView(viewModel: viewModel)
+                .environmentObject(languageManager)
+                .environment(\.locale, languageManager.effectiveLocale)
         }
         .popover(isPresented: $viewModel.isShowingSignaturePalette, arrowEdge: .top) {
             SignaturePalette(viewModel: viewModel)
+                .environmentObject(languageManager)
+                .environment(\.locale, languageManager.effectiveLocale)
         }
         .popover(isPresented: $viewModel.isShowingStampPalette, arrowEdge: .top) {
             StampPalette(viewModel: viewModel)
+                .environmentObject(languageManager)
+                .environment(\.locale, languageManager.effectiveLocale)
         }
         .sheet(isPresented: $isShowingExportSheet) {
             ExportSheet(viewModel: viewModel, isPresented: $isShowingExportSheet)
+                .environmentObject(languageManager)
+                .environment(\.locale, languageManager.effectiveLocale)
         }
         .popover(isPresented: $showTOC, arrowEdge: .top) {
             TOCView(viewModel: viewModel) { pageIndex in
                 NotificationCenter.default.post(name: .orifoldJumpToPageIndex, object: pageIndex)
                 showTOC = false
             }
+            .environmentObject(languageManager)
+            .environment(\.locale, languageManager.effectiveLocale)
         }
         .alert("contentView.importError.title", isPresented: Binding(
             get: { viewModel.importError != nil },
@@ -509,6 +524,8 @@ struct ContentView: View {
             .popover(isPresented: $isShowingDocumentComfortPopover, arrowEdge: .top) {
                 DocumentComfortPopover(viewModel: viewModel)
                     .frame(width: 360)
+                    .environmentObject(languageManager)
+                    .environment(\.locale, languageManager.effectiveLocale)
             }
 
             Menu {
@@ -759,6 +776,10 @@ private struct ReaderModePill: View {
     var openNotes: () -> Void
     var onExit: () -> Void
     @State private var isShowingToneControls = false
+    // `.popover` content on macOS doesn't inherit the `.environment(\.locale:)`
+    // override applied at the scene root — it resets to the system default —
+    // so it must be re-applied explicitly to the presented content below.
+    @EnvironmentObject private var languageManager: LanguageManager
 
     var body: some View {
         HStack(spacing: .dsSM) {
@@ -779,6 +800,8 @@ private struct ReaderModePill: View {
             .popover(isPresented: $isShowingToneControls, arrowEdge: .top) {
                 DocumentComfortPopover(viewModel: viewModel)
                     .frame(width: 360)
+                    .environmentObject(languageManager)
+                    .environment(\.locale, languageManager.effectiveLocale)
             }
 
             Button(action: openNotes) {
@@ -818,10 +841,15 @@ private struct ComfortInfoButton: View {
     let titleKey: String
     let infoKey: String
     @State private var isPresented = false
+    // Passed into L10n.string() and re-applied to the popover content below —
+    // SwiftUI only re-invokes `body` on a locale change for views that read
+    // `\.locale` during the previous evaluation, and separately, .popover content
+    // on macOS resets to the system default locale unless re-applied explicitly.
+    @Environment(\.locale) private var locale
 
     private var titleText: Text { Text(LocalizedStringKey(titleKey)) }
     private var infoText: Text { Text(LocalizedStringKey(infoKey)) }
-    private var helpText: String { L10n.string(String.LocalizationValue(stringLiteral: infoKey)) }
+    private var helpText: String { L10n.string(String.LocalizationValue(stringLiteral: infoKey), locale: locale) }
 
     var body: some View {
         Button {
@@ -842,6 +870,7 @@ private struct ComfortInfoButton: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(width: 220, alignment: .leading)
                 .padding(.dsMD)
+                .environment(\.locale, locale)
         }
     }
 }
@@ -1283,6 +1312,10 @@ private struct ExportSheet: View {
     @State private var removesMetadata = false
     @State private var isSanitizeExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Passed into L10n.string() below so this view's `body` actually reads it —
+    // SwiftUI only re-invokes `body` on a locale change for views that read
+    // `\.locale` during the previous evaluation.
+    @Environment(\.locale) private var locale
 
     private var shouldReduceMotion: Bool {
         reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -1305,13 +1338,13 @@ private struct ExportSheet: View {
             return nil
         }
         if password.isEmpty {
-            return L10n.string("contentView.exportSheet.passwordMissing.message")
+            return L10n.string("contentView.exportSheet.passwordMissing.message", locale: locale)
         }
         if passwordConfirmation.isEmpty {
-            return L10n.string("contentView.exportSheet.confirmationMissing.message")
+            return L10n.string("contentView.exportSheet.confirmationMissing.message", locale: locale)
         }
         if passwordMismatch {
-            return L10n.string("contentView.exportSheet.passwordMismatch.message")
+            return L10n.string("contentView.exportSheet.passwordMismatch.message", locale: locale)
         }
         return nil
     }
@@ -2513,6 +2546,10 @@ private func preferredImportExtension(for contentType: UTType, fallback: String)
 private struct DocumentCommentsIndicator: View {
     var count: Int
     var action: () -> Void
+    // Passed into L10n.string()/L10n.format() below so this view's `body`
+    // actually reads it — SwiftUI only re-invokes `body` on a locale change
+    // for views that read `\.locale` during the previous evaluation.
+    @Environment(\.locale) private var locale
 
     var body: some View {
         if count > 0 {
@@ -2533,8 +2570,8 @@ private struct DocumentCommentsIndicator: View {
                 }
             }
             .buttonStyle(.plain)
-            .help(count == 1 ? L10n.string("contentView.viewComments.one") : L10n.format("contentView.viewComments.other", count))
-            .accessibilityLabel(count == 1 ? L10n.string("contentView.viewComments.one") : L10n.format("contentView.viewComments.other", count))
+            .help(count == 1 ? L10n.string("contentView.viewComments.one", locale: locale) : L10n.format("contentView.viewComments.other", count, locale: locale))
+            .accessibilityLabel(count == 1 ? L10n.string("contentView.viewComments.one", locale: locale) : L10n.format("contentView.viewComments.other", count, locale: locale))
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
         }
     }

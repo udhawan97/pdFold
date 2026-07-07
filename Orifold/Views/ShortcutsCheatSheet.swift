@@ -197,6 +197,10 @@ struct ShortcutsCheatSheetButton: View {
     var autoShow = false
     @State private var isShowingFirstRunHint = false
     @AppStorage("Orifold.hasSeenShortcutsHint") private var hasSeenShortcutsHint = false
+    // `.popover` content on macOS doesn't inherit the `.environment(\.locale:)`
+    // override applied at the scene root — it resets to the system default —
+    // so it must be re-applied explicitly to each popover's presented content.
+    @Environment(\.locale) private var locale
 
     var body: some View {
         Button {
@@ -209,11 +213,13 @@ struct ShortcutsCheatSheetButton: View {
         .accessibilityLabel(Text("shortcuts.cheatSheet.title"))
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             ShortcutsCheatSheetView(isPresented: $isPresented)
+                .environment(\.locale, locale)
         }
         .popover(isPresented: $isShowingFirstRunHint, arrowEdge: .bottom) {
             ShortcutsFirstRunPopover(isPresented: $isShowingFirstRunHint) {
                 isPresented = true
             }
+            .environment(\.locale, locale)
         }
         .onAppear {
             guard autoShow, !hasSeenShortcutsHint else { return }

@@ -9,6 +9,10 @@ struct SearchView: View {
     @State private var isConfirmingReplaceAll = false
     @State private var replaceResultMessage: String?
     @State private var replaceResultWasSkipped = false
+    // Passed into L10n.string()/L10n.format() below so this view's `body`
+    // actually reads it — SwiftUI only re-invokes `body` on a locale change
+    // for views that read `\.locale` during the previous evaluation.
+    @Environment(\.locale) private var locale
 
     private enum Layout {
         static let width: CGFloat = 460
@@ -20,8 +24,8 @@ struct SearchView: View {
         let n = viewModel.searchResults.count
         if n == 0 { return "" }
         let i = viewModel.searchResultIndex
-        if i >= 0 { return L10n.format("search.results.position", i + 1, n) }
-        return L10n.format(n == 1 ? "search.results.count.one" : "search.results.count.other", n)
+        if i >= 0 { return L10n.format("search.results.position", i + 1, n, locale: locale) }
+        return L10n.format(n == 1 ? "search.results.count.one" : "search.results.count.other", n, locale: locale)
     }
 
     private var shouldReduceMotion: Bool {
@@ -32,8 +36,8 @@ struct SearchView: View {
 
     private var replaceStatusLabel: String {
         guard !viewModel.searchQuery.isEmpty else { return "" }
-        if replaceMatchCount == 0 { return L10n.string("search.replace.noMatches") }
-        return L10n.format(replaceMatchCount == 1 ? "search.replace.matches.one" : "search.replace.matches.other", replaceMatchCount)
+        if replaceMatchCount == 0 { return L10n.string("search.replace.noMatches", locale: locale) }
+        return L10n.format(replaceMatchCount == 1 ? "search.replace.matches.one" : "search.replace.matches.other", replaceMatchCount, locale: locale)
     }
 
     var body: some View {
@@ -212,15 +216,15 @@ struct SearchView: View {
             Button("search.replace.confirm.replace") {
                 let count = viewModel.replaceAllCommentMatches()
                 replaceResultWasSkipped = false
-                replaceResultMessage = L10n.format(count == 1 ? "search.replace.result.one" : "search.replace.result.other", count)
+                replaceResultMessage = L10n.format(count == 1 ? "search.replace.result.one" : "search.replace.result.other", count, locale: locale)
             }
             Button("search.replace.confirm.cancel", role: .cancel) {}
         } message: {
             let count = replaceMatchCount
             if count == 1 {
-                Text(L10n.format("search.replace.confirm.message.one", viewModel.replaceText))
+                Text(L10n.format("search.replace.confirm.message.one", viewModel.replaceText, locale: locale))
             } else {
-                Text(L10n.format("search.replace.confirm.message.other", count, viewModel.replaceText))
+                Text(L10n.format("search.replace.confirm.message.other", count, viewModel.replaceText, locale: locale))
             }
         }
     }
@@ -237,14 +241,18 @@ struct SearchView: View {
         let didReplace = viewModel.replaceMatches(in: comment)
         replaceResultWasSkipped = !didReplace
         replaceResultMessage = didReplace
-            ? L10n.string("search.replace.result.one")
-            : L10n.string("search.replace.skippedEmpty")
+            ? L10n.string("search.replace.result.one", locale: locale)
+            : L10n.string("search.replace.skippedEmpty", locale: locale)
     }
 }
 
 struct SearchResultRow: View {
     var result: PDFSelection
     var isActive: Bool
+    // Passed into L10n.format() below so this view's `body` actually reads it —
+    // SwiftUI only re-invokes `body` on a locale change for views that read
+    // `\.locale` during the previous evaluation.
+    @Environment(\.locale) private var locale
 
     private var pageLabel: String {
         result.pages.first.flatMap { $0.label } ?? "?"
@@ -260,7 +268,7 @@ struct SearchResultRow: View {
                 .foregroundStyle(isActive ? Color.dsAccent : Color.dsTextPrimary)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text(L10n.format("search.pageLabel", pageLabel))
+            Text(L10n.format("search.pageLabel", pageLabel, locale: locale))
                 .font(.dsCaption())
                 .foregroundStyle(Color.dsTextTertiary)
         }

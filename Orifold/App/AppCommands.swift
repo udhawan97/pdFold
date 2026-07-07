@@ -7,59 +7,62 @@ enum OrifoldLinks {
 }
 
 struct AppCommands: Commands {
+    // `@ObservedObject` (not `@Environment`) because `Commands` has no
+    // `.environmentObject`/`.environment` modifier to inject it — this is the
+    // one mechanism that reliably re-invokes `body` when the language changes,
+    // so `locale` below is always resolved fresh for each command button.
+    @ObservedObject var languageManager: LanguageManager
+
+    private var locale: Locale { languageManager.effectiveLocale }
+
     var body: some Commands {
         // File menu additions — DocumentGroup already provides New, Open, Save, etc.
         CommandGroup(after: .newItem) {
-            AddFilesCommandButton()
-            AddFolderCommandButton()
+            AddFilesCommandButton(locale: locale)
+            AddFolderCommandButton(locale: locale)
             Divider()
-            ReduceFileSizeCommandButton()
-            MakeSearchableCommandButton()
+            ReduceFileSizeCommandButton(locale: locale)
+            MakeSearchableCommandButton(locale: locale)
             Divider()
         }
 
         CommandGroup(replacing: .undoRedo) {
-            UndoRedoCommandButtons()
+            UndoRedoCommandButtons(locale: locale)
         }
 
         CommandGroup(after: .textEditing) {
-            FindNavigationCommandButtons()
+            FindNavigationCommandButtons(locale: locale)
         }
 
         CommandGroup(after: .saveItem) {
-            PrintCommandButton()
+            PrintCommandButton(locale: locale)
         }
 
         CommandGroup(after: .toolbar) {
-            PetBuddyCommandToggle()
-            PetSpeciesCommandPicker()
+            PetBuddyCommandToggle(locale: locale)
+            PetSpeciesCommandPicker(locale: locale)
             Divider()
-            ZoomCommandButtons()
+            ZoomCommandButtons(locale: locale)
         }
 
         // Replace the default "About" item with the witty popover version
         CommandGroup(replacing: .appInfo) {
-            AboutCommandButton()
+            AboutCommandButton(locale: locale)
         }
 
         CommandGroup(after: .help) {
-            ViewDocumentationCommandLink()
-            ShowKeyboardShortcutsCommandButton()
+            ViewDocumentationCommandLink(locale: locale)
+            ShowKeyboardShortcutsCommandButton(locale: locale)
         }
     }
 }
 
 private struct AddFilesCommandButton: View {
-    // Subscribing to LanguageManager (an ObservableObject) is what makes SwiftUI
-    // re-evaluate this Commands-hosted view's body — and thus re-resolve the
-    // L10n.string() label below — when the user switches languages. Without it,
-    // menu titles built from L10n.string() go stale until the app relaunches,
-    // since nothing else here depends on the stored language preference.
-    @EnvironmentObject private var languageManager: LanguageManager
     @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
 
     var body: some View {
-        Button(L10n.string("appCommands.addFilesToWorkspace.button")) {
+        Button(L10n.string("appCommands.addFilesToWorkspace.button", locale: locale)) {
             let panel = NSOpenPanel()
             configureImportOpenPanel(panel)
             if panel.runModal() == .OK {
@@ -74,11 +77,11 @@ private struct AddFilesCommandButton: View {
 }
 
 private struct AddFolderCommandButton: View {
-    @EnvironmentObject private var languageManager: LanguageManager
     @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
 
     var body: some View {
-        Button(L10n.string("appCommands.addFolderToWorkspace.button")) {
+        Button(L10n.string("appCommands.addFolderToWorkspace.button", locale: locale)) {
             let panel = NSOpenPanel()
             configureFolderImportOpenPanel(panel)
             guard panel.runModal() == .OK, let viewModel else { return }
@@ -110,11 +113,11 @@ private func presentOverLimitAlert(for batch: PendingFolderImportBatch, into vie
 }
 
 private struct MakeSearchableCommandButton: View {
-    @EnvironmentObject private var languageManager: LanguageManager
     @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
 
     var body: some View {
-        Button(L10n.string("appCommands.makeSearchable.button")) {
+        Button(L10n.string("appCommands.makeSearchable.button", locale: locale)) {
             let shouldRepairExistingText = viewModel?.hasScannedPages != true
             viewModel?.makeSearchable(includePagesWithText: shouldRepairExistingText)
         }
@@ -123,11 +126,11 @@ private struct MakeSearchableCommandButton: View {
 }
 
 private struct ReduceFileSizeCommandButton: View {
-    @EnvironmentObject private var languageManager: LanguageManager
     @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
 
     var body: some View {
-        Button(L10n.string("appCommands.reduceFileSize.button")) {
+        Button(L10n.string("appCommands.reduceFileSize.button", locale: locale)) {
             viewModel?.reduceFileSize()
         }
         .disabled(viewModel == nil)
@@ -135,21 +138,21 @@ private struct ReduceFileSizeCommandButton: View {
 }
 
 private struct UndoRedoCommandButtons: View {
-    @EnvironmentObject private var languageManager: LanguageManager
     @Environment(\.undoManager) private var undoManager
     @FocusedValue(\.orifoldIsImporting) private var isImporting
     @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
 
     private var importInProgress: Bool { isImporting == true }
 
     var body: some View {
-        Button(L10n.string("appCommands.undo.button")) {
+        Button(L10n.string("appCommands.undo.button", locale: locale)) {
             viewModel?.performUndoCommand()
         }
         .keyboardShortcut("z", modifiers: .command)
         .disabled(importInProgress || viewModel == nil || undoManager?.canUndo != true)
 
-        Button(L10n.string("appCommands.redo.button")) {
+        Button(L10n.string("appCommands.redo.button", locale: locale)) {
             viewModel?.performRedoCommand()
         }
         .keyboardShortcut("y", modifiers: .command)
@@ -158,17 +161,17 @@ private struct UndoRedoCommandButtons: View {
 }
 
 private struct FindNavigationCommandButtons: View {
-    @EnvironmentObject private var languageManager: LanguageManager
     @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
 
     var body: some View {
-        Button(L10n.string("appCommands.findNext.button")) {
+        Button(L10n.string("appCommands.findNext.button", locale: locale)) {
             viewModel?.searchNext()
         }
         .keyboardShortcut("g", modifiers: .command)
         .disabled(viewModel == nil || viewModel?.searchResults.isEmpty != false)
 
-        Button(L10n.string("appCommands.findPrevious.button")) {
+        Button(L10n.string("appCommands.findPrevious.button", locale: locale)) {
             viewModel?.searchPrevious()
         }
         .keyboardShortcut("g", modifiers: [.command, .shift])
@@ -177,11 +180,11 @@ private struct FindNavigationCommandButtons: View {
 }
 
 private struct PrintCommandButton: View {
-    @EnvironmentObject private var languageManager: LanguageManager
     @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
 
     var body: some View {
-        Button(L10n.string("appCommands.print.button")) {
+        Button(L10n.string("appCommands.print.button", locale: locale)) {
             NotificationCenter.default.post(name: .orifoldPrint, object: nil)
         }
         .keyboardShortcut("p", modifiers: .command)
@@ -190,23 +193,23 @@ private struct PrintCommandButton: View {
 }
 
 private struct ZoomCommandButtons: View {
-    @EnvironmentObject private var languageManager: LanguageManager
     @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
 
     var body: some View {
-        Button(L10n.string("appCommands.zoomIn.button")) {
+        Button(L10n.string("appCommands.zoomIn.button", locale: locale)) {
             viewModel?.zoomIn()
         }
         .keyboardShortcut("+", modifiers: .command)
         .disabled(viewModel == nil)
 
-        Button(L10n.string("appCommands.zoomOut.button")) {
+        Button(L10n.string("appCommands.zoomOut.button", locale: locale)) {
             viewModel?.zoomOut()
         }
         .keyboardShortcut("-", modifiers: .command)
         .disabled(viewModel == nil)
 
-        Button(L10n.string("appCommands.zoomFit.button")) {
+        Button(L10n.string("appCommands.zoomFit.button", locale: locale)) {
             viewModel?.zoomFit()
         }
         .keyboardShortcut("0", modifiers: .command)
@@ -215,10 +218,10 @@ private struct ZoomCommandButtons: View {
 }
 
 private struct ShowKeyboardShortcutsCommandButton: View {
-    @EnvironmentObject private var languageManager: LanguageManager
+    var locale: Locale
 
     var body: some View {
-        Button(L10n.string("appCommands.keyboardShortcuts.button")) {
+        Button(L10n.string("appCommands.keyboardShortcuts.button", locale: locale)) {
             NotificationCenter.default.post(name: .orifoldShowShortcuts, object: nil)
         }
         .keyboardShortcut("/", modifiers: .command)
@@ -226,12 +229,12 @@ private struct ShowKeyboardShortcutsCommandButton: View {
 }
 
 private struct PetBuddyCommandToggle: View {
-    @EnvironmentObject private var languageManager: LanguageManager
     @AppStorage("petEnabled") private var petEnabled = true
     @State private var buddy = PetBuddy.shared
+    var locale: Locale
 
     var body: some View {
-        Toggle(L10n.string("appCommands.showBuddy.toggle"), isOn: Binding(
+        Toggle(L10n.string("appCommands.showBuddy.toggle", locale: locale), isOn: Binding(
             get: { petEnabled },
             set: { isShowing in
                 petEnabled = isShowing
@@ -253,12 +256,12 @@ private struct PetBuddyCommandToggle: View {
 }
 
 private struct PetSpeciesCommandPicker: View {
-    @EnvironmentObject private var languageManager: LanguageManager
     @AppStorage("petEnabled") private var petEnabled = true
     @State private var buddy = PetBuddy.shared
+    var locale: Locale
 
     var body: some View {
-        Picker(L10n.string("appCommands.companion.title"), selection: Binding(
+        Picker(L10n.string("appCommands.companion.title", locale: locale), selection: Binding(
             get: { buddy.species },
             set: { buddy.selectSpecies($0) }
         )) {
@@ -291,18 +294,18 @@ extension FocusedValues {
 }
 
 private struct AboutCommandButton: View {
-    @EnvironmentObject private var languageManager: LanguageManager
     @Environment(\.openWindow) private var openWindow
+    var locale: Locale
 
     var body: some View {
-        Button(L10n.string("appCommands.aboutOrifold.button")) { openWindow(id: "about-orifold") }
+        Button(L10n.string("appCommands.aboutOrifold.button", locale: locale)) { openWindow(id: "about-orifold") }
     }
 }
 
 private struct ViewDocumentationCommandLink: View {
-    @EnvironmentObject private var languageManager: LanguageManager
+    var locale: Locale
 
     var body: some View {
-        Link(L10n.string("help.viewDocumentation.button"), destination: OrifoldLinks.documentation)
+        Link(L10n.string("help.viewDocumentation.button", locale: locale), destination: OrifoldLinks.documentation)
     }
 }
