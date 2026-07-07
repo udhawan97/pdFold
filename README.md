@@ -53,7 +53,8 @@
 <a href="#-meet-your-paper-companion"><kbd> &nbsp;🐾 Companion&nbsp; </kbd></a>&ensp;
 <a href="#-privacy"><kbd> &nbsp;🔒 Privacy&nbsp; </kbd></a>&ensp;
 <a href="#%EF%B8%8F-under-the-hood"><kbd> &nbsp;⚙️ Under the Hood&nbsp; </kbd></a>&ensp;
-<a href="#-troubleshooting"><kbd> &nbsp;🆘 Help&nbsp; </kbd></a>
+<a href="#-troubleshooting"><kbd> &nbsp;🆘 Help&nbsp; </kbd></a>&ensp;
+<a href="https://udhawan97.github.io/Orifold/"><kbd> &nbsp;📖 Docs&nbsp; </kbd></a>
 
 </div>
 
@@ -325,6 +326,8 @@ Build and test:
 
 ```zsh
 swift build
+swiftlint lint --quiet
+swift test --filter PDFSmokeTests  # fast PDF load/export sanity check
 swift test
 xcodebuild build -quiet -project Orifold.xcodeproj -scheme Orifold -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO
 xcodebuild test -quiet -project Orifold.xcodeproj -scheme Orifold -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
@@ -379,6 +382,7 @@ zsh -n "Uninstall Orifold.command"
 zsh -n "Install or Update Orifold.app/Contents/MacOS/OrifoldInstaller"
 plutil -lint "Install or Update Orifold.app/Contents/Info.plist"
 swift build
+swiftlint lint --quiet
 swift test
 xcodebuild build -quiet -project Orifold.xcodeproj -scheme Orifold -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO
 xcodebuild test -quiet -project Orifold.xcodeproj -scheme Orifold -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
@@ -464,5 +468,5 @@ Orifold is available under the [MIT License](LICENSE).
 </p>
 
 <p align="center">
-  Built with SwiftUI, PDFKit, PDFium, qpdf, and Vision — all running on your machine.
+ Built as a local-first PDF workspace. I used Claude/Codex to accelerate implementation, then manually reviewed, tested, refactored, and documented the system
 </p>

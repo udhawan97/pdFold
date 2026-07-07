@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
 
       - name: Cache SwiftPM dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .build/checkouts
@@ -65,8 +65,16 @@ jobs:
           zsh -n "Uninstall Orifold.command"
           zsh -n "Install or Update Orifold.app/Contents/MacOS/OrifoldInstaller"
 
+      - name: SwiftLint
+        run: |
+          command -v swiftlint || brew install swiftlint
+          swiftlint lint --quiet
+
       - name: Swift Package build
         run: swift build
+
+      - name: PDF smoke test
+        run: swift test --filter PDFSmokeTests
 
       - name: Swift Package tests
         run: swift test
@@ -97,7 +105,7 @@ jobs:
 
       - name: Upload Xcode result bundle
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Orifold-xcresults
           path: |

@@ -1,6 +1,11 @@
 import AppKit
 import SwiftUI
 
+/// Externally-hosted links referenced from menu commands and in-app help surfaces.
+enum OrifoldLinks {
+    static let documentation = URL(string: "https://udhawan97.github.io/Orifold/")!
+}
+
 struct AppCommands: Commands {
     // `@ObservedObject` (not `@Environment`) because `Commands` has no
     // `.environmentObject`/`.environment` modifier to inject it — this is the
@@ -14,6 +19,7 @@ struct AppCommands: Commands {
         // File menu additions — DocumentGroup already provides New, Open, Save, etc.
         CommandGroup(after: .newItem) {
             AddFilesCommandButton(locale: locale)
+            AddFolderCommandButton(locale: locale)
             Divider()
             ReduceFileSizeCommandButton(locale: locale)
             MakeSearchableCommandButton(locale: locale)
@@ -24,14 +30,29 @@ struct AppCommands: Commands {
             UndoRedoCommandButtons(locale: locale)
         }
 
+        CommandGroup(after: .textEditing) {
+            FindNavigationCommandButtons(locale: locale)
+        }
+
+        CommandGroup(after: .saveItem) {
+            PrintCommandButton(locale: locale)
+        }
+
         CommandGroup(after: .toolbar) {
             PetBuddyCommandToggle(locale: locale)
             PetSpeciesCommandPicker(locale: locale)
+            Divider()
+            ZoomCommandButtons(locale: locale)
         }
 
         // Replace the default "About" item with the witty popover version
         CommandGroup(replacing: .appInfo) {
             AboutCommandButton(locale: locale)
+        }
+
+        CommandGroup(after: .help) {
+            ViewDocumentationCommandLink(locale: locale)
+            ShowKeyboardShortcutsCommandButton(locale: locale)
         }
     }
 }
@@ -53,6 +74,42 @@ private struct AddFilesCommandButton: View {
         .keyboardShortcut("o", modifiers: [.command, .shift])
         .disabled(viewModel == nil)
     }
+}
+
+private struct AddFolderCommandButton: View {
+    @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
+
+    var body: some View {
+        Button(L10n.string("appCommands.addFolderToWorkspace.button", locale: locale)) {
+            let panel = NSOpenPanel()
+            configureFolderImportOpenPanel(panel)
+            guard panel.runModal() == .OK, let viewModel else { return }
+            let folders = panel.urls
+            Task {
+                let outcome = await importPickedOrDropped(files: [], folders: folders)
+                await MainActor.run {
+                    applyFolderImportOutcome(outcome, into: viewModel) { batch in
+                        presentOverLimitAlert(for: batch, into: viewModel)
+                    }
+                }
+            }
+        }
+        .disabled(viewModel == nil)
+    }
+}
+
+@MainActor
+private func presentOverLimitAlert(for batch: PendingFolderImportBatch, into viewModel: WorkspaceViewModel) {
+    let alert = NSAlert()
+    alert.messageText = folderImportOverLimitTitle(supportedCount: batch.urls.count)
+    if batch.wasTruncated {
+        alert.informativeText = L10n.string("folderImport.overLimit.truncatedNote")
+    }
+    alert.addButton(withTitle: folderImportOverLimitImportFirstLabel(count: maximumImportBatchSize))
+    alert.addButton(withTitle: L10n.string("folderImport.overLimit.cancel"))
+    guard alert.runModal() == .alertFirstButtonReturn else { return }
+    importFirstFromPendingBatch(batch, into: viewModel)
 }
 
 private struct MakeSearchableCommandButton: View {
@@ -98,8 +155,76 @@ private struct UndoRedoCommandButtons: View {
         Button(L10n.string("appCommands.redo.button", locale: locale)) {
             viewModel?.performRedoCommand()
         }
-        .keyboardShortcut("z", modifiers: [.command, .shift])
+        .keyboardShortcut("y", modifiers: .command)
         .disabled(importInProgress || undoManager?.canRedo != true)
+    }
+}
+
+private struct FindNavigationCommandButtons: View {
+    @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
+
+    var body: some View {
+        Button(L10n.string("appCommands.findNext.button", locale: locale)) {
+            viewModel?.searchNext()
+        }
+        .keyboardShortcut("g", modifiers: .command)
+        .disabled(viewModel == nil || viewModel?.searchResults.isEmpty != false)
+
+        Button(L10n.string("appCommands.findPrevious.button", locale: locale)) {
+            viewModel?.searchPrevious()
+        }
+        .keyboardShortcut("g", modifiers: [.command, .shift])
+        .disabled(viewModel == nil || viewModel?.searchResults.isEmpty != false)
+    }
+}
+
+private struct PrintCommandButton: View {
+    @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
+
+    var body: some View {
+        Button(L10n.string("appCommands.print.button", locale: locale)) {
+            NotificationCenter.default.post(name: .orifoldPrint, object: nil)
+        }
+        .keyboardShortcut("p", modifiers: .command)
+        .disabled(viewModel == nil)
+    }
+}
+
+private struct ZoomCommandButtons: View {
+    @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
+
+    var body: some View {
+        Button(L10n.string("appCommands.zoomIn.button", locale: locale)) {
+            viewModel?.zoomIn()
+        }
+        .keyboardShortcut("+", modifiers: .command)
+        .disabled(viewModel == nil)
+
+        Button(L10n.string("appCommands.zoomOut.button", locale: locale)) {
+            viewModel?.zoomOut()
+        }
+        .keyboardShortcut("-", modifiers: .command)
+        .disabled(viewModel == nil)
+
+        Button(L10n.string("appCommands.zoomFit.button", locale: locale)) {
+            viewModel?.zoomFit()
+        }
+        .keyboardShortcut("0", modifiers: .command)
+        .disabled(viewModel == nil)
+    }
+}
+
+private struct ShowKeyboardShortcutsCommandButton: View {
+    var locale: Locale
+
+    var body: some View {
+        Button(L10n.string("appCommands.keyboardShortcuts.button", locale: locale)) {
+            NotificationCenter.default.post(name: .orifoldShowShortcuts, object: nil)
+        }
+        .keyboardShortcut("/", modifiers: .command)
     }
 }
 
@@ -174,5 +299,13 @@ private struct AboutCommandButton: View {
 
     var body: some View {
         Button(L10n.string("appCommands.aboutOrifold.button", locale: locale)) { openWindow(id: "about-orifold") }
+    }
+}
+
+private struct ViewDocumentationCommandLink: View {
+    var locale: Locale
+
+    var body: some View {
+        Link(L10n.string("help.viewDocumentation.button", locale: locale), destination: OrifoldLinks.documentation)
     }
 }
