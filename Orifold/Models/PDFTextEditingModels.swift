@@ -9,7 +9,7 @@ enum PDFTextEditConfidence: String, Codable {
 
 /// Classifies how a detected (or synthesized) text region can actually be edited, so the
 /// click-to-edit UI and export can branch on it instead of treating every region as either
-/// "fully editable" or "blank white box". See docs/features/SMART_TEXT_EDIT_PLAN.md.
+/// "fully editable" or "blank white box".
 enum PDFTextEditability: String, Codable {
     /// Real glyphs with high-confidence bounds/font — edit in place, erase + redraw on export.
     case direct
