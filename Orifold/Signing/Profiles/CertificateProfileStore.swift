@@ -103,9 +103,14 @@ enum CertificateProfileError: Error, Equatable, LocalizedError {
 
     func remove(id: UUID) {
         guard let profile = profiles.first(where: { $0.id == id }) else { return }
+        // Keychain item first, THEN persist the profile removal — if the app is killed
+        // between these two steps, the worst case is a stale profile entry pointing at an
+        // already-deleted Keychain item (harmless, still visible, still deletable again),
+        // rather than the reverse: an orphaned Keychain identity with no profile entry
+        // left to ever find or remove it through.
+        Self.deleteKeychainItem(persistentRef: profile.keychainPersistentRef)
         profiles.removeAll { $0.id == id }
         persist()
-        Self.deleteKeychainItem(persistentRef: profile.keychainPersistentRef)
     }
 
     func resolveIdentity(for profile: DigitalCertificateProfile) throws -> SecuritySigningIdentity {

@@ -453,6 +453,30 @@ final class SignatureSelfCheckTests: XCTestCase {
         XCTAssertFalse(result.coversWholeDocument)
         XCTAssertNil(result.byteRange)
     }
+
+    func testSelfCheckIgnoresADecoyByteRangeInsideAnAppendedAppearanceStream() throws {
+        // Regression pin: the appearance-stream XObject is appended to the file AFTER the
+        // signature object. If its content stream happens to contain the literal bytes
+        // "/ByteRange [...]" (e.g. embedded font metadata, or a comment), a naive
+        // last-match-in-file search would pick up that decoy instead of the real
+        // signature dictionary's ByteRange.
+        let original = try onePagePDFData()
+        let field = SignatureFieldSpec(pageIndex: 0, rect: CGRect(x: 40, y: 60, width: 180, height: 50), signerName: "Signer")
+        let decoyAppearance = PDFAppearanceStream(
+            xobject: Data("% /ByteRange [0000000001 0000000002 0000000003 0000000004]\n".utf8),
+            bbox: CGRect(x: 0, y: 0, width: 180, height: 50)
+        )
+        let signed = try PDFIncrementalSigner().sign(pdf: original, field: field, appearance: decoyAppearance) { _ in
+            Data([0x30, 0x03, 0x02, 0x01, 0x00])
+        }
+
+        let result = SignatureSelfCheck.verify(signedPDF: signed)
+        XCTAssertTrue(result.coversWholeDocument,
+                     "must find the REAL signature's /ByteRange, not the decoy in the appended appearance stream")
+        let byteRange = try XCTUnwrap(result.byteRange)
+        XCTAssertNotEqual(byteRange, [1, 2, 3, 4], "must not have matched the decoy ByteRange")
+        XCTAssertEqual(byteRange[2] + byteRange[3], signed.count)
+    }
 }
 
 // MARK: - Module E: the export-survival bug (currently reproduces as data loss)
