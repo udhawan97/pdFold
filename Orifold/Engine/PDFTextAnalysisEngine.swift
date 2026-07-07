@@ -1104,10 +1104,17 @@ final class PDFTextAnalysisEngine {
     /// this same detected size.
     private func resolveLineFontSize(_ samples: [CharacterSample], lineBounds: CGRect, resolvedFontName: String) -> CGFloat {
         let validSizes = samples.compactMap(\.reportedFontSize).filter { $0.isFinite && $0 > 0 }
-        let inkEstimatedSize = effectiveFontSize(fromInkHeight: lineBounds.height, fontName: resolvedFontName)
+        let lineText = String(String.UnicodeScalarView(samples.map(\.scalar)))
+        let inkEstimatedSize = effectiveFontSize(fromInkHeight: lineBounds.height, fontName: resolvedFontName, lineText: lineText)
         if !validSizes.isEmpty {
             let reported = median(validSizes)
             guard inkEstimatedSize > 0 else { return reported }
+            // Marks/punctuation-only content ("...", "—", bullet glyphs) inks far less
+            // than any letter model predicts — the band check is meaningless there, and
+            // the reported size is the only trustworthy signal.
+            guard lineText.unicodeScalars.contains(where: { CharacterSet.alphanumerics.contains($0) }) else {
+                return reported
+            }
             let upperPlausible = inkEstimatedSize * 1.08
             let lowerPlausible = inkEstimatedSize * 0.85
             if reported > upperPlausible || reported < lowerPlausible {
@@ -1118,29 +1125,74 @@ final class PDFTextAnalysisEngine {
         return inkEstimatedSize > 0 ? inkEstimatedSize : 12
     }
 
-    /// Ratio of a font's typical rendered ink height (cap height down to the descender) to
-    /// its point size, cached per PostScript name since this is looked up on every detected
-    /// line. Fonts vary meaningfully here (Courier New ≈0.87, Georgia ≈0.91, Helvetica
-    /// ≈0.95) — using one fixed constant for all of them is what produced a font-dependent,
-    /// but consistent-per-document, font-size error.
-    private static var inkRatioCache: [String: CGFloat] = [:]
-    private static let fallbackInkRatio: CGFloat = 1 / 1.15
+    /// Ratio of a line's rendered ink height to its point size, cached per PostScript
+    /// name + character-class combination since this is looked up on every detected line.
+    /// Fonts vary meaningfully (Courier New ≈0.87, Georgia ≈0.91, Helvetica ≈0.95 for the
+    /// full cap-to-descender span) — but the CHARACTERS on the line matter even more: a
+    /// line with no capitals/digits/ascenders/descenders ("nunc.") only inks its x-height
+    /// (≈0.52 of the point size for Helvetica), and a lowercase line without descenders
+    /// ("maximus ultricies.") tops out at the ascender with nothing below the baseline.
+    /// Modeling every line as cap-to-descender made those lines' ink look like a much
+    /// smaller font, which made `resolveLineFontSize` reject PDFium's CORRECT reported
+    /// size as implausible and substitute a badly-undersized estimate — the same wrong
+    /// value then flowed into Match/Copy format AND broke paragraph merging (blocks only
+    /// merge within an 8% size tolerance), fragmenting body paragraphs into stray
+    /// single-word blocks with sizes like 6.4/8.6 next to their 10.7pt neighbors.
+    private struct InkExtentClass: Hashable {
+        var fontName: String
+        var hasCapsOrDigits: Bool
+        var hasAscenders: Bool
+        var hasDescenders: Bool
+    }
 
-    private static func inkRatio(forFontName fontName: String) -> CGFloat {
-        if let cached = inkRatioCache[fontName] { return cached }
-        guard let font = NSFont(name: fontName, size: 1), font.capHeight > 0 else {
-            inkRatioCache[fontName] = fallbackInkRatio
+    private static var inkRatioCache: [InkExtentClass: CGFloat] = [:]
+    private static let fallbackInkRatio: CGFloat = 1 / 1.15
+    private static let asciiAscenders = CharacterSet(charactersIn: "bdfhkltij")
+    private static let asciiDescenders = CharacterSet(charactersIn: "gjpqy")
+    private static let capsOrDigits = CharacterSet.uppercaseLetters.union(.decimalDigits)
+
+    private static func inkRatio(forFontName fontName: String, lineText: String?) -> CGFloat {
+        var extentClass = InkExtentClass(
+            fontName: fontName,
+            hasCapsOrDigits: true,
+            hasAscenders: true,
+            hasDescenders: true
+        )
+        // Character-aware extents only when the line is plain Latin text we can classify;
+        // other scripts (CJK occupies nearly the full em, Arabic/Indic have their own
+        // vertical anatomy) keep the conservative full-span model.
+        if let lineText {
+            let scalars = lineText.unicodeScalars.filter { CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0) }
+            let isClassifiableLatin = !scalars.isEmpty && scalars.allSatisfy { $0.isASCII }
+            if isClassifiableLatin {
+                extentClass.hasCapsOrDigits = scalars.contains { capsOrDigits.contains($0) }
+                extentClass.hasAscenders = scalars.contains { asciiAscenders.contains($0) }
+                extentClass.hasDescenders = scalars.contains { asciiDescenders.contains($0) }
+            }
+        }
+        if let cached = inkRatioCache[extentClass] { return cached }
+        guard let font = NSFont(name: fontName, size: 1), font.capHeight > 0, font.xHeight > 0 else {
+            inkRatioCache[extentClass] = fallbackInkRatio
             return fallbackInkRatio
         }
-        let ratio = font.capHeight - font.descender
+        // `font.ascender` is deliberately NOT used for the ascender case: the metric
+        // includes line-fitting headroom above any actual glyph ink (Times' ascender
+        // metric is ~0.89/em while its tallest lowercase ink sits near the ~0.66 cap
+        // height), so modeling ascender lines with it overestimates the expected ink and
+        // undersizes the font by 15-20%. Real lowercase ascenders ('l', 'd', 'b') top out
+        // at — or a hair above — the cap height in common text faces, so cap height is
+        // the honest expected extent for both the caps and the ascenders classes.
+        let top = (extentClass.hasCapsOrDigits || extentClass.hasAscenders) ? font.capHeight : font.xHeight
+        let bottom = extentClass.hasDescenders ? -font.descender : 0
+        let ratio = top + bottom
         let resolved = ratio > 0 ? ratio : fallbackInkRatio
-        inkRatioCache[fontName] = resolved
+        inkRatioCache[extentClass] = resolved
         return resolved
     }
 
-    private func effectiveFontSize(fromInkHeight inkHeight: CGFloat, fontName: String) -> CGFloat {
+    private func effectiveFontSize(fromInkHeight inkHeight: CGFloat, fontName: String, lineText: String? = nil) -> CGFloat {
         guard inkHeight.isFinite, inkHeight > 0 else { return 0 }
-        let ratio = Self.inkRatio(forFontName: fontName)
+        let ratio = Self.inkRatio(forFontName: fontName, lineText: lineText)
         return max(4, inkHeight / ratio)
     }
 }

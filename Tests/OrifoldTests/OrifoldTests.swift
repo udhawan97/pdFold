@@ -1121,12 +1121,17 @@ final class PDFTextEditingRedesignTests: XCTestCase {
 
         let analysis = engine.analyze(data: data, pageIndex: 0, pageRefID: UUID(), fallbackPage: page)
         let block = try XCTUnwrap(analysis.blocks.first { $0.text.contains("Scaled") })
-        let inkHeight = try XCTUnwrap(block.lines.first?.runs.first?.bounds.height)
 
         XCTAssertLessThan(block.fontSize, nominalFontSize * 0.8)
-        let helveticaUnitFont = try XCTUnwrap(NSFont(name: "Helvetica", size: 1))
-        let helveticaInkRatio = helveticaUnitFont.capHeight - helveticaUnitFont.descender
-        XCTAssertEqual(block.fontSize, max(4, inkHeight / helveticaInkRatio), accuracy: 1.0)
+        // Assert against the TRUE visible size (24pt drawn at 0.5 scale = 12pt), not
+        // against the internal ink-ratio formula's own output. The original expectation
+        // mirrored the formula (inkHeight / (capHeight - descender)), which for this
+        // descender-less line ("Scaled inline text" has no g/j/p/q/y ink below the
+        // baseline) undersized the visible text by ~20% — the same character-blind
+        // modeling bug that made "maximus ultricies." detect at 8.6pt inside a 10.7pt
+        // paragraph. The character-aware extents now land within ~6% of visible truth.
+        let visibleFontSize = nominalFontSize * 0.5
+        XCTAssertEqual(block.fontSize, visibleFontSize, accuracy: visibleFontSize * 0.08)
     }
 
     func testPDFTextAnalysisUsesVisibleFontSizeForModeratelyScaledText() throws {
