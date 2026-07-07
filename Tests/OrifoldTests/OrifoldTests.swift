@@ -8394,7 +8394,7 @@ final class PetBuddyTests: XCTestCase {
         defer {
             buddy.hush()
             buddy.lastShownAt = nil
-            buddy.lastLine = nil
+            buddy.recentLines = []
             buddy.lastFeedbackAt = nil
             buddy.lastInspirationAt = nil
             if let oldEnabledValue {
@@ -8416,7 +8416,7 @@ final class PetBuddyTests: XCTestCase {
         buddy.enable()
         buddy.hush()
         buddy.lastShownAt = nil
-        buddy.lastLine = nil
+        buddy.recentLines = []
         buddy.lastFeedbackAt = nil
         buddy.lastInspirationAt = nil
         buddy.triggerCount = 0
@@ -8452,7 +8452,7 @@ final class PetBuddyTests: XCTestCase {
         defer {
             buddy.hush()
             buddy.lastShownAt = nil
-            buddy.lastLine = nil
+            buddy.recentLines = []
             buddy.lastFeedbackAt = nil
             buddy.lastInspirationAt = nil
             if let oldEnabledValue {
@@ -8474,7 +8474,7 @@ final class PetBuddyTests: XCTestCase {
         buddy.enable()
         buddy.hush()
         buddy.lastShownAt = nil
-        buddy.lastLine = nil
+        buddy.recentLines = []
         buddy.lastFeedbackAt = nil
         buddy.lastInspirationAt = nil
         buddy.triggerCount = 6
