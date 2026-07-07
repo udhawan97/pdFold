@@ -83,8 +83,36 @@ final class InlineEditReconciliationTests: XCTestCase {
         )
     }
 
+    /// Reading-order text of the live member's `pageIndex`, extracted via PDFium
+    /// (`PDFTextAnalysisEngine`), NOT PDFKit's `.attributedString`/`.string`. PDFKit's
+    /// CoreText extraction scrambles/undercounts characters on regenerated (edited) pages
+    /// under CI's Xcode 16.4 PDFKit — see [[ci-xcode164-pdfkit-string-extraction-quirk]] —
+    /// which made these assertions pass locally (Xcode 26.6) but fail on CI. Reads the LIVE
+    /// loadedPDFs document's current bytes (memberPDFData can lag behind in-place ops).
     private func pageText(_ viewModel: WorkspaceViewModel, pageIndex: Int) -> String {
-        viewModel.loadedPDFs.first?.1.page(at: pageIndex)?.attributedString?.string ?? ""
+        guard let pdf = viewModel.loadedPDFs.first?.1,
+              let data = pdf.dataRepresentation() else { return "" }
+        return Self.pageText(fromData: data, pageIndex: pageIndex)
+    }
+
+    /// Reading-order text of `pageIndex` in `data`, joined with spaces (PDFium-backed).
+    static func pageText(fromData data: Data, pageIndex: Int) -> String {
+        guard let page = PDFDocument(data: data)?.page(at: pageIndex) else { return "" }
+        let ordered = PDFTextAnalysisEngine()
+            .analyze(data: data, pageIndex: pageIndex, pageRefID: UUID(), fallbackPage: page)
+            .blocks
+            .sorted { lhs, rhs in
+                let ly = lhs.bounds.standardized.midY, ry = rhs.bounds.standardized.midY
+                if abs(ly - ry) > max(lhs.bounds.height, rhs.bounds.height) { return ly > ry }
+                return lhs.bounds.standardized.midX < rhs.bounds.standardized.midX
+            }
+        return ordered.map(\.text).joined(separator: " ")
+    }
+
+    /// Reading-order text across ALL pages of `data`, joined (PDFium-backed).
+    static func allPagesText(fromData data: Data) -> String {
+        guard let pdf = PDFDocument(data: data) else { return "" }
+        return (0..<pdf.pageCount).map { pageText(fromData: data, pageIndex: $0) }.joined(separator: "\n")
     }
 
     /// Builds a LEGACY trapped file byte-for-byte the way older builds left them: flat
@@ -136,8 +164,8 @@ final class InlineEditReconciliationTests: XCTestCase {
         let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("Orifold-reconcile-\(UUID().uuidString).pdf")
         defer { try? FileManager.default.removeItem(at: outputURL) }
         XCTAssertTrue(viewModel.saveFlattenedPDF(to: outputURL))
-        let reopened = try XCTUnwrap(PDFDocument(data: Data(contentsOf: outputURL)))
-        let reopenedText = (0..<reopened.pageCount).compactMap { reopened.page(at: $0)?.attributedString?.string }.joined()
+        let reopenedData = try Data(contentsOf: outputURL)
+        let reopenedText = Self.allPagesText(fromData: reopenedData)
         XCTAssertTrue(reopenedText.contains("Alpha healed paragraph yolo"),
                       "the healed edit must survive export + fresh reopen")
     }
@@ -209,8 +237,7 @@ final class InlineEditReconciliationTests: XCTestCase {
         XCTAssertTrue(viewModel.hasInlineTextEdits)
 
         let exported = try viewModel.dataForPDFExport()
-        let exportedPDF = try XCTUnwrap(PDFDocument(data: exported))
-        let exportedText = (0..<exportedPDF.pageCount).compactMap { exportedPDF.page(at: $0)?.attributedString?.string }.joined()
+        let exportedText = Self.allPagesText(fromData: exported)
         XCTAssertTrue(exportedText.contains("Epsilon exported edit token"),
                       "export must reconcile committed operations into the bytes it writes")
     }
