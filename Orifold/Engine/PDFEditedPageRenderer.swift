@@ -156,6 +156,16 @@ enum PDFEditedPageRenderer {
 
     private static func drawReplacement(_ operation: PDFTextEditOperation, in context: CGContext) {
         context.saveGState()
+        // The page background drawn just before this (`drawPageBackground`) replays the
+        // ORIGINAL page's own content stream via `drawPDFPage`/`PDFPage.draw`. When that
+        // page contains ANY invisible (`Tr 3`) text anywhere — the ordinary OCR-layer-under-
+        // a-scan pattern — CoreGraphics' current text-drawing-mode state was observed (via a
+        // hand-built repro) to leak forward into this context past that draw call, silently
+        // making every subsequent replacement on the page invisible too, even for edits that
+        // have nothing to do with the hidden text. `saveGState`/`restoreGState` alone doesn't
+        // protect against this. Force it back to normal fill before every replacement so a
+        // scanned+OCR page's edits can never render as invisible ghost text with no error.
+        context.setTextDrawingMode(.fill)
         let layout = ReplacementTextLayout(operation: operation)
         context.textMatrix = .identity
         layout.draw(in: context, bounds: operation.editedBounds)
