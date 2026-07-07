@@ -39,6 +39,8 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(after: .toolbar) {
+            ViewToggleCommandButtons(locale: locale)
+            Divider()
             PetBuddyCommandToggle(locale: locale)
             PetSpeciesCommandPicker(locale: locale)
             Divider()
@@ -155,8 +157,33 @@ private struct UndoRedoCommandButtons: View {
         Button(L10n.string("appCommands.redo.button", locale: locale)) {
             viewModel?.performRedoCommand()
         }
-        .keyboardShortcut("y", modifiers: .command)
+        // Mac convention is ⇧⌘Z, not the ⌘Y that had been bound here.
+        .keyboardShortcut("z", modifiers: [.command, .shift])
         .disabled(importInProgress || undoManager?.canRedo != true)
+    }
+}
+
+/// Reader mode and Table of Contents used to carry their shortcuts on toolbar buttons. Now
+/// that those controls live behind the More overflow, the shortcuts belong in the View menu as
+/// first-class, menu-bar-discoverable commands. They post notifications rather than mutate the
+/// view model directly, because the toggles also touch `ContentView`-local state (the inspector
+/// tab / column visibility) that `@FocusedValue` can't reach.
+private struct ViewToggleCommandButtons: View {
+    @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
+
+    var body: some View {
+        Button(L10n.string("toolbar.readerMode.label", locale: locale)) {
+            NotificationCenter.default.post(name: .orifoldToggleReaderMode, object: nil)
+        }
+        .keyboardShortcut("r", modifiers: [.command, .shift])
+        .disabled(viewModel == nil)
+
+        Button(L10n.string("toolbar.contents.label", locale: locale)) {
+            NotificationCenter.default.post(name: .orifoldToggleTableOfContents, object: nil)
+        }
+        .keyboardShortcut("1", modifiers: [.command, .option])
+        .disabled(viewModel == nil)
     }
 }
 
