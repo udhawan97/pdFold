@@ -40713,6 +40713,47 @@
           }
         }
       }
+    },
+    "status.textEdit.editorLostPage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This page changed while you were editing, so the edit couldn’t be applied. Click the text again to edit it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta página cambió mientras editabas, por lo que no se pudo aplicar la edición. Haz clic en el texto de nuevo para editarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette page a changé pendant votre modification, l’édition n’a donc pas pu être appliquée. Cliquez à nouveau sur le texte pour le modifier."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "संपादन के दौरान यह पृष्ठ बदल गया, इसलिए संपादन लागू नहीं किया जा सका। इसे संपादित करने के लिए फिर से टेक्स्ट पर क्लिक करें।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編集中にこのページが変更されたため、編集を適用できませんでした。編集するにはテキストをもう一度クリックしてください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑时此页面已更改，因此无法应用编辑。请再次点击文本以进行编辑。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

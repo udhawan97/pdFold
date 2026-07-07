@@ -612,14 +612,24 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 }
             case .editText:
                 inlineEditor?.finishForHandoff()
-                if let target = viewModel.editableTextBlock(at: pagePoint, on: page, in: pdfView.document) {
+                // Re-resolve the page from the CURRENT document: finishForHandoff may have
+                // committed the previous editor, which synchronously swaps pdfView.document
+                // and deallocates the `page`/`pagePoint` captured above. Using the stale
+                // page made the follow-up hit-test resolve to no PageRef (NSNotFound),
+                // silently swallowing the click so the second editor never opened.
+                guard let liveView = self.pdfView,
+                      let livePage = liveView.page(for: viewPoint, nearest: true),
+                      !(livePage is BoundaryPage) else { return }
+                let livePagePoint = liveView.convert(viewPoint, to: livePage)
+                if let target = viewModel.editableTextBlock(at: livePagePoint, on: livePage, in: liveView.document) {
                     announceEditability(of: target.block)
                     showInlineTextEditor(
                         for: target.block,
                         pageRef: target.pageRef,
                         sourceFormat: target.sourceFormat,
-                        on: page,
-                        in: pdfView
+                        matchFormat: target.matchFormat,
+                        on: livePage,
+                        in: liveView
                     )
                 }
             case .signature:
@@ -768,6 +778,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
             for block: EditableTextBlock,
             pageRef: PageRef,
             sourceFormat: PDFTextEditFormat,
+            matchFormat: PDFTextEditFormat,
             on page: PDFPage,
             in pdfView: OrifoldPDFView
         ) {
@@ -784,12 +795,17 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 pageRef: pageRef,
                 block: block,
                 sourceFormat: sourceFormat,
+                matchFormat: matchFormat,
                 isExistingEdit: isExistingEdit
-            ) { [weak self, weak pdfView] result in
-                guard let self else { return }
+            ) { [weak self, weak pdfView] result -> Bool in
+                guard let self else { return true }
+                // Returns whether the result was ACCEPTED. On a rejected commit the overlay
+                // keeps itself installed and reopens for editing, so `inlineEditor` must stay
+                // pointing at it — only clear the reference on an accepted outcome.
+                let accepted: Bool
                 switch result {
                 case .commit(let edit):
-                    self.mutateDocumentPreservingViewport(in: pdfView) {
+                    accepted = self.mutateDocumentPreservingViewport(in: pdfView) {
                         self.viewModel.applyInlineTextEdit(
                             pageRef: edit.pageRef,
                             sourceBlock: edit.block,
@@ -809,13 +825,17 @@ struct PDFViewRepresentable: NSViewRepresentable {
                         )
                     }
                 case .revertToOriginal:
-                    self.mutateDocumentPreservingViewport(in: pdfView) {
+                    _ = self.mutateDocumentPreservingViewport(in: pdfView) {
                         self.viewModel.revertInlineTextEdit(pageRefID: pageRef.id, sourceBlockID: block.id)
                     }
+                    accepted = true
                 case .cancel:
-                    break
+                    accepted = true
                 }
-                inlineEditor = nil
+                if accepted {
+                    inlineEditor = nil
+                }
+                return accepted
             }
             editor.autoresizingMask = [.width, .height]
             inlineEditor = editor
@@ -826,10 +846,14 @@ struct PDFViewRepresentable: NSViewRepresentable {
         /// Runs a document-regenerating mutation while pinning the scroll viewport.
         /// Captures the actual scroll origin first — in continuous mode PDFKit's
         /// currentPage can be a different page than the mutation target, so page-based
-        /// restoration alone can visibly jump after the document is regenerated.
-        private func mutateDocumentPreservingViewport(in pdfView: OrifoldPDFView?, _ mutation: () -> Bool) {
-            guard mutation() else { return }
+        /// restoration alone can visibly jump after the document is regenerated. Returns
+        /// whether the mutation itself succeeded (so a rejected commit can keep the editor
+        /// open instead of silently discarding the user's text).
+        @discardableResult
+        private func mutateDocumentPreservingViewport(in pdfView: OrifoldPDFView?, _ mutation: () -> Bool) -> Bool {
+            guard mutation() else { return false }
             syncDocumentPreservingViewport(pdfView, newDocument: viewModel.combinedPDF)
+            return true
         }
 
         /// Swaps `pdfView.document` to `newDocument` (if it actually changed) while
@@ -2379,8 +2403,23 @@ final class NoteEditorViewController: NSViewController {
     private let pageRef: PageRef
     private let block: EditableTextBlock
     private let sourceFormat: PDFTextEditFormat
+    /// The style Match Format applies: the INFERRED nearby/dominant body style computed
+    /// at click time (see `WorkspaceViewModel.inferredNearbyMatchFormat`), distinct from
+    /// `sourceFormat` (this block's own original style, which is what Reset restores).
+    /// Previously Match applied `sourceFormat` — a visual no-op that still flagged the
+    /// session as style-changed and committed a spurious re-render on Done.
+    private let matchFormat: PDFTextEditFormat
     private let isExistingEdit: Bool
-    private let completion: (Completion) -> Void
+    /// Returns whether the result was actually accepted. A `.commit` can be rejected
+    /// (busy import/compression/OCR, missing pristine base) — the editor then stays open
+    /// so the user's typed text is never silently discarded.
+    private let completion: (Completion) -> Bool
+    /// Editor-local undo scope. Without this, `textView.undoManager` resolved through
+    /// the responder chain to the shared WINDOW undo manager — the same stack every
+    /// document operation registers on — so Cmd-Z inside the editor could undo a page
+    /// delete (swapping the document underneath the open editor), and discarded typing
+    /// groups lingered on the document stack after Done/Cancel.
+    private let editorUndoManager = UndoManager()
     private let patchView = NSView()
     private let toolbar = NSView()
     private let textView = InlineEditableTextView()
@@ -2514,8 +2553,9 @@ final class NoteEditorViewController: NSViewController {
         pageRef: PageRef,
         block: EditableTextBlock,
         sourceFormat: PDFTextEditFormat,
+        matchFormat: PDFTextEditFormat? = nil,
         isExistingEdit: Bool = false,
-        completion: @escaping (Completion) -> Void
+        completion: @escaping (Completion) -> Bool
     ) {
         self.viewModel = viewModel
         self.pdfView = pdfView
@@ -2523,6 +2563,7 @@ final class NoteEditorViewController: NSViewController {
         self.pageRef = pageRef
         self.block = block
         self.sourceFormat = sourceFormat
+        self.matchFormat = matchFormat ?? sourceFormat
         self.isExistingEdit = isExistingEdit
         self.completion = completion
         // Preserve the ORIGINAL detected point size so edited text renders at the same size
@@ -2577,7 +2618,7 @@ final class NoteEditorViewController: NSViewController {
         // make Undo see no undo manager (or a different one) than the one that actually
         // recorded the edit, reporting "nothing to undo" even immediately after one.
         pdfView?.window?.makeFirstResponder(pdfView)
-        completion(.cancel)
+        _ = completion(.cancel)
     }
 
     func containsInteractivePoint(_ pdfViewPoint: CGPoint) -> Bool {
@@ -2628,7 +2669,7 @@ final class NoteEditorViewController: NSViewController {
         super.viewWillMove(toWindow: newWindow)
         if newWindow == nil, !didFinish {
             didFinish = true
-            completion(.cancel)
+            _ = completion(.cancel)
         }
     }
 
@@ -2648,6 +2689,7 @@ final class NoteEditorViewController: NSViewController {
         addSubview(patchView)
 
         textView.delegate = self
+        textView.isolatedUndoManager = editorUndoManager
         textView.string = block.text
         textView.isRichText = false
         textView.isEditable = true
@@ -3291,11 +3333,16 @@ final class NoteEditorViewController: NSViewController {
     }
 
     private func resizeEditor(by delta: CGPoint) {
-        didManuallyResizeWidth = true
-        didManuallyResizeHeight = true
         var frame = textView.frame
-        frame.size.width = max(48, frame.width + delta.x)
-        frame.size.height = max(max(24, ceil(displayFontSize * 1.55)), frame.height - delta.y)
+        let newWidth = max(48, frame.width + delta.x)
+        let newHeight = max(max(24, ceil(displayFontSize * 1.55)), frame.height - delta.y)
+        // Flag only the axis the drag actually changed: a purely horizontal drag that
+        // also set the height flag froze auto-growth, so text typed afterwards silently
+        // clipped against the accidentally-frozen height.
+        if abs(newWidth - frame.width) > 0.5 { didManuallyResizeWidth = true }
+        if abs(newHeight - frame.height) > 0.5 { didManuallyResizeHeight = true }
+        frame.size.width = newWidth
+        frame.size.height = newHeight
         frame.origin.y = editorTopY - frame.height
         textView.frame = frame
         updateTextContainerWidth()
@@ -3432,10 +3479,18 @@ final class NoteEditorViewController: NSViewController {
     }
 
     @objc private func matchNearbyFormat() {
-        // "Match Nearby Format" intentionally also adopts the nearby paragraph's own
-        // bounds/column (its whole purpose is lining this edit up with that paragraph),
-        // unlike Copy/Paste Style below.
-        applySourceFormat(markStyleChange: true, applyGeometry: true)
+        // "Match Nearby Format" applies the INFERRED nearby/dominant body style computed
+        // at click time — not this block's own `sourceFormat` (that's Reset's job), which
+        // made Match a visual no-op that still committed a spurious re-render on Done.
+        // It intentionally also adopts the matched paragraph's bounds/column (its whole
+        // purpose is lining this edit up with that paragraph) — EXCEPT for insertions,
+        // whose box must stay where the user clicked: adopting a neighbor's footprint
+        // teleported the new text on top of that neighbor's ink.
+        var format = matchFormat
+        if isInsertionBlock {
+            format.bounds = nil
+        }
+        apply(format: format, markStyleChange: true, applyGeometry: true)
         viewModel?.showEditMessage(L10n.string("status.textEdit.matchedNearbyFormat"), severity: .success)
         refocusEditor()
     }
@@ -3500,12 +3555,13 @@ final class NoteEditorViewController: NSViewController {
         // Deliberately does NOT call the shared `disarmFormatPainter()`: Restore is a
         // per-block action with no inherent connection to Format Painter, and a pinned copy
         // may have been armed from a DIFFERENT, already-closed editor and is still pending a
-        // paste elsewhere — wiping `copiedInlineTextFormat`/`isFormatPainterPinned` here would
-        // silently discard that unrelated, not-yet-used copy just because the user reverted
-        // an unrelated style tweak in THIS editor. Only clear this editor's own armed flag if
-        // IT happens to be the one currently armed (Copy Style was clicked in this same
-        // session) — never a pin/copy that belongs to another block.
-        viewModel?.isInlineTextFormatPainterArmed = false
+        // paste elsewhere — wiping the pin here would silently discard that unrelated,
+        // not-yet-used copy just because the user reverted an unrelated style tweak in
+        // THIS editor. A PINNED painter therefore stays armed; only a plain (one-shot)
+        // armed copy is cleared.
+        if viewModel?.isFormatPainterPinned != true {
+            viewModel?.isInlineTextFormatPainterArmed = false
+        }
         viewModel?.showEditMessage(L10n.string("status.textEdit.restoredOriginal"), severity: .success)
         refocusEditor()
     }
@@ -3523,6 +3579,7 @@ final class NoteEditorViewController: NSViewController {
     }
 
     private func apply(format: PDFTextEditFormat, markStyleChange: Bool, applyGeometry: Bool) {
+        let previousStyle = (editorFontFamily, documentFontSize, editorTextColor, editorAlignment, editorUnderline, editorFontTraits)
         documentFontSize = format.fontSize > 0 ? format.fontSize : originalFontSize
         let sourceFont = NSFont(name: format.fontName, size: documentFontSize) ?? .systemFont(ofSize: documentFontSize)
         editorFontFamily = Self.editingFamilyName(for: sourceFont, fallback: format.fontName)
@@ -3533,7 +3590,18 @@ final class NoteEditorViewController: NSViewController {
         if applyGeometry {
             applyParagraphGeometry(from: format)
         }
-        if markStyleChange {
+        // Only flag a style change when something actually changed — flagging a no-op
+        // application (e.g. matching a style identical to the current one) defeated
+        // `shouldCancelWithoutCommit`, so pressing Done with zero real changes still
+        // baked a re-rendered replacement in an approximated font.
+        let styleActuallyChanged =
+            previousStyle.0 != editorFontFamily ||
+            abs(previousStyle.1 - documentFontSize) >= 0.01 ||
+            !Self.colorsApproximatelyEqual(previousStyle.2, editorTextColor, tolerance: 0.005) ||
+            previousStyle.3 != editorAlignment ||
+            previousStyle.4 != editorUnderline ||
+            previousStyle.5 != editorFontTraits
+        if markStyleChange, styleActuallyChanged {
             didChangeStyle = true
             didRestoreOriginalStyle = false
         }
@@ -3543,6 +3611,25 @@ final class NoteEditorViewController: NSViewController {
 
     private func applyParagraphGeometry(from format: PDFTextEditFormat) {
         guard !didManuallyResizeWidth else { return }
+        // Adopting geometry identical to this block's own footprint is not a "matched
+        // geometry" event — flagging it made the renderer erase the destination box for
+        // what was effectively a no-op, and made Done commit spuriously.
+        let ownBounds = block.bounds.standardized
+        let newBounds = format.bounds?.standardized
+        let boundsDiffer = newBounds.map { candidate in
+            abs(candidate.minX - ownBounds.minX) > 1 ||
+            abs(candidate.maxY - ownBounds.maxY) > 1 ||
+            abs(candidate.width - ownBounds.width) > 2
+        } ?? false
+        let ownColumn = block.columnBounds?.standardized
+        let newColumn = format.columnBounds?.standardized
+        let columnsDiffer: Bool
+        if let newColumn, let ownColumn {
+            columnsDiffer = abs(newColumn.minX - ownColumn.minX) > 1 || abs(newColumn.maxX - ownColumn.maxX) > 1
+        } else {
+            columnsDiffer = (newColumn != nil) != (ownColumn != nil)
+        }
+        guard boundsDiffer || columnsDiffer else { return }
         matchedFormatBounds = format.bounds
         matchedFormatColumnBounds = format.columnBounds
         didApplyMatchedGeometry = true
@@ -3945,7 +4032,21 @@ final class NoteEditorViewController: NSViewController {
     }
 
     @objc fileprivate func commitButton() {
-        guard !didFinish, let pdfView, let page else { return }
+        guard !didFinish else { return }
+        guard let pdfView, let page else {
+            // The document was swapped/reloaded underneath this editor (undo, inspector
+            // revert, OCR, …) and the weak page reference died: the pending geometry can
+            // no longer be converted to page space. Tear down LOUDLY — a silent return
+            // left a zombie overlay whose Done button did nothing, whose box floated
+            // over arbitrary content, and which tripped the one-editor assertion on the
+            // next click.
+            didFinish = true
+            removeFromSuperview()
+            pdfView?.window?.makeFirstResponder(pdfView)
+            viewModel?.showEditMessage(L10n.string("status.textEdit.editorLostPage"), isError: true)
+            _ = completion(.cancel)
+            return
+        }
         _ = commitSizeFieldValue()
         if shouldCancelWithoutCommit {
             cancel()
@@ -4001,6 +4102,15 @@ final class NoteEditorViewController: NSViewController {
             didApplyMatchedGeometry: didApplyMatchedGeometry,
             didRestoreOriginalStyle: didRestoreOriginalStyle
         )
+        // Apply FIRST, tear down only on acceptance: applyInlineTextEdit legitimately
+        // rejects commits (busy import/compression/OCR, missing pristine base), and
+        // tearing the editor down before knowing that silently discarded everything the
+        // user typed with only a status toast left behind.
+        guard completion(.commit(result)) else {
+            didFinish = false
+            refocusEditor()
+            return
+        }
         if formattingDiffersFromSource {
             viewModel?.showEditMessage(L10n.string("status.textEdit.formatMismatch"), isError: false)
         }
@@ -4008,7 +4118,6 @@ final class NoteEditorViewController: NSViewController {
         // See the comment in `cancel()`: restores a stable first responder so the document
         // undo manager resolves correctly right after committing.
         pdfView.window?.makeFirstResponder(pdfView)
-        completion(.commit(result))
     }
 
     private var formattingDiffersFromSource: Bool {
@@ -4029,13 +4138,22 @@ final class NoteEditorViewController: NSViewController {
     }
 
     private func preferredPageOriginX() -> CGFloat {
-        if let columnBounds = effectiveColumnBounds?.standardized {
-            return columnBounds.minX
-        }
-        if let bounds = matchedFormatBounds?.standardized {
+        // Explicitly matched geometry (Match Format) wins: lining up with that paragraph
+        // is the point of the action.
+        if let bounds = matchedFormatBounds?.standardized, bounds.width > 0 {
             return bounds.minX
         }
-        return block.bounds.standardized.minX
+        let ownX = block.bounds.standardized.minX
+        if let columnBounds = effectiveColumnBounds?.standardized {
+            // Snap to the column's left edge only when this block actually sits on it.
+            // Insertions and PDFKit-fallback lines carry a page-wide column whose minX
+            // is the page margin — snapping there teleported the committed text to the
+            // far-left margin, away from where the live editor showed it.
+            if abs(ownX - columnBounds.minX) <= max(8, documentFontSize) {
+                return columnBounds.minX
+            }
+        }
+        return ownX
     }
 
     private var committedFormatBounds: CGRect? {
@@ -4069,7 +4187,11 @@ final class NoteEditorViewController: NSViewController {
             !didManuallyReposition &&
             !didManuallyResizeWidth &&
             !didManuallyResizeHeight &&
-            !didChangeStyle
+            !didChangeStyle &&
+            // A genuine matched-geometry adoption (Match Format lining this edit up with a
+            // different paragraph's column) is a real change even when the text and style
+            // attributes are unchanged — it must commit, not silently cancel.
+            !didApplyMatchedGeometry
     }
 
     @objc private func cancelButton() {
@@ -4083,7 +4205,7 @@ final class NoteEditorViewController: NSViewController {
         // See the comment in `cancel()`: restores a stable first responder so the document
         // undo manager resolves correctly right after reverting.
         pdfView?.window?.makeFirstResponder(pdfView)
-        completion(.revertToOriginal)
+        _ = completion(.revertToOriginal)
     }
 
     @objc private func addSignatureBox() {
@@ -4101,6 +4223,14 @@ final class NoteEditorViewController: NSViewController {
 }
 
 final class InlineEditableTextView: NSTextView {
+    /// A dedicated undo manager for typing inside the editor. Without this override,
+    /// `NSTextView.undoManager` resolves through the responder chain to the shared
+    /// WINDOW undo manager — the same stack every document mutation registers on — so
+    /// Cmd-Z in the editor could undo a page delete (swapping the document underneath
+    /// the editor) and every typing group leaked onto the document stack after Done.
+    var isolatedUndoManager: UndoManager?
+    override var undoManager: UndoManager? { isolatedUndoManager ?? super.undoManager }
+
     var onMoveDrag: ((CGPoint) -> Void)?
     var onEscape: (() -> Void)?
     var onUndoShortcut: (() -> Void)?

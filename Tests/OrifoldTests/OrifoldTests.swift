@@ -497,6 +497,7 @@ final class PDFTextEditingRedesignTests: XCTestCase {
             pageRef: pageRef, block: row0, sourceFormat: PDFTextEditFormat(block: row0)
         ) { result in
             if case .commit(let edit) = result { committed = edit }
+            return true
         }
         pdfView.addSubview(overlay)
         overlay.layoutSubtreeIfNeeded()
@@ -3092,7 +3093,7 @@ final class InlineTextEditPlacementTests: XCTestCase {
         let overlay = InlineTextEditorOverlay(
             frame: pdfView.bounds, viewModel: viewModel, pdfView: pdfView, page: page,
             pageRef: pageRef, block: block, sourceFormat: PDFTextEditFormat(block: block)
-        ) { _ in }
+        ) { _ in true }
         pdfView.addSubview(overlay)
         overlay.layoutSubtreeIfNeeded()
 
@@ -3560,7 +3561,7 @@ final class InlineTextEditPlacementTests: XCTestCase {
             pageRef: pageRef,
             block: sourceBlock,
             sourceFormat: PDFTextEditFormat(block: sourceBlock)
-        ) { _ in }
+        ) { _ in true }
         pdfView.addSubview(sourceOverlay)
         sourceOverlay.layoutSubtreeIfNeeded()
         let copyButton = try XCTUnwrap(inlineEditorButton(in: sourceOverlay, identifier: "inlineEditor.copyNearbyFormat"))
@@ -3585,6 +3586,7 @@ final class InlineTextEditPlacementTests: XCTestCase {
             sourceFormat: PDFTextEditFormat(block: targetBlock)
         ) { completion in
             if case .commit(let edit) = completion { committedTarget = edit }
+            return true
         }
         pdfView.addSubview(targetOverlay)
         targetOverlay.layoutSubtreeIfNeeded()
@@ -3682,6 +3684,7 @@ final class InlineTextEditPlacementTests: XCTestCase {
             sourceFormat: PDFTextEditFormat(block: largeFormatSourceBlock)
         ) { completion in
             if case .commit(let edit) = completion { largeOverlayCommit = edit }
+            return true
         }
         pdfView.addSubview(largeOverlay)
         largeOverlay.layoutSubtreeIfNeeded()
@@ -3707,6 +3710,7 @@ final class InlineTextEditPlacementTests: XCTestCase {
             sourceFormat: smallSourceFormat
         ) { completion in
             if case .commit(let edit) = completion { committedSmall = edit }
+            return true
         }
         pdfView.addSubview(smallOverlay)
         smallOverlay.layoutSubtreeIfNeeded()
@@ -8254,6 +8258,7 @@ private func makeInlineEditorFixture(
         if case .commit(let edit) = completion {
             committed = edit
         }
+        return true
     }
     pdfView.addSubview(overlay)
     overlay.layoutSubtreeIfNeeded()

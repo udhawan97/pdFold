@@ -2444,7 +2444,7 @@ final class WorkspaceViewModel {
 
     // MARK: - Annotations
 
-    func editableTextBlock(at pagePoint: CGPoint, on page: PDFPage, in pdfDocument: PDFDocument?) -> (pageRef: PageRef, block: EditableTextBlock, sourceFormat: PDFTextEditFormat)? {
+    func editableTextBlock(at pagePoint: CGPoint, on page: PDFPage, in pdfDocument: PDFDocument?) -> (pageRef: PageRef, block: EditableTextBlock, sourceFormat: PDFTextEditFormat, matchFormat: PDFTextEditFormat)? {
         guard let ref = pageRef(for: page, in: pdfDocument),
               let lookup = memberPDF(for: ref),
               let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex) else {
@@ -2485,11 +2485,61 @@ final class WorkspaceViewModel {
                 baseline: syntheticBounds.minY,
                 confidence: .high
             )
-            return (ref, syntheticBlock, sourceFormat)
+            let matchFormat = inferredNearbyMatchFormat(around: syntheticBlock, in: analysis, fallback: sourceFormat)
+            return (ref, syntheticBlock, sourceFormat, matchFormat)
         }
         let block = textAnalysisEngine.hitTest(pagePoint, in: analysis) ??
             insertionTextBlock(at: pagePoint, pageRefID: ref.id, page: page, nearbyBlocks: analysis.blocks)
-        return (ref, block, PDFTextEditFormat(block: block))
+        let ownFormat = PDFTextEditFormat(block: block)
+        let matchFormat = inferredNearbyMatchFormat(around: block, in: analysis, fallback: ownFormat)
+        return (ref, block, ownFormat, matchFormat)
+    }
+
+    /// Infers the style Match Format should adopt: the dominant nearby BODY paragraph
+    /// style around `target`, deliberately NOT the target's own style (that is what Reset
+    /// restores). Ranking mirrors the plan's precedence — same column and vertically
+    /// adjacent wins first, then the dominant body-text cluster on the page — while
+    /// excluding the target itself, headings (much larger than the local body size), and
+    /// tiny footer/caption text. Falls back to `fallback` when nothing suitable is nearby.
+    private func inferredNearbyMatchFormat(
+        around target: EditableTextBlock,
+        in analysis: PDFTextPageAnalysis,
+        fallback: PDFTextEditFormat
+    ) -> PDFTextEditFormat {
+        let targetBounds = target.bounds.standardized
+        let candidates = analysis.blocks.filter { block in
+            guard block.id != target.id,
+                  block.editability != .insertion,
+                  !block.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  block.fontSize > 0 else { return false }
+            // Exclude clearly-invisible OCR/low-visibility layers — matching them would
+            // hand the edit an invisible style.
+            return block.editability != .hiddenOCRLayer && block.editability != .lowVisibility
+        }
+        guard !candidates.isEmpty else { return fallback }
+
+        // The page's dominant body size: the median size of the mass of text, which
+        // headings sit well above and footnotes/captions below.
+        let sizes = candidates.map(\.fontSize).sorted()
+        let bodySize = sizes[sizes.count / 2]
+        // Body-like = within ~25% of the dominant size (excludes headings and micro-text).
+        let bodyLike = candidates.filter { abs($0.fontSize - bodySize) <= bodySize * 0.25 }
+        let pool = bodyLike.isEmpty ? candidates : bodyLike
+
+        func sameColumn(_ block: EditableTextBlock) -> Bool {
+            guard let column = block.columnBounds?.standardized else { return false }
+            return targetBounds.midX >= column.minX - 4 && targetBounds.midX <= column.maxX + 4
+        }
+        // Prefer a body paragraph in the same column, ranked by vertical proximity; then
+        // any body paragraph by proximity; finally the most common body style on the page.
+        let sameColumnPool = pool.filter(sameColumn)
+        let ranked = (sameColumnPool.isEmpty ? pool : sameColumnPool).min { lhs, rhs in
+            let lDist = abs(lhs.bounds.standardized.midY - targetBounds.midY)
+            let rDist = abs(rhs.bounds.standardized.midY - targetBounds.midY)
+            return lDist < rDist
+        }
+        guard let best = ranked else { return fallback }
+        return PDFTextEditFormat(block: best)
     }
 
     private func reopenedBounds(for operation: PDFTextEditOperation) -> CGRect {
