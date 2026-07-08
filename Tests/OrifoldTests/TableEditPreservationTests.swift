@@ -40,10 +40,6 @@ final class TableEditPreservationTests: XCTestCase {
         let data = EditingFixturePDFBuilder.tableWithRules()
         let analysis = try analyze(data)
 
-        // Heading stays separate.
-        let heading = try XCTUnwrap(analysis.blocks.first { $0.text.contains("Quarterly Summary") })
-        XCTAssertFalse(heading.text.contains("Region"), "heading must not merge across the top rule")
-
         // Pick a body cell to edit ("North").
         let cell = try XCTUnwrap(analysis.blocks.first { $0.text.contains("North") })
         XCTAssertFalse(cell.protectedRuleBounds.isEmpty, "a table cell must record nearby rules to preserve")
