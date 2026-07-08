@@ -48,6 +48,15 @@ final class WorkspaceDocument: ReferenceFileDocument {
     private static let commentSubjectAnnotationKey = PDFAnnotationKey(rawValue: "/Subj")
     private static let commentAnchorRectAnnotationKey = PDFAnnotationKey(rawValue: "/OrifoldCommentAnchorRect")
     private static let legacyCommentAnchorRectAnnotationKey = PDFAnnotationKey(rawValue: "/\(legacyBrandToken)CommentAnchorRect")
+    private static let bakeStampAnnotationKey = PDFAnnotationKey(rawValue: BakeStamp.annotationKey)
+
+    /// Set at load when the file's bytes changed on disk since Orifold last saved it (a
+    /// third-party tool rewrote it). The loader drops the now-stale editable workspace and
+    /// keeps the visible content; `WorkspaceViewModel` reads this to surface a one-line notice.
+    private(set) var externalModificationDetected = false
+
+    /// Per-machine fingerprint sidecar. Injectable so tests point it at a temp directory.
+    private let fingerprintStore: WorkspaceFingerprintStore
 
     private struct OrifoldMetadata: Codable {
         var comments: [WorkspaceComment]
@@ -150,6 +159,7 @@ final class WorkspaceDocument: ReferenceFileDocument {
     // MARK: - New document
 
     init() {
+        fingerprintStore = .shared
         workspace = Workspace()
     }
 
@@ -163,7 +173,9 @@ final class WorkspaceDocument: ReferenceFileDocument {
         )
     }
 
-    private init(file: FileWrapper, contentType: UTType, filename: String?) throws {
+    private init(file: FileWrapper, contentType: UTType, filename: String?,
+                 fingerprintStore: WorkspaceFingerprintStore = .shared) throws {
+        self.fingerprintStore = fingerprintStore
         if contentType.conforms(to: .orifoldRTFD), file.isDirectory {
             let fallbackRTFDFilename = L10n.string("document.importedDocument") + ".rtfd"
             let imported = try DocumentImportConverter.importedRTFDDocument(
@@ -190,8 +202,9 @@ final class WorkspaceDocument: ReferenceFileDocument {
     }
 
     #if DEBUG
-    convenience init(testingFile file: FileWrapper, contentType: UTType, filename: String? = nil) throws {
-        try self.init(file: file, contentType: contentType, filename: filename)
+    convenience init(testingFile file: FileWrapper, contentType: UTType, filename: String? = nil,
+                     fingerprintStore: WorkspaceFingerprintStore = .shared) throws {
+        try self.init(file: file, contentType: contentType, filename: filename, fingerprintStore: fingerprintStore)
     }
     #endif
 
@@ -206,7 +219,8 @@ final class WorkspaceDocument: ReferenceFileDocument {
             imported.pdfDocument,
             filename: filename,
             sourcePayload: imported.sourcePayload,
-            originalPDFData: imported.originalPDFData
+            originalPDFData: imported.originalPDFData,
+            onDiskData: data
         )
     }
 
@@ -214,7 +228,8 @@ final class WorkspaceDocument: ReferenceFileDocument {
         _ pdf: PDFDocument,
         filename: String,
         sourcePayload: SourceDocumentPayload?,
-        originalPDFData: Data? = nil
+        originalPDFData: Data? = nil,
+        onDiskData: Data? = nil
     ) throws {
         guard !pdf.isLocked else {
             throw DocumentImportConverter.ConversionError.passwordProtected
@@ -222,11 +237,29 @@ final class WorkspaceDocument: ReferenceFileDocument {
         let (metadata, didStripAnnotations) = Self.metadata(from: pdf)
         if let editableWorkspace = metadata.editableWorkspace,
            !metadata.editableMemberPDFData.isEmpty {
-            workspace = editableWorkspace
-            memberPDFData = metadata.editableMemberPDFData
-            sourcePayloads = metadata.sourcePayloads
-            restoredOriginalMemberPDFData = metadata.editableOriginalMemberPDFData
-            return
+            // External-modification guard: if this machine recorded a fingerprint for this
+            // workspace and the file's current bytes no longer match it, a third-party tool
+            // rewrote the file after Orifold saved it. The embedded editable state (edit
+            // operations, pristine bases) is now stale relative to the visible content, so
+            // let the visible content win — fall through to the flat import below, keeping
+            // only comments. No fingerprint (other machine / legacy file) → trust the
+            // embedded state as before.
+            let externallyModified: Bool
+            if let onDiskData,
+               let known = fingerprintStore.fingerprint(for: editableWorkspace.id) {
+                externallyModified = known != WorkspaceFingerprintStore.hash(of: onDiskData)
+            } else {
+                externallyModified = false
+            }
+            if externallyModified {
+                externalModificationDetected = true
+            } else {
+                workspace = editableWorkspace
+                memberPDFData = metadata.editableMemberPDFData
+                sourcePayloads = metadata.sourcePayloads
+                restoredOriginalMemberPDFData = metadata.editableOriginalMemberPDFData
+                return
+            }
         }
         // If `metadata(from:)` stripped baked Orifold annotations, the on-disk `originalPDFData`
         // still contains them and is now stale relative to the cleaned in-memory `pdf`.
@@ -722,7 +755,8 @@ final class WorkspaceDocument: ReferenceFileDocument {
             guard let page = pdf.page(at: pageIndex) else { continue }
             for annotation in Array(page.annotations) {
                 if annotation.value(forAnnotationKey: bakedWorkspaceCommentAnnotationKey) != nil ||
-                    annotation.value(forAnnotationKey: legacyBakedWorkspaceCommentAnnotationKey) != nil {
+                    annotation.value(forAnnotationKey: legacyBakedWorkspaceCommentAnnotationKey) != nil ||
+                    annotation.value(forAnnotationKey: bakeStampAnnotationKey) != nil {
                     page.removeAnnotation(annotation)
                     removed = true
                 }
@@ -736,6 +770,13 @@ final class WorkspaceDocument: ReferenceFileDocument {
         guard configuration.contentType.conforms(to: .pdf) else {
             throw CocoaError(.fileWriteUnknown)
         }
+        return try savedFileWrapper(from: snapshot)
+    }
+
+    /// Builds the exact bytes a save writes to disk and records their fingerprint. Split out
+    /// of `fileWrapper` so the save→reload round trip (including the fingerprint recording) is
+    /// testable without a `WriteConfiguration`, which isn't constructible outside SwiftUI.
+    func savedFileWrapper(from snapshot: WorkspacePackage) throws -> FileWrapper {
         // An emptied-out workspace (last document deleted) has nothing to preserve.
         // Autosave/close-save must not fail here — that's the save-before-close path,
         // distinct from an explicit user-triggered Export, which is guarded separately
@@ -748,6 +789,9 @@ final class WorkspaceDocument: ReferenceFileDocument {
             from: snapshot,
             options: WorkspaceExportOptions(embedsEditableWorkspaceState: true)
         )
+        // Record the fingerprint of exactly these bytes so a future load can tell whether the
+        // file was rewritten by a third-party tool (external modification → drop stale edits).
+        fingerprintStore.record(data: pdfData, for: snapshot.workspace.id)
         PetBuddyHook.trigger(.save)
         return FileWrapper(regularFileWithContents: pdfData)
     }
