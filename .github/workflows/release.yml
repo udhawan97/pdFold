@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -25,7 +26,7 @@ jobs:
   build:
     name: Build Prebuilt App
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
       ORIFOLD_HAS_DEVELOPER_ID_CERTIFICATE: ${{ secrets.ORIFOLD_DEVELOPER_ID_CERTIFICATE_BASE64 != '' && '1' || '0' }}
@@ -49,6 +50,21 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
+
+      - name: Derive release version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* || -n "${{ inputs.release_tag }}" ]]; then
+            ref="${{ inputs.release_tag || github.ref_name }}"
+            v="${ref#release-}"
+            v="${v#v}"
+            echo "ORIFOLD_MARKETING_VERSION=$v" >> "$GITHUB_ENV"
+            echo "ORIFOLD_BUILD_VERSION=${{ github.run_number }}" >> "$GITHUB_ENV"
+            echo "marketing=$v" >> "$GITHUB_OUTPUT"
+            echo "Release marketing version: $v (build ${{ github.run_number }})"
+          else
+            echo "Untagged build — the committed Info.plist version is used."
+          fi
 
       - name: Import Developer ID certificate
         if: ${{ env.ORIFOLD_HAS_DEVELOPER_ID_CERTIFICATE == '1' }}
@@ -78,8 +94,9 @@ jobs:
           security default-keychain -s "$keychain"
           security find-identity -v -p codesigning "$keychain"
 
-      - name: Build distributable zip
+      - name: Build distributable zip (universal)
         env:
+          ORIFOLD_UNIVERSAL: "1"
           ORIFOLD_SIGNING_IDENTITY: ${{ secrets.ORIFOLD_SIGNING_IDENTITY || '-' }}
           ORIFOLD_NOTARIZE: ${{ secrets.ORIFOLD_SIGNING_IDENTITY != '' && secrets.ORIFOLD_APPLE_ID != '' && secrets.ORIFOLD_APPLE_TEAM_ID != '' && secrets.ORIFOLD_APPLE_APP_SPECIFIC_PASSWORD != '' && '1' || '0' }}
           ORIFOLD_APPLE_ID: ${{ secrets.ORIFOLD_APPLE_ID }}
@@ -92,11 +109,73 @@ jobs:
             --package-only \
             --package "$RUNNER_TEMP/Orifold.zip"
 
+      - name: Package DMG + checksums + manifest
+        env:
+          ORIFOLD_SIGNING_IDENTITY: ${{ secrets.ORIFOLD_SIGNING_IDENTITY || '-' }}
+          ORIFOLD_NOTARIZE: ${{ secrets.ORIFOLD_SIGNING_IDENTITY != '' && secrets.ORIFOLD_APPLE_ID != '' && secrets.ORIFOLD_APPLE_TEAM_ID != '' && secrets.ORIFOLD_APPLE_APP_SPECIFIC_PASSWORD != '' && '1' || '0' }}
+          ORIFOLD_APPLE_ID: ${{ secrets.ORIFOLD_APPLE_ID }}
+          ORIFOLD_APPLE_TEAM_ID: ${{ secrets.ORIFOLD_APPLE_TEAM_ID }}
+          ORIFOLD_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.ORIFOLD_APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+          version="${ORIFOLD_MARKETING_VERSION:-}"
+          if [[ -z "$version" ]]; then
+            tmp="$(mktemp -d)"
+            /usr/bin/ditto -x -k "$RUNNER_TEMP/Orifold.zip" "$tmp"
+            app="$(/usr/bin/find "$tmp" -maxdepth 3 -name Orifold.app -type d -print -quit)"
+            version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          fi
+
+          dist="$RUNNER_TEMP/dist"
+          mkdir -p "$dist"
+          dmg="$dist/Orifold-${version}-macOS-universal.dmg"
+
+          zsh scripts/make-dmg.sh \
+            --from-zip "$RUNNER_TEMP/Orifold.zip" \
+            --output "$dmg" \
+            --version "$version"
+
+          # Stable-name alias so releases/latest/download/Orifold.dmg never breaks.
+          cp "$dmg" "$dist/Orifold.dmg"
+          cp "$RUNNER_TEMP/Orifold.zip" "$dist/Orifold.zip"
+          ( cd "$dist" && shasum -a 256 Orifold.dmg > Orifold.dmg.sha256 )
+
+          if [[ "${{ github.ref }}" == refs/tags/* || -n "${{ inputs.release_tag }}" ]]; then
+            release_tag="${{ inputs.release_tag || github.ref_name }}"
+          else
+            release_tag="Orifold-latest"
+          fi
+          size="$(stat -f%z "$dmg")"
+          sha="$(shasum -a 256 "$dmg" | awk '{print $1}')"
+          base="https://github.com/${{ github.repository }}/releases/download/${release_tag}"
+          cat > "$dist/manifest.json" <<MANIFEST
+          {
+            "version": "${version}",
+            "build": "${{ github.run_number }}",
+            "releaseDate": "$(date -u +%Y-%m-%d)",
+            "minMacOS": "14",
+            "arch": "universal2",
+            "files": [
+              {
+                "name": "Orifold-${version}-macOS-universal.dmg",
+                "size": ${size},
+                "sha256": "${sha}",
+                "url": "${base}/Orifold-${version}-macOS-universal.dmg"
+              }
+            ]
+          }
+          MANIFEST
+
+          echo "Built assets:"
+          ls -lh "$dist"
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
           name: Orifold
-          path: ${{ runner.temp }}/Orifold.zip
+          path: |
+            ${{ runner.temp }}/dist/Orifold-*-macOS-universal.dmg
+            ${{ runner.temp }}/dist/Orifold.zip
           if-no-files-found: error
 
       - name: Compute tagged release title
@@ -116,10 +195,23 @@ jobs:
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           name: ${{ steps.release-title.outputs.title }}
-          files: ${{ runner.temp }}/Orifold.zip
+          files: |
+            ${{ runner.temp }}/dist/Orifold-*-macOS-universal.dmg
+            ${{ runner.temp }}/dist/Orifold-*-macOS-universal.dmg.sha256
+            ${{ runner.temp }}/dist/Orifold.dmg
+            ${{ runner.temp }}/dist/Orifold.dmg.sha256
+            ${{ runner.temp }}/dist/manifest.json
+            ${{ runner.temp }}/dist/Orifold.zip
           generate_release_notes: true
           make_latest: true
           overwrite_files: true
+
+      - name: Rebuild docs site
+        if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.release_tag != '' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run docs.yml --ref main
 
       - name: Publish rolling prebuilt release
         if: ${{ !startsWith(github.ref, 'refs/tags/') && inputs.release_tag == '' }}
@@ -127,10 +219,16 @@ jobs:
         with:
           tag_name: Orifold-latest
           name: Orifold Latest
+          prerelease: true
           body: |
-            Automatically built from `${{ github.sha }}`.
+            Development build from latest `main` — not the release channel.
 
-            This release exists so the one-line installer can install Orifold without requiring Xcode or Apple's Command Line Tools.
-          files: ${{ runner.temp }}/Orifold.zip
+            Automatically built from `${{ github.sha }}`. This build exists so the
+            one-line installer can install Orifold without Xcode, and to keep the
+            DMG pipeline exercised so release day stays boring.
+          files: |
+            ${{ runner.temp }}/dist/Orifold-*-macOS-universal.dmg
+            ${{ runner.temp }}/dist/Orifold.dmg
+            ${{ runner.temp }}/dist/Orifold.zip
           overwrite_files: true
           make_latest: false

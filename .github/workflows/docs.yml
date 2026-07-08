@@ -7,6 +7,10 @@ on:
       - "docs-site/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
+  schedule:
+    # Daily re-bake so the download button's baked version/size self-heal within
+    # 24h even if a post-release rebuild dispatch was missed.
+    - cron: "17 6 * * *"
 
 permissions:
   contents: read
@@ -32,6 +36,11 @@ jobs:
         run: npm ci
       - name: Build
         working-directory: docs-site
+        env:
+          # Authenticate the build-time releases/latest fetch so the download
+          # button's version/size never fall back to LAST_KNOWN_GOOD on the
+          # shared runner IP's unauthenticated rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
         run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

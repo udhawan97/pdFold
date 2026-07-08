@@ -46,9 +46,9 @@ export interface ReleaseInfo {
 
 /** Bump this whenever a release ships, so the offline build stays truthful. */
 const LAST_KNOWN_GOOD = {
-	tag: 'release-v0.8.1',
-	version: '0.8.1',
-	publishedAt: '2026-07-07T15:45:52Z',
+	tag: 'release-v0.8.3',
+	version: '0.8.3',
+	publishedAt: '2026-07-08T00:00:00Z',
 } as const;
 
 const REPO = site.repo;
@@ -107,13 +107,19 @@ export async function getRelease(): Promise<ReleaseInfo> {
 
 	const tag: string = data.tag_name ?? LAST_KNOWN_GOOD.tag;
 	const assets: any[] = Array.isArray(data.assets) ? data.assets : [];
-	const dmg = assets.find((a) => a.name === DMG);
+
+	// Prefer the versioned universal dmg so the browser saves the descriptive
+	// filename; fall back to the stable Orifold.dmg alias. Both live on the same
+	// never-changing releases/latest/download/<name> path, so the URL is safe.
+	const versionedDmg = assets.find((a) => /^Orifold-\d+\.\d+\.\d+-macOS-universal\.dmg$/.test(a.name));
+	const stableDmg = assets.find((a) => a.name === DMG);
+	const dmg = versionedDmg ?? stableDmg;
 
 	return {
 		version: normalizeTag(tag),
 		tag,
 		publishedAt: data.published_at ?? null,
-		dmgUrl: stableUrl(DMG),
+		dmgUrl: stableUrl(dmg?.name ?? DMG),
 		dmgSize: humanSize(dmg?.size ?? null),
 		dmgMissing: !dmg,
 		zipUrl: stableUrl(ZIP),

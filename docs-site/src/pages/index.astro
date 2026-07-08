@@ -14,14 +14,14 @@ import site from '../data/site.json';
 import stats from '../data/stats.json';
 import { getRelease } from '../lib/release';
 import craneSvg from '../assets/orifold-crane-fold.svg?raw';
+import DownloadButton from '../components/landing/DownloadButton.astro';
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const rel = await getRelease();
 
 const downloadHref = rel.dmgMissing ? rel.zipUrl : rel.dmgUrl;
-const assetKind = rel.dmgMissing ? '.zip' : '.dmg';
-const sizePart = rel.dmgSize ? ` · ${rel.dmgSize}` : '';
-const subLabel = `macOS ${site.minMacOS}+ · v${rel.version}${sizePart}`;
+const assetLabel = rel.dmgMissing ? 'ZIP' : 'Universal DMG';
+const signed = site.signedBuilds === true;
 const releasedDate = rel.publishedAt
 	? new Date(rel.publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 	: null;
@@ -112,23 +112,28 @@ const cards = [
 								sign, and export one polished document. Nothing ever leaves your Mac.
 							</p>
 							<div class="btn-row">
-								<a class="btn btn-primary" id="cta-hero" href={downloadHref}>
-									<span class="btn-main">Download for Mac</span>
-									<span class="btn-sub">{subLabel}</span>
-								</a>
-								<a class="btn btn-ghost" href={`${base}/get-started/install/`}>Read the docs</a>
+								<DownloadButton id="cta-hero" href={downloadHref} />
+								<a class="btn btn-ghost" href="#install">View install instructions</a>
 							</div>
+							<p class="file-details tabnum">
+								<span class="fd-os">macOS {site.minMacOS}+</span>
+								<span>· <span class="fd-kind">{assetLabel}</span></span>
+								<span>· <span class="fd-ver">v{rel.version}</span></span>
+								{rel.dmgSize && <span>· <span class="fd-size">{rel.dmgSize}</span></span>}
+							</p>
+							<p class="dl-helper" role="status" hidden>
+								Download didn't start? <a href={downloadHref}>Try again</a> or
+								<a href={rel.releaseUrl}>get it from GitHub</a>.
+							</p>
 							<p class="meta-row tabnum">
-								<span>v{rel.version}</span>
-								{releasedDate && <span>· released {releasedDate}</span>}
-								<span>· {site.arch}</span>
+								{releasedDate && <span>released {releasedDate}</span>}
 								<span>· Free &amp; MIT</span>
 								<span>· beta, built in public</span>
 							</p>
-							<p class="inoc">
-								Not notarized yet — first launch takes one extra step.
-								<a href="#final-fold">Here's how →</a>
-							</p>
+							{signed
+								? <p class="trust-line">Signed and notarized for macOS.</p>
+								: <p class="inoc">Not notarized yet — first launch takes one extra step. <a href="#install">Here's how →</a></p>
+							}
 						</div>
 						<div class="hero-crane" id="hero-crane" set:html={craneSvg}></div>
 					</div>
@@ -406,43 +411,38 @@ const cards = [
 					</div>
 					<div class="dl-grid">
 						<div class="dl-user crease" style="min-width:0">
-							<a class="btn btn-primary" id="cta-final" href={downloadHref}>
-								<span class="btn-main">Download for Mac</span>
-								<span class="btn-sub">{subLabel}</span>
-							</a>
-							<p class="meta-row tabnum">
-								<span id="asset-kind-label">{assetKind} · v{rel.version}</span>
-								{rel.dmgSize && <span id="asset-size-label">· {rel.dmgSize}</span>}
-								<span>· {site.arch} · macOS {site.minMacOS}+</span>
+							<DownloadButton id="cta-final" href={downloadHref} />
+							<p class="file-details tabnum">
+								<span class="fd-os">macOS {site.minMacOS}+</span>
+								<span>· <span class="fd-kind">{assetLabel}</span></span>
+								<span>· <span class="fd-ver">v{rel.version}</span></span>
+								{rel.dmgSize && <span>· <span class="fd-size">{rel.dmgSize}</span></span>}
 							</p>
-							<p class="lede">
-								Needs a Mac with an Apple M-series chip — that's any Mac from 2020 on
-								(→ About This Mac to check). Intel Macs aren't supported
-								<a href={`${site.repoUrl}/issues`}>yet</a>.
+							<p class="dl-helper" role="status" hidden>
+								Download didn't start? <a href={downloadHref}>Try again</a> or
+								<a href={rel.releaseUrl}>get it from GitHub</a>.
 							</p>
+							<p class="lede">One download works for Apple Silicon and Intel Macs.</p>
 
-							<div class="pet" data-pet="gami">
-								<span class="fig pet-arrive-target">
-									<img class="pet-static" src={`${base}/assets/gami-figure.svg`} width="72" height="94" alt="" />
-								</span>
-								<p class="bubble">One-time thing. Two seconds. Here's how —</p>
-							</div>
-							<div class="callout-note">
-								<p>Orifold is free and open source, so builds aren't notarized by Apple yet. One-time first launch:</p>
-								<p><b>macOS 14:</b> right-click Orifold → Open → Open.</p>
-								<p><b>macOS 15:</b> open Orifold once (it's blocked), then System Settings → Privacy &amp; Security → <b>Open Anyway</b> → password.</p>
-								<p>Prefer zero dialogs? The one-line installer below clears quarantine for you.</p>
-							</div>
 
 							<details class="details">
-								<summary>Other ways to install</summary>
+								<summary>Need another version?</summary>
+								<ul class="alt-list">
+									<li><a href={downloadHref}>macOS Universal DMG</a> — Apple Silicon + Intel, one file.</li>
+									<li><a href={rel.zipUrl}>Direct .zip</a> — for the one-line installer and Homebrew cask.</li>
+									<li><a href={`${base}/releases/`}>Release notes</a> · <a href={rel.allReleasesUrl}>All releases →</a></li>
+								</ul>
 								<div class="chip-cmd" style="margin-top:0.8rem">
 									<code>brew install --cask orifold</code>
 									<button type="button" class="copy-btn" data-copy="brew install --cask orifold" aria-label="Copy Homebrew command">Copy</button>
 								</div>
-								<p class="lede" style="font-size:0.85rem;margin-top:0.8rem">
-									Or the one-line installer (no dialogs — it clears quarantine automatically), or the
-									direct <a href={rel.zipUrl}>.zip</a>. <a href={rel.allReleasesUrl}>All releases →</a>
+								<p class="lede" style="font-size:0.85rem;margin-top:0.9rem">Verify the download — compare against the checksum in the release's <code>manifest.json</code>:</p>
+								<div class="chip-cmd">
+									<code>shasum -a 256 ~/Downloads/Orifold-{rel.version}-macOS-universal.dmg</code>
+									<button type="button" class="copy-btn" data-copy={`shasum -a 256 ~/Downloads/Orifold-${rel.version}-macOS-universal.dmg`} aria-label="Copy checksum command">Copy</button>
+								</div>
+								<p class="lede" style="font-size:0.85rem;margin-top:0.9rem">
+									<a href={`${base}/help/troubleshooting/`}>Having trouble installing?</a>
 								</p>
 							</details>
 						</div>
@@ -462,6 +462,40 @@ const cards = [
 							</div>
 						</div>
 					</div>
+
+					<!-- Install steps -->
+					<section id="install" class="install-band crease">
+						<h3 class="install-title">Install Orifold on macOS</h3>
+						<ol class="install-steps">
+							<li>
+								<span class="num" aria-hidden="true">1</span>
+								<div><b>Open the downloaded <code>Orifold-{rel.version}-macOS-universal.dmg</code>.</b><p>It mounts like a tiny disk.</p></div>
+							</li>
+							<li>
+								<span class="num" aria-hidden="true">2</span>
+								<div><b>Drag Orifold into the Applications folder.</b><p>The window shows you exactly where.</p></div>
+							</li>
+							<li>
+								<span class="num" aria-hidden="true">3</span>
+								<div><b>Open Orifold from Applications.</b><p>Eject the disk image after — you don't need it again.</p></div>
+							</li>
+						</ol>
+						<div class="pet" data-pet="gami">
+							<span class="fig pet-arrive-target">
+								<img class="pet-static" src={`${base}/assets/gami-figure.svg`} width="72" height="94" alt="" />
+							</span>
+							<p class="bubble">One-time thing. Two seconds. Here's how —</p>
+						</div>
+						{signed
+							? <p class="install-note">If macOS asks for confirmation, choose <b>Open</b>. Orifold appears as a signed and notarized app.</p>
+							: <div class="callout-note">
+									<p>Orifold is free and open source, so builds aren't notarized by Apple yet. One-time first launch:</p>
+									<p><b>macOS 14:</b> right-click Orifold → Open → Open.</p>
+									<p><b>macOS 15:</b> open Orifold once (it's blocked), then System Settings → Privacy &amp; Security → <b>Open Anyway</b> → password.</p>
+									<p>Prefer zero dialogs? The one-line installer clears quarantine for you.</p>
+								</div>
+						}
+					</section>
 				</div>
 			</section>
 		</main>
@@ -592,6 +626,26 @@ const cards = [
 					});
 				});
 
+				// ── download feedback: "Starting download…" + failure helper ─
+				document.querySelectorAll('#cta-hero, #cta-final').forEach(function (a) {
+					a.addEventListener('click', function () {
+						if (d.classList.contains('not-mac')) return; // it's a GitHub link, not a download
+						var sub = a.querySelector('.btn-sub');
+						if (sub && !sub.dataset.orig) {
+							sub.dataset.orig = sub.textContent;
+							sub.textContent = 'Starting download…';
+							setTimeout(function () {
+								sub.textContent = sub.dataset.orig;
+								delete sub.dataset.orig;
+							}, 4000);
+						}
+						// Reveal the nearest failure helper so a blocked download has a way out.
+						var scope = a.closest('.hero-copy, .dl-user');
+						var helper = scope && scope.querySelector('.dl-helper');
+						if (helper) helper.hidden = false;
+					});
+				});
+
 				// ── release enhancer: confirm-or-upgrade only (§5.5) ─────────
 				var repo = body.dataset.repo;
 				if (repo && 'fetch' in window) {
@@ -603,32 +657,32 @@ const cards = [
 						.then(function (data) {
 							if (!data || !data.tag_name) return;
 							var v = data.tag_name.replace(/^release-/, '').replace(/^v/, '');
-							var dmgAsset = body.dataset.dmgAsset || 'Orifold.dmg';
-							var dmg = (data.assets || []).filter(function (a) { return a.name === dmgAsset; })[0];
-							document.querySelectorAll('.btn-sub').forEach(function (el) {
-								el.textContent = el.textContent.replace(/v[0-9][^\s·]*/, 'v' + v);
-							});
-							// Keep the meta-row label's version in sync with .btn-sub above it
-							// so the two adjacent pieces of copy never diverge.
-							var kindLabel = document.getElementById('asset-kind-label');
-							if (kindLabel) kindLabel.textContent = kindLabel.textContent.replace(/v[0-9][^\s·]*/, 'v' + v);
+							var assets = data.assets || [];
+							var dmg = assets.filter(function (a) {
+								return /^Orifold-\d+\.\d+\.\d+-macOS-universal\.dmg$/.test(a.name);
+							})[0] || assets.filter(function (a) {
+								return a.name === (body.dataset.dmgAsset || 'Orifold.dmg');
+							})[0];
+							// Version, everywhere it appears (never touches the static "Apple Silicon + Intel" sub-label).
+							document.querySelectorAll('.fd-ver').forEach(function (el) { el.textContent = 'v' + v; });
 							if (dmg && !d.classList.contains('not-mac')) {
 								document.querySelectorAll('#cta-hero, #cta-final').forEach(function (a) {
 									a.setAttribute('href', dmg.browser_download_url);
 								});
-								// Keep the visible asset-kind/size label in sync with the swapped href
-								// so the link and its label never diverge (was previously left stale).
-								if (kindLabel) kindLabel.textContent = kindLabel.textContent.replace(/^\.[a-z0-9]+/i, '.dmg');
-								var sizeLabel = document.getElementById('asset-size-label');
+								document.querySelectorAll('.fd-kind').forEach(function (el) { el.textContent = 'Universal DMG'; });
 								var mb = dmg.size ? (dmg.size / (1024 * 1024)).toFixed(1) + ' MB' : null;
 								if (mb) {
-									if (sizeLabel) sizeLabel.textContent = '· ' + mb;
-									else if (kindLabel && kindLabel.parentNode) {
+									document.querySelectorAll('.file-details').forEach(function (fd) {
+										var sizeEl = fd.querySelector('.fd-size');
+										if (sizeEl) { sizeEl.textContent = mb; return; }
 										var span = document.createElement('span');
-										span.id = 'asset-size-label';
-										span.textContent = '· ' + mb;
-										kindLabel.insertAdjacentElement('afterend', span);
-									}
+										span.textContent = '· ';
+										var inner = document.createElement('span');
+										inner.className = 'fd-size';
+										inner.textContent = mb;
+										span.appendChild(inner);
+										fd.appendChild(span);
+									});
 								}
 							}
 						});
@@ -642,6 +696,9 @@ const cards = [
 						var sub = a.querySelector('.btn-sub');
 						if (main) main.textContent = 'View on GitHub';
 						if (sub) sub.textContent = 'Orifold is a Mac app';
+					});
+					document.querySelectorAll('.file-details').forEach(function (fd) {
+						fd.textContent = 'For macOS only.';
 					});
 				}
 			})();

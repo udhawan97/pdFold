@@ -12,9 +12,26 @@ That's expected — README links open files in the browser; they don't execute i
 curl -fsSL https://raw.githubusercontent.com/udhawan97/Orifold/main/install.sh | zsh
 ```
 
+## The download didn't start
+
+The **Download for macOS** button is a plain link to the DMG on GitHub. If nothing downloaded, your browser may have blocked it or lost the connection. Click it again, or grab it straight from the [latest release](https://github.com/udhawan97/Orifold/releases/latest) — download `Orifold.dmg` (or `Orifold-<version>-macOS-universal.dmg`).
+
 ## macOS warns the app is from an unidentified developer
 
-Release builds are ad-hoc signed but not notarized. The one-line installer and Homebrew cask clear the download quarantine automatically. If macOS still warns, right-click the app in Finder and choose **Open** from the security prompt.
+Release builds are ad-hoc signed but not notarized. The one-line installer and Homebrew cask clear the download quarantine automatically. From the DMG, the first launch takes one step:
+
+- **macOS 14:** right-click Orifold → **Open** → **Open**.
+- **macOS 15:** open Orifold once (it's blocked), then **System Settings → Privacy & Security → Open Anyway**.
+
+## macOS says the app is "damaged and can't be opened"
+
+This is the quarantine flag on an un-notarized download, not a corrupt file. Install via the one-line installer or Homebrew cask (they clear it), or, if you already dragged the app in from the DMG, clear it once from Terminal:
+
+```zsh
+xattr -dr com.apple.quarantine /Applications/Orifold.app
+```
+
+Then open Orifold normally.
 
 ## Double-clicking a .command file says it cannot be opened
 
