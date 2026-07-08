@@ -4,8 +4,9 @@
     {
       "name": "orifold-docs",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "docs-site", "--", "--port", "4321"],
-      "port": 4321
+      "runtimeArgs": ["run", "dev", "--prefix", "docs-site"],
+      "port": 4321,
+      "autoPort": true
     },
     {
       "name": "orifold-docs-preview",
