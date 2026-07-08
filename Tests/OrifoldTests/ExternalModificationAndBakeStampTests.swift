@@ -10,6 +10,25 @@ import XCTest
 final class ExternalModificationAndBakeStampTests: XCTestCase {
     // MARK: - Fixture plumbing
 
+    /// Every sidecar directory created by `tempStore()`/`makeTempDirectory()` this test run,
+    /// removed in `tearDown()` — each store writes a real `workspace-fingerprints.json` under
+    /// `FileManager.default.temporaryDirectory`, which otherwise accumulates one leftover
+    /// directory per test run forever.
+    private var createdDirectories: [URL] = []
+
+    override func tearDown() {
+        for dir in createdDirectories { try? FileManager.default.removeItem(at: dir) }
+        createdDirectories = []
+        super.tearDown()
+    }
+
+    private func makeTempDirectory() -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("orifold-fpr-\(UUID().uuidString)", isDirectory: true)
+        createdDirectories.append(dir)
+        return dir
+    }
+
     private final class FixturePageView: NSView {
         private let text: String
         init(frame: CGRect, text: String) { self.text = text; super.init(frame: frame) }
@@ -44,9 +63,7 @@ final class ExternalModificationAndBakeStampTests: XCTestCase {
     }
 
     private func tempStore() -> WorkspaceFingerprintStore {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("orifold-fpr-\(UUID().uuidString)", isDirectory: true)
-        return WorkspaceFingerprintStore(directory: dir)
+        WorkspaceFingerprintStore(directory: makeTempDirectory())
     }
 
     @discardableResult
@@ -104,7 +121,7 @@ final class ExternalModificationAndBakeStampTests: XCTestCase {
     // MARK: - Fingerprint store unit
 
     func testFingerprintStoreRecordsRetrievesEvictsAndPersists() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("orifold-fpr-\(UUID().uuidString)", isDirectory: true)
+        let dir = makeTempDirectory()
         let store = WorkspaceFingerprintStore(directory: dir, maxEntries: 3)
         let ids = (0..<4).map { _ in UUID() }
         for (i, id) in ids.enumerated() { store.record(hash: "h\(i)", for: id) }
