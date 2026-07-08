@@ -15,6 +15,9 @@ PACKAGE_PATH=""
 PACKAGE_ONLY=0
 SIGNING_IDENTITY="${ORIFOLD_SIGNING_IDENTITY:--}"
 NOTARIZE="${ORIFOLD_NOTARIZE:-0}"
+UNIVERSAL="${ORIFOLD_UNIVERSAL:-0}"
+MARKETING_VERSION="${ORIFOLD_MARKETING_VERSION:-}"
+BUILD_VERSION="${ORIFOLD_BUILD_VERSION:-}"
 NOTARY_KEYCHAIN_PROFILE="${ORIFOLD_NOTARY_KEYCHAIN_PROFILE:-}"
 APPLE_ID="${ORIFOLD_APPLE_ID:-}"
 APPLE_TEAM_ID="${ORIFOLD_APPLE_TEAM_ID:-}"
@@ -423,6 +426,19 @@ write_info_plist() {
     /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" "$plist" 2>/dev/null \
         || /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$plist"
+
+    # Tag-derived version override (CI): the committed Info.plist is copied
+    # verbatim above, so the release tag is the single source of truth for the
+    # shipped artifact's version. Local/dev builds leave these unset and keep the
+    # committed values.
+    if [[ -n "$MARKETING_VERSION" ]]; then
+        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" "$plist"
+        print_note "Set CFBundleShortVersionString to $MARKETING_VERSION"
+    fi
+    if [[ -n "$BUILD_VERSION" ]]; then
+        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_VERSION" "$plist"
+        print_note "Set CFBundleVersion to $BUILD_VERSION"
+    fi
 }
 
 build_from_source() {
@@ -438,15 +454,32 @@ build_from_source() {
         remove_build_cache_path "$PROJECT_ROOT/.build/repositories"
     fi
 
+    local -a build_arch_args
+    build_arch_args=()
+    if [[ "$UNIVERSAL" == "1" ]]; then
+        build_arch_args=(--arch arm64 --arch x86_64)
+        print_note "Building a universal (arm64 + x86_64) binary."
+    fi
+
     print_step "Building $APP_NAME with SwiftPM"
     print_debug "swift: $(command -v swift)"
     swift --version >>"$LOG_FILE" 2>&1 || true
-    swift build -c "$CONFIGURATION" >>"$LOG_FILE" 2>&1 || fail "The SwiftPM build failed."
+    swift build -c "$CONFIGURATION" "${build_arch_args[@]}" >>"$LOG_FILE" 2>&1 || fail "The SwiftPM build failed."
 
     local built_binary
-    built_binary="$(swift build -c "$CONFIGURATION" --show-bin-path)/$APP_NAME"
+    built_binary="$(swift build -c "$CONFIGURATION" "${build_arch_args[@]}" --show-bin-path)/$APP_NAME"
     print_debug "Built binary: $built_binary"
     [[ -x "$built_binary" ]] || fail "Build completed, but the $APP_NAME executable was not created."
+
+    if [[ "$UNIVERSAL" == "1" ]]; then
+        local archs
+        archs="$(lipo -archs "$built_binary" 2>/dev/null || printf "")"
+        print_debug "Built architectures: $archs"
+        if [[ "$archs" != *"arm64"* || "$archs" != *"x86_64"* ]]; then
+            fail "A universal build was requested but the binary is not fat (got: ${archs:-unknown})."
+        fi
+        print_note "Verified universal binary: $archs"
+    fi
 
     print_step "Assembling app bundle"
     /bin/rm -rf "$STAGED_APP"

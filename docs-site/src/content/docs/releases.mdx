@@ -9,6 +9,23 @@ import Callout from '../../components/Callout.astro';
 
 <Badge variant="new" />
 
+## v0.8.3 — Universal builds and a proper DMG
+
+*Released July 2026*
+
+<Callout variant="note" label="Beta">
+	Orifold is in beta, on the road to 1.0.
+</Callout>
+
+A distribution release: Orifold now ships as a **universal binary** that runs natively on both Apple Silicon and Intel Macs, delivered as a **drag-to-Applications DMG** with published SHA-256 checksums and a machine-readable release manifest. No document-editing behavior changes this cycle.
+
+- **Universal (Apple Silicon + Intel)** — one download runs natively on both. The bundled PDFium and qpdf engines already shipped fat slices; the app executable now matches.
+- **A real DMG installer** — download `Orifold-0.8.3-macOS-universal.dmg`, open it, drag Orifold into Applications, launch. A stable-name `Orifold.dmg` alias and a checksummed `manifest.json` ship alongside it.
+- **Polished website download experience** — a "Download for macOS" button (Apple Silicon + Intel), a three-step "Install Orifold on macOS" section, honest per-macOS-version first-launch coaching, and a checksum-verify command. See [Install Orifold](/Orifold/get-started/install/).
+- **Still not notarized by Apple** — first launch takes one guided step; the one-line installer and Homebrew cask clear quarantine automatically. Apple notarization is the next distribution milestone.
+
+Full changelog: [`docs/release-v0.8.3.md`](https://github.com/udhawan97/Orifold/blob/main/docs/release-v0.8.3.md).
+
 ## v0.8.2 — Find & Replace grows up, the editor gets harder to break
 
 *Released July 2026*

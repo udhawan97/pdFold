@@ -15,7 +15,7 @@ import Badge from '../../../components/Badge.astro';
 
 ## Requirements
 
-macOS 14 Sonoma or newer. That's the whole list — no Xcode, no GitHub account, no compile step.
+macOS 14 Sonoma or newer, on Apple Silicon **or** Intel — Orifold ships as a universal build, so one download works for both. That's the whole list — no Xcode, no GitHub account, no compile step.
 
 ## Steps
 
@@ -45,9 +45,30 @@ brew install --cask udhawan97/orifold/orifold
 
 This installs the same prebuilt app and clears the download quarantine automatically. The one-line installer is still the friendliest path — it also creates the Desktop launch/update and uninstall helpers.
 
-## Prefer a direct download?
+## Prefer a direct download (DMG)?
 
-Grab `Orifold.zip` from the [latest release](https://github.com/udhawan97/Orifold/releases/latest), unzip it, and drag `Orifold.app` into Applications.
+Download the disk image — [`Orifold.dmg`](https://github.com/udhawan97/Orifold/releases/latest/download/Orifold.dmg) (universal: Apple Silicon + Intel):
+
+1. Open the downloaded `Orifold.dmg`.
+2. Drag **Orifold** into the **Applications** folder.
+3. Open Orifold from Applications.
+
+Because release builds aren't notarized by Apple yet, the first launch takes one step:
+
+- **macOS 14:** right-click Orifold → **Open** → **Open**.
+- **macOS 15:** open Orifold once (it's blocked), then **System Settings → Privacy & Security → Open Anyway**.
+
+<Callout variant="tip">
+	Want zero dialogs? The one-line installer and Homebrew cask clear the download quarantine for you. The plain `Orifold.zip` is still published for those paths.
+</Callout>
+
+You can verify a download against its published checksum:
+
+```zsh
+shasum -a 256 ~/Downloads/Orifold-*-macOS-universal.dmg
+```
+
+Compare the result to the checksum in the release's `manifest.json`.
 
 ## What you should see
 

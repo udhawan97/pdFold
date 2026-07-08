@@ -4,5 +4,6 @@
 	"dmgAsset": "Orifold.dmg",
 	"zipAsset": "Orifold.zip",
 	"minMacOS": "14",
-	"arch": "Apple Silicon"
+	"arch": "Universal",
+	"signedBuilds": false
 }

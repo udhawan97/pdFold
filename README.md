@@ -31,11 +31,11 @@
 <br>
 <br>
 
-<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Release v0.8.2" src="https://img.shields.io/badge/release-v0.8.2-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="Beta" src="https://img.shields.io/badge/status-beta-F59E0B?style=for-the-badge">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="6 languages" src="https://img.shields.io/badge/i18n-6%20languages-8B5CF6?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
+<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Universal: Apple Silicon + Intel" src="https://img.shields.io/badge/universal-Apple%20Silicon%20%2B%20Intel-111111?style=for-the-badge">&nbsp;&nbsp;<img alt="Release v0.8.3" src="https://img.shields.io/badge/release-v0.8.3-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="Beta" src="https://img.shields.io/badge/status-beta-F59E0B?style=for-the-badge">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="6 languages" src="https://img.shields.io/badge/i18n-6%20languages-8B5CF6?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
 
 <br>
 
-<sub>Orifold is in beta. <strong>v0.8.2</strong> extends Find & Replace to document body text and hardens the inline text-editing engine, continuing the v0.8.1 move to semantic versioning on the road to 1.0. Built with Swift, SwiftUI, PDFKit, PDFium, qpdf, and Vision — see <a href="#%EF%B8%8F-under-the-hood">Under the Hood</a>.</sub>
+<sub>Orifold is in beta. <strong>v0.8.3</strong> ships a universal build (Apple Silicon + Intel) in a proper drag-to-Applications <strong>DMG</strong> with published checksums, plus a polished website download experience. Built with Swift, SwiftUI, PDFKit, PDFium, qpdf, and Vision — see <a href="#%EF%B8%8F-under-the-hood">Under the Hood</a>.</sub>
 
 <br>
 <br>
@@ -110,11 +110,18 @@ Installs the same prebuilt app and clears the download quarantine. The one-line 
 </details>
 
 <details>
-<summary>📥 &nbsp;Prefer a direct download?</summary>
+<summary>📥 &nbsp;Prefer a direct download (DMG)?</summary>
 
 <br>
 
-Grab [`Orifold.zip`](https://github.com/udhawan97/Orifold/releases/latest/download/Orifold.zip) from the latest release, unzip, and drag `Orifold.app` into Applications. If macOS complains about an unidentified developer, right-click the app and choose **Open**.
+Grab the disk image — [`Orifold.dmg`](https://github.com/udhawan97/Orifold/releases/latest/download/Orifold.dmg) (universal: Apple Silicon + Intel). Open it, drag **Orifold** into **Applications**, then open Orifold from Applications.
+
+Because release builds aren't notarized by Apple yet, first launch takes one step:
+
+- **macOS 14:** right-click Orifold → **Open** → **Open**.
+- **macOS 15:** open Orifold once (it's blocked), then **System Settings → Privacy & Security → Open Anyway**.
+
+Prefer zero dialogs? The one-line installer and Homebrew cask clear the quarantine for you. The plain [`Orifold.zip`](https://github.com/udhawan97/Orifold/releases/latest/download/Orifold.zip) is still published for the installer and cask.
 </details>
 
 <details>
@@ -246,7 +253,7 @@ curl -fsSL https://raw.githubusercontent.com/udhawan97/Orifold/main/scripts/unin
 | **Languages** | English, Spanish, French, Hindi, Simplified Chinese, Japanese — coverage enforced by a test |
 | **PDF engines** | PDFKit (composition) + PDFium (image compression, import validation, text-glyph geometry) + qpdf (repair, AES-256, sanitize, structural validation) + Vision (OCR) + a CMS/PAdES signing pipeline (digital signatures) |
 | **Architecture** | Unidirectional flow: views → one observable view model → protocol-seamed local engines → staged export pipeline |
-| **Distribution** | GitHub Actions builds the release zip; installer, Homebrew cask, and uninstaller ship from this repo |
+| **Distribution** | GitHub Actions builds a universal (Apple Silicon + Intel) app, packages a signed-capable DMG (`scripts/make-dmg.sh`) plus the release zip and a checksummed `manifest.json`; installer, Homebrew cask, and uninstaller ship from this repo |
 
 <p align="center">
   <img src="docs/assets/orifold-v3-architecture-diagram.svg" alt="Orifold architecture: SwiftUI views send intents to one observable view model, local PDF engines behind protocol seams do the work, and a staged export pipeline writes validated artifacts inside a local-only boundary, guarded by a release gate">
@@ -339,7 +346,14 @@ Install from the current source checkout without opening the app:
 ./scripts/install-mac.sh --no-open
 ```
 
-App metadata: `CFBundleShortVersionString` `0.8.2`, `CFBundleVersion` `9`.
+App metadata: `CFBundleShortVersionString` `0.8.3`, `CFBundleVersion` `10`.
+
+Build the universal DMG the release ships (after producing the zip above):
+
+```zsh
+ORIFOLD_UNIVERSAL=1 ./scripts/install-mac.sh --package-only --package /tmp/Orifold.zip
+zsh scripts/make-dmg.sh --from-zip /tmp/Orifold.zip --version 0.8.3
+```
 </details>
 
 <details>

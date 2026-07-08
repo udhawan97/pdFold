@@ -1,6 +1,6 @@
 # Orifold macOS Download Experience — Implementation Plan & Spec
 
-**Status:** Planning only. Not implemented.
+**Status:** PR-1 (DMG pipeline) + PR-2 (CTA/install UX) implemented and shipped in v0.8.3 (2026-07-08). PR-3 (Apple notarization) still pending an Apple Developer Program membership — every signed-era string stays gated behind `site.json.signedBuilds: false` until then.
 **Date:** 2026-07-08 · **Baseline audited:** v0.8.2 (build 9) on main — the shipped Folding Studio landing (`docs-site/src/pages/index.astro`, 650 lines), `release.yml` (zip-only), `scripts/install-mac.sh` (sign/notarize/staple wiring exists, secrets-gated), `Casks/orifold.rb` (`version :latest`, `sha256 :no_check`), and `docs/WEBSITE_PLAN.md` §5–§8 (the accepted download-system architecture; this plan extends it, it does not replace it).
 **Relationship to WEBSITE_PLAN.md:** §5 (asset convention, `make-dmg.sh`, atomic publish, fallback ladder), §6 (Gatekeeper facts), §7 (version truth), §8 (update phases) remain binding. This document adds: **universal binaries, versioned DMG filenames, the notarization enablement track, the CTA redesign to the user-specified spec, install-instructions UX, the analytics decision, and the full QA/launch checklists.** Where the two documents conflict, this one wins (conflicts are called out inline).
 
