@@ -1,6 +1,43 @@
 # Editing Hardening V2 — Implementation Plan
 
-**Status:** Planning only. Written 2026-07-07 for execution by Opus.
+> **IMPLEMENTATION STATUS (2026-07-07, shipped):** WP-0,1,2,3,4,5,6,7,8 IMPLEMENTED,
+> tested, two green verification loops (547 tests, 0 failures). **Deferred with precise
+> TODOs below:** WP-9 (bake-stamp + external-mod fingerprint), WP-11 (rotated
+> decoration/form/signature bakers), WP-12 (annotation-undo stable handles), WP-13
+> (cross-member pristine lockstep). These four are the higher-risk items that touch the
+> save/reconcile/signature paths; deferred to keep this pass's merge safe. WP-13 was
+> always flagged first-to-defer.
+>
+> **Deferred-item TODOs (least-risk designs, ready to pick up):**
+> - **WP-9 external-mod discard (P1, user-flagged data safety):** at save, write
+>   `SHA256(finalBytes)` keyed by `workspace.id` to a local sidecar
+>   (`~/Library/Application Support/Orifold/workspace-fingerprints.json`, LRU-capped). At
+>   load's metadata-restore branch (`WorkspaceDocument.importPDFDocument`), if a fingerprint
+>   exists and the file hash differs → import the FLAT file fresh (external content wins),
+>   keep only comments, drop `editableWorkspace`/ops/pristine, show a one-line notice. No
+>   fingerprint (other machine / legacy) → keep current behavior. Same hash → current.
+>   Risk: sidecar is per-machine (documented). Bake-stamp half (`/OrifoldBakeStamp` =
+>   SHA256 of a page's ops, checked first in `reconcileCommittedEditsWithLoadedPages`) makes
+>   style-only stale bakes detectable — additive, low risk, do this half first.
+> - **WP-11 rotated bakers (P4, 3 confirmed bugs):** extract the proven recipe from
+>   `PDFEditedPageRenderer.regeneratedPage` (lines ~19-68: draw a rotation-zeroed page copy
+>   into a raw-mediaBox context, re-tag the output page with the original `/Rotate`) into a
+>   shared helper; apply to `PDFDecorationExportBaker.bake`, `PDFFormSupport.flattenedData`,
+>   `SignatureAppearanceRenderer` (which then needs no per-placement transform). Fixes
+>   background clipping/distortion on 90°/270° pages. NOTE residual: decoration *position*
+>   on rotated pages (page-number at raw-bottom → visual-left) is a separate follow-up.
+>   Higher risk because the signature baker runs on the visual-signature save path.
+> - **WP-12 annotation-undo stale capture (P4):** stamp `/OrifoldAnnID = UUID` on each
+>   Orifold-made annotation; rewrite the ~8 undo closures to capture
+>   `(pageRefID, annID, lightweight snapshot)` and resolve the live page+annotation at undo
+>   time (never retain a `PDFPage`/annotation object). Also re-register the inverse to fix
+>   the dead-redo family.
+> - **WP-13 cross-member pristine lockstep (P4, first-to-defer):** physically move the
+>   pristine page between `originalMemberPDFData` blobs on cross-member `movePage`; snapshot
+>   the two touched pristine blobs in OrderSnapshot. Current rebase-to-baked behavior is
+>   already consistent, just loses the true pristine for the moved page.
+
+**Status:** Planning doc; core packages now implemented (see status banner). Written 2026-07-07 for execution by Opus.
 **Baseline:** `main` @ `3292399` (post editing-hardening-v1: ops↔bytes reconciliation, pristine-base persistence, char-aware font sizing, Match-infers-body-style, editor-isolated undo — see `memory/editing-experience-hardening-2026-07-07.md`).
 **Branch:** create `edit-hardening-v2/<slug>` off latest `main`. Commit in the work-package units below. Merge only after the two verification loops in §9 pass, then run §10 post-merge validation.
 

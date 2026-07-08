@@ -86,17 +86,20 @@ struct PageGraphicsIndex: Equatable {
     /// which spans at least half their combined x-range. Used to veto merging text across a
     /// table rule. `ignoring` excludes rules already claimed as the upper block's underline.
     func hasHorizontalRuleBetween(_ upper: CGRect, _ lower: CGRect, ignoring: [CGRect] = []) -> Bool {
-        let a = upper.standardized
-        let b = lower.standardized
-        let top = max(a.minY, b.minY)
-        let bottom = min(a.maxY, b.maxY)
+        let upperBox = upper.standardized
+        let lowerBox = lower.standardized
+        let top = max(upperBox.minY, lowerBox.minY)
+        let bottom = min(upperBox.maxY, lowerBox.maxY)
         guard top >= bottom else { return false } // overlapping bands — no clean separator
-        let unionMinX = min(a.minX, b.minX)
-        let unionMaxX = max(a.maxX, b.maxX)
+        let unionMinX = min(upperBox.minX, lowerBox.minX)
+        let unionMaxX = max(upperBox.maxX, lowerBox.maxX)
         let unionWidth = unionMaxX - unionMinX
         guard unionWidth > 0 else { return false }
         return horizontalRules.contains { rule in
-            guard !ignoring.contains(where: { $0.standardized.insetBy(dx: -0.5, dy: -0.5).contains(CGPoint(x: rule.bounds.midX, y: rule.bounds.midY)) }) else { return false }
+            let center = CGPoint(x: rule.bounds.midX, y: rule.bounds.midY)
+            guard !ignoring.contains(where: { $0.standardized.insetBy(dx: -0.5, dy: -0.5).contains(center) }) else {
+                return false
+            }
             let midY = rule.bounds.midY
             guard midY <= top, midY >= bottom else { return false }
             let overlap = min(rule.bounds.maxX, unionMaxX) - max(rule.bounds.minX, unionMinX)
@@ -111,8 +114,8 @@ struct PageGraphicsIndex: Equatable {
     func verticalRuleSplittingGap(leftMaxX: CGFloat, rightMinX: CGFloat, yBand: ClosedRange<CGFloat>) -> CGFloat? {
         guard rightMinX > leftMaxX else { return nil }
         return verticalRules.first { rule in
-            let x = rule.bounds.midX
-            guard x > leftMaxX, x < rightMinX else { return false }
+            let ruleX = rule.bounds.midX
+            guard ruleX > leftMaxX, ruleX < rightMinX else { return false }
             // The rule must actually run through this line's vertical band, not just clip it.
             return rule.bounds.maxY >= yBand.lowerBound && rule.bounds.minY <= yBand.upperBound
         }?.bounds.midX
@@ -125,8 +128,8 @@ struct PageGraphicsIndex: Equatable {
     /// so editing a table cell never wipes the surrounding rules.
     func rulesNear(_ rect: CGRect, margin: CGFloat, excluding: [CGRect] = []) -> [CGRect] {
         let box = rect.standardized.insetBy(dx: -margin, dy: -margin)
-        func isExcluded(_ r: CGRect) -> Bool {
-            excluding.contains { $0.standardized.insetBy(dx: -0.5, dy: -0.5).intersects(r.standardized) }
+        func isExcluded(_ rect: CGRect) -> Bool {
+            excluding.contains { $0.standardized.insetBy(dx: -0.5, dy: -0.5).intersects(rect.standardized) }
         }
         return (horizontalRules + verticalRules)
             .map(\.bounds)
@@ -143,10 +146,12 @@ struct PageGraphicsIndex: Equatable {
             rule.maxY >= box.minY && rule.minY <= box.maxY
         }
         let hasLeft = verticalRules.contains { rule in
-            rule.bounds.midX <= box.minX && box.minX - rule.bounds.midX <= maxCellReach && overlapsVertically(rule.bounds)
+            rule.bounds.midX <= box.minX && box.minX - rule.bounds.midX <= maxCellReach
+                && overlapsVertically(rule.bounds)
         }
         let hasRight = verticalRules.contains { rule in
-            rule.bounds.midX >= box.maxX && rule.bounds.midX - box.maxX <= maxCellReach && overlapsVertically(rule.bounds)
+            rule.bounds.midX >= box.maxX && rule.bounds.midX - box.maxX <= maxCellReach
+                && overlapsVertically(rule.bounds)
         }
         return hasLeft && hasRight
     }
