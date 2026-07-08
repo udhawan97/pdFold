@@ -2516,6 +2516,22 @@ final class NoteEditorViewController: NSViewController {
         var isDetected: Bool
     }
 
+    /// A detected font candidate surfaced in the font menu, mirroring detected COLORS:
+    /// family + size + traits harvested from the page's analysis so the user can one-click
+    /// adopt "Detected: Helvetica Bold 13" instead of only picking a bare family. `menuTitle`
+    /// is the display string; `postScriptName` is the resolved (possibly substituted) face.
+    private struct DetectedFontChoice: Equatable {
+        var menuTitle: String
+        var family: String
+        var size: CGFloat
+        var bold: Bool
+        var italic: Bool
+        var isSubstituted: Bool
+    }
+    /// Detected font candidates for this edit's page, computed once at open. The family
+    /// popup lists these (with a separator) above the plain family list.
+    private let detectedFontChoices: [DetectedFontChoice]
+
     /// Mirrors `PDFTextEditOperation.isInsertion` (empty source text AND no detected lines):
     /// a brand-new spot has nothing underneath to hide, so the live editor should show no
     /// patch at all rather than a colored placeholder rectangle.
@@ -2577,6 +2593,7 @@ final class NoteEditorViewController: NSViewController {
         editorFontTraits = NSFontManager.shared.traits(of: initialFont).intersection([.boldFontMask, .italicFontMask])
         editorTextColor = Self.initialTextColor(for: block)
         textColorChoices = Self.textColorChoices(for: block, document: pdfView.document, initialColor: editorTextColor)
+        detectedFontChoices = Self.detectedFontChoices(for: block, document: pdfView.document)
         editorAlignment = block.alignment?.nsTextAlignment ?? .left
         editorUnderline = block.underline
         originalText = block.text
@@ -2850,6 +2867,15 @@ final class NoteEditorViewController: NSViewController {
     private func setupToolbar() {
         let cursor = ToolbarLayoutCursor(toolbar: toolbar, edgeInset: 8, controlHeight: 26, controlY: 8)
 
+        // Detected font candidates (family + size + traits) first, then a separator, then
+        // the plain family list. Selecting a detected entry adopts its full style in one
+        // step (see `changeFamily`); selecting a plain family changes only the family.
+        for choice in detectedFontChoices {
+            familyPopup.addItem(withTitle: choice.menuTitle)
+        }
+        if !detectedFontChoices.isEmpty {
+            familyPopup.menu?.addItem(NSMenuItem.separator())
+        }
         let families = Self.fontFamilyMenuItems(originalFamily: editorFontFamily)
         familyPopup.addItems(withTitles: families)
         if let match = families.first(where: { editorFontFamily.localizedCaseInsensitiveCompare($0) == .orderedSame }) {
@@ -3375,7 +3401,19 @@ final class NoteEditorViewController: NSViewController {
     }
 
     @objc private func changeFamily(_ sender: NSPopUpButton) {
-        editorFontFamily = sender.titleOfSelectedItem ?? editorFontFamily
+        let title = sender.titleOfSelectedItem ?? editorFontFamily
+        // A detected-font entry adopts family + size + traits together; a plain family
+        // entry changes only the family (unchanged legacy behavior).
+        if let choice = detectedFontChoices.first(where: { $0.menuTitle == title }) {
+            editorFontFamily = choice.family
+            documentFontSize = choice.size
+            var traits: NSFontTraitMask = []
+            if choice.bold { traits.insert(.boldFontMask) }
+            if choice.italic { traits.insert(.italicFontMask) }
+            editorFontTraits = traits
+        } else {
+            editorFontFamily = title
+        }
         didChangeStyle = true
         applyFormatting()
         refocusEditor()
@@ -3873,6 +3911,47 @@ final class NoteEditorViewController: NSViewController {
         let colors = computeDetectedDocumentTextColors(in: document)
         detectedDocumentTextColorsCache = (documentID, colors)
         return colors
+    }
+
+    /// Harvests detected font candidates for the font menu, mirroring detected colors:
+    /// the clicked block's own runs first, then the dominant faces across the page. Each
+    /// candidate records family/size/traits and whether the resolved face was substituted
+    /// (the exact embedded/subsetted font wasn't installed). Capped and de-duplicated.
+    private static func detectedFontChoices(for block: EditableTextBlock, document: PDFDocument?) -> [DetectedFontChoice] {
+        var choices: [DetectedFontChoice] = []
+        func add(fontName: String, size: CGFloat) {
+            guard size > 0 else { return }
+            let resolvedFont = NSFont(name: fontName, size: size)
+            let substituted = resolvedFont == nil
+            let font = resolvedFont ?? .systemFont(ofSize: size)
+            let traits = NSFontManager.shared.traits(of: font).intersection([.boldFontMask, .italicFontMask])
+            let bold = traits.contains(.boldFontMask) || fontName.lowercased().contains("bold")
+            let italic = traits.contains(.italicFontMask) || fontName.lowercased().contains("italic") || fontName.lowercased().contains("oblique")
+            let family = Self.editingFamilyName(for: font, fallback: fontName)
+            let roundedSize = (size * 10).rounded() / 10
+            var label = "\(L10n.string("readingCanvas.detectedFont.prefix")) \(family)"
+            if bold { label += " Bold" }
+            if italic { label += " Italic" }
+            label += String(format: " %.1f", roundedSize)
+            if substituted { label += " \(L10n.string("readingCanvas.detectedFont.substituted"))" }
+            let choice = DetectedFontChoice(menuTitle: label, family: family, size: roundedSize, bold: bold, italic: italic, isSubstituted: substituted)
+            guard !choices.contains(where: { $0.family == choice.family && abs($0.size - choice.size) < 0.2 && $0.bold == choice.bold && $0.italic == choice.italic }) else { return }
+            choices.append(choice)
+        }
+        for line in block.lines { for run in line.runs { add(fontName: run.fontName, size: run.fontSize) } }
+        add(fontName: block.fontName, size: block.fontSize)
+        if let document, let data = document.dataRepresentation() {
+            let engine = PDFTextAnalysisEngine()
+            let scanned = min(document.pageCount, maxScannedPagesForDetectedColors)
+            outer: for pageIndex in 0..<scanned {
+                let page = document.page(at: pageIndex)
+                for b in engine.analyze(data: data, pageIndex: pageIndex, fallbackPage: page).blocks {
+                    add(fontName: b.fontName, size: b.fontSize)
+                    if choices.count >= 12 { break outer }
+                }
+            }
+        }
+        return Array(choices.prefix(12))
     }
 
     private static func computeDetectedDocumentTextColors(in document: PDFDocument) -> [NSColor] {

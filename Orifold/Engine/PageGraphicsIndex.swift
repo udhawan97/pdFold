@@ -133,15 +133,21 @@ struct PageGraphicsIndex: Equatable {
             .filter { $0.standardized.intersects(box) && !isExcluded($0) }
     }
 
-    /// True when `rect` sits inside a ruled grid — it is crossed/bounded by at least
-    /// `minVerticalRules` distinct vertical rules. Used to exclude table cells from
+    /// True when `rect` sits inside a ruled grid — it is FLANKED by vertical rules on both
+    /// sides (a table cell lives BETWEEN rules, not on them) within a cell-width reach, and
+    /// each flanking rule vertically overlaps the box. Used to exclude table cells from
     /// body-style Match inference when the edit target is not itself in a grid.
-    func isInsideRuledGrid(_ rect: CGRect, minVerticalRules: Int = 2) -> Bool {
-        let box = rect.standardized.insetBy(dx: -1, dy: -1)
-        let touching = verticalRules.filter { rule in
-            rule.bounds.midX >= box.minX && rule.bounds.midX <= box.maxX &&
-            rule.bounds.maxY >= box.minY && rule.bounds.minY <= box.maxY
+    func isInsideRuledGrid(_ rect: CGRect, maxCellReach: CGFloat = 400) -> Bool {
+        let box = rect.standardized
+        func overlapsVertically(_ rule: CGRect) -> Bool {
+            rule.maxY >= box.minY && rule.minY <= box.maxY
         }
-        return touching.count >= minVerticalRules
+        let hasLeft = verticalRules.contains { rule in
+            rule.bounds.midX <= box.minX && box.minX - rule.bounds.midX <= maxCellReach && overlapsVertically(rule.bounds)
+        }
+        let hasRight = verticalRules.contains { rule in
+            rule.bounds.midX >= box.maxX && rule.bounds.midX - box.maxX <= maxCellReach && overlapsVertically(rule.bounds)
+        }
+        return hasLeft && hasRight
     }
 }

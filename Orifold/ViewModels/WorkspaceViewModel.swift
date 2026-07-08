@@ -2507,6 +2507,10 @@ final class WorkspaceViewModel {
         fallback: PDFTextEditFormat
     ) -> PDFTextEditFormat {
         let targetBounds = target.bounds.standardized
+        let graphics = analysis.graphics
+        // When the edit target is NOT itself inside a ruled grid, table cells must not win
+        // as the body-style source (the user is editing prose, not a cell).
+        let targetInGrid = graphics.isInsideRuledGrid(targetBounds)
         let candidates = analysis.blocks.filter { block in
             guard block.id != target.id,
                   block.editability != .insertion,
@@ -2514,7 +2518,15 @@ final class WorkspaceViewModel {
                   block.fontSize > 0 else { return false }
             // Exclude clearly-invisible OCR/low-visibility layers — matching them would
             // hand the edit an invisible style.
-            return block.editability != .hiddenOCRLayer && block.editability != .lowVisibility
+            guard block.editability != .hiddenOCRLayer, block.editability != .lowVisibility else { return false }
+            // Exclude a standalone list/bullet marker (its "style" is a glyph, not body text).
+            let trimmed = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.range(of: #"^([•\-–—*·▪◦]|\(?[0-9A-Za-z]{1,2}\)|[0-9A-Za-z]{1,2}[.)])$"#, options: .regularExpression) != nil {
+                return false
+            }
+            // Exclude table cells when editing outside any grid.
+            if !targetInGrid, graphics.isInsideRuledGrid(block.bounds.standardized) { return false }
+            return true
         }
         guard !candidates.isEmpty else { return fallback }
 
@@ -2530,16 +2542,47 @@ final class WorkspaceViewModel {
             guard let column = block.columnBounds?.standardized else { return false }
             return targetBounds.midX >= column.minX - 4 && targetBounds.midX <= column.maxX + 4
         }
-        // Prefer a body paragraph in the same column, ranked by vertical proximity; then
-        // any body paragraph by proximity; finally the most common body style on the page.
         let sameColumnPool = pool.filter(sameColumn)
-        let ranked = (sameColumnPool.isEmpty ? pool : sameColumnPool).min { lhs, rhs in
+        var rankingPool = sameColumnPool.isEmpty ? pool : sameColumnPool
+
+        // Restrict to the DOMINANT local body style cluster before ranking by proximity, so
+        // a lone italic caption / off-style neighbor sitting a little closer to the click
+        // can't win over the surrounding body text. A style signature is (family, bold,
+        // italic); the most common signature is the body, and proximity only tie-breaks
+        // WITHIN that cluster. Skipped when there's no clear majority (all singletons).
+        struct StyleKey: Hashable { let family: String; let bold: Bool; let italic: Bool }
+        func styleKey(_ block: EditableTextBlock) -> StyleKey {
+            let lower = block.fontName.lowercased()
+            return StyleKey(
+                family: Self.fontFamilyRoot(block.fontName),
+                bold: lower.contains("bold") || lower.contains("black") || lower.contains("heavy") || lower.contains("semibold"),
+                italic: lower.contains("italic") || lower.contains("oblique")
+            )
+        }
+        let counts = Dictionary(grouping: rankingPool, by: styleKey).mapValues(\.count)
+        if let (dominantKey, dominantCount) = counts.max(by: { $0.value < $1.value }), dominantCount >= 2 {
+            let dominantCluster = rankingPool.filter { styleKey($0) == dominantKey }
+            if !dominantCluster.isEmpty { rankingPool = dominantCluster }
+        }
+
+        let ranked = rankingPool.min { lhs, rhs in
             let lDist = abs(lhs.bounds.standardized.midY - targetBounds.midY)
             let rDist = abs(rhs.bounds.standardized.midY - targetBounds.midY)
             return lDist < rDist
         }
         guard let best = ranked else { return fallback }
         return PDFTextEditFormat(block: best)
+    }
+
+    /// The family root of a PDF font name (strips a subset tag and any style suffix), used
+    /// to cluster style signatures for Match inference. "ABCDEF+Helvetica-Bold" → "helvetica".
+    private static func fontFamilyRoot(_ name: String) -> String {
+        var base = name
+        if let plus = base.firstIndex(of: "+"), base.distance(from: base.startIndex, to: plus) == 6 {
+            base = String(base[base.index(after: plus)...])
+        }
+        if let dash = base.firstIndex(of: "-") { base = String(base[..<dash]) }
+        return base.lowercased()
     }
 
     private func reopenedBounds(for operation: PDFTextEditOperation) -> CGRect {
