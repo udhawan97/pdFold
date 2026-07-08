@@ -1,0 +1,43 @@
+<svg viewBox="0 0 640 420" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Scattered paper sheets settling into one neat stack</title>
+  <g fill="none" stroke="var(--edge)" stroke-width="1" stroke-linejoin="round">
+    <!-- settled stack (base sheets) -->
+    <g>
+      <polygon points="240,286 400,286 400,326 240,326" fill="var(--paper-2)"/>
+      <polygon points="240,286 400,286 400,296 240,296" fill="var(--paper-3)"/>
+    </g>
+    <g>
+      <polygon points="246,264 406,264 406,300 246,300" fill="var(--paper)"/>
+      <polygon points="246,264 406,264 406,274 246,274" fill="var(--paper-3)"/>
+    </g>
+
+    <!-- top sheet with folded corner, drops in and settles -->
+    <g>
+      <animateTransform attributeName="transform" type="translate" values="80,-70;0,0" dur="1.1s" begin="0s" fill="freeze" keyTimes="0;1" calcMode="spline" keySplines="0.2 0.7 0.2 1"/>
+      <polygon points="252,240 392,240 412,240 412,278 252,278" fill="var(--paper)"/>
+      <polygon points="392,240 412,240 412,260" fill="var(--paper-2)"/>
+      <polygon points="392,240 412,260 392,260" fill="var(--paper-3)"/>
+    </g>
+
+    <!-- scattered sheet, glides in from left -->
+    <g opacity="0.9">
+      <animateTransform attributeName="transform" type="translate" values="-120,-30;0,0" dur="1s" begin="0.25s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.2 0.7 0.2 1"/>
+      <polygon points="120,150 250,120 258,156 128,186" fill="var(--paper)"/>
+      <polygon points="120,150 128,186 132,160" fill="var(--paper-2)"/>
+    </g>
+
+    <!-- scattered sheet, glides in from right -->
+    <g opacity="0.9">
+      <animateTransform attributeName="transform" type="translate" values="140,-40;0,0" dur="1s" begin="0.4s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.2 0.7 0.2 1"/>
+      <polygon points="410,138 540,168 528,204 400,176" fill="var(--paper)"/>
+      <polygon points="540,168 528,204 522,178" fill="var(--paper-2)"/>
+    </g>
+
+    <!-- lone drifting sheet top center -->
+    <g opacity="0.85">
+      <animateTransform attributeName="transform" type="translate" values="0,-90;0,0" dur="1.05s" begin="0.15s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.2 0.7 0.2 1"/>
+      <polygon points="300,84 430,84 430,118 300,118" fill="var(--paper)"/>
+      <polygon points="300,84 430,84 430,92 300,92" fill="var(--paper-3)"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,44 @@
+<svg viewBox="0 0 640 420" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>A paper sheet with a red hanko seal, verify ticks, and a hash to cert chain</title>
+  <g stroke="var(--edge)" stroke-width="1" stroke-linejoin="round">
+    <!-- sheet -->
+    <polygon points="150,74 358,74 382,98 382,346 150,346" fill="var(--paper)"/>
+    <polygon points="358,74 382,98 358,98" fill="var(--paper-2)"/>
+    <polygon points="358,74 358,98 382,98" fill="var(--paper-3)"/>
+  </g>
+
+  <!-- faint content lines -->
+  <g fill="var(--paper-2)" stroke="none">
+    <rect x="176" y="118" width="150" height="6" rx="3"/>
+    <rect x="176" y="138" width="176" height="6" rx="3"/>
+    <rect x="176" y="158" width="128" height="6" rx="3"/>
+  </g>
+
+  <!-- verify ticks -->
+  <g fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="180,224 190,234 210,214"/>
+    <polyline points="180,258 190,268 210,248"/>
+    <polyline points="180,292 190,302 210,282"/>
+  </g>
+
+  <!-- hanko seal: tancho circle pressed on sheet -->
+  <g transform="translate(320,272)">
+    <animateTransform attributeName="transform" type="translate" additive="sum" values="0,-16;0,0" dur="0.5s" begin="0.2s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.3 0.8 0.3 1"/>
+    <animate attributeName="opacity" values="0;1" dur="0.4s" begin="0.2s" fill="freeze"/>
+    <circle r="46" fill="none" stroke="var(--tancho)" stroke-width="4"/>
+    <circle r="34" fill="none" stroke="var(--tancho)" stroke-width="2"/>
+    <rect x="-14" y="-20" width="28" height="6" fill="var(--tancho)"/>
+    <rect x="-14" y="-6" width="28" height="6" fill="var(--tancho)"/>
+    <rect x="-14" y="8" width="28" height="6" fill="var(--tancho)"/>
+  </g>
+
+  <!-- chain: hash -> cert -> sealed -->
+  <g stroke="var(--edge)" stroke-width="1" fill="var(--paper-3)">
+    <line x1="452" y1="150" x2="452" y2="196" stroke="var(--accent)"/>
+    <line x1="452" y1="238" x2="452" y2="284" stroke="var(--accent)"/>
+    <rect x="424" y="120" width="56" height="30" rx="6"/>
+    <rect x="424" y="196" width="56" height="30" rx="6"/>
+    <rect x="424" y="284" width="56" height="30" rx="6" fill="var(--paper)"/>
+    <circle cx="452" cy="299" r="6" fill="var(--tancho)" stroke="none"/>
+  </g>
+</svg>

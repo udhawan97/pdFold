@@ -266,8 +266,11 @@ html body.landing #sheet {
 	align-items: center;
 	/* Keep the hero primary CTA above the fold on common laptop viewports
 	   (1280x700, 1440x780). Trimmed from 14vh/13vh so eyebrow+h1+sub+btn-row
-	   fit under the fold; base landing.css used an even tighter 8vh top. */
-	padding-block-start: clamp(5rem, 9vh, 7rem);
+	   fit under the fold; base landing.css used an even tighter 8vh top. The
+	   4rem top floor buys ~16px of cushion at 1440x780 (the CTA sat only 10px
+	   above the fold at a 5rem floor), so real-device font-metric wobble in the
+	   headline/sub wrap can't push the primary CTA below the fold. */
+	padding-block-start: clamp(4rem, 9vh, 7rem);
 	padding-block-end: clamp(5rem, 9vh, 8rem);
 }
 
@@ -464,8 +467,6 @@ html body.landing .hero-crane svg {
 /* -------------------------------------------------------------------------- */
 
 html body.landing figure.vig,
-html body.landing .stage,
-html body.landing .stage-steps .step,
 html body.landing .stat,
 html body.landing .dl-user,
 html body.landing .dl-dev,
@@ -487,11 +488,6 @@ html body.landing figure.vig {
 	overflow: clip;
 }
 
-html body.landing .gather .scrap,
-html body.landing .gather .stack-sheet,
-html body.landing .seal .sheet,
-html body.landing .studio-vig .inner-sheet,
-html body.landing .step .num,
 html body.landing .pet .bubble {
 	background:
 		linear-gradient(135deg, rgba(255, 255, 255, 0.92), var(--of-paper)),
@@ -500,18 +496,8 @@ html body.landing .pet .bubble {
 	box-shadow: 0 24px 58px -42px rgba(0, 0, 0, 0.62);
 }
 
-html[data-theme='light'] body.landing .gather .scrap,
-html[data-theme='light'] body.landing .gather .stack-sheet,
-html[data-theme='light'] body.landing .seal .sheet,
-html[data-theme='light'] body.landing .studio-vig .inner-sheet,
-html[data-theme='light'] body.landing .step .num,
 html[data-theme='light'] body.landing .pet .bubble {
 	box-shadow: 0 22px 54px -46px rgba(19, 31, 51, 0.45);
-}
-
-html body.landing .sheet-token::after {
-	background: linear-gradient(225deg, color-mix(in srgb, var(--of-canvas) 82%, transparent) 50%, rgba(255, 255, 255, 0.45) 50%);
-	box-shadow: -5px 5px 14px -12px rgba(0, 0, 0, 0.8);
 }
 
 html body.landing figure.shot .chrome {
@@ -620,36 +606,19 @@ html body.landing .of-card:hover::after {
 	opacity: 1;
 }
 
+/* The redesign layer (landing-redesign.css) owns the glyph box now — size,
+   border, radius, background, color, transform. Only these two premium
+   declarations survive the cascade and aren't set there: the subtle top
+   highlight and the font-size:0 that collapses any stray whitespace node. */
 html body.landing .of-card .glyph {
-	display: grid;
-	place-items: center;
-	width: 2.85rem;
-	height: 2.85rem;
-	margin-bottom: 1rem;
-	border: 1px solid color-mix(in srgb, var(--act-accent) 30%, transparent);
-	border-radius: 1.05rem;
-	background: color-mix(in srgb, var(--act-accent) 13%, transparent);
 	box-shadow: inset 0 1px 0 color-mix(in srgb, var(--of-text-1) 10%, transparent);
 	font-size: 0;
-	transform: rotate(-2deg);
 }
 
-html body.landing .of-card .glyph::before {
-	font-size: 0.92rem;
-	font-weight: 760;
-	letter-spacing: -0.04em;
-	color: color-mix(in srgb, var(--act-accent) 84%, var(--of-text-1));
-}
-
-/* Glyphs map to card ORDER in index.astro: OCR · Compress · Forms · Stamps ·
-   Reader · Languages. Keep in sync if the card order changes. The .glyph
-   container is aria-hidden in the markup, so these are not announced. */
-html body.landing .of-card:nth-child(1) .glyph::before { content: '⌘F' / ''; }
-html body.landing .of-card:nth-child(2) .glyph::before { content: '↘' / ''; font-size: 1.25rem; }
-html body.landing .of-card:nth-child(3) .glyph::before { content: '✍' / ''; font-size: 1.1rem; }
-html body.landing .of-card:nth-child(4) .glyph::before { content: '判' / ''; font-size: 1.02rem; }
-html body.landing .of-card:nth-child(5) .glyph::before { content: '余' / ''; font-size: 1.02rem; }
-html body.landing .of-card:nth-child(6) .glyph::before { content: 'あA' / ''; }
+/* The premium `.glyph::before` character glyphs (⌘F/↘/✍/判/余/あA) were removed:
+   the rebuild inlines a real <svg> feature icon inside .glyph, and the redesign
+   layer makes .glyph a grid. The old pseudo painted as a second grid row, shoving
+   every icon ~12px off-center. The inline SVG is the icon now. */
 
 html body.landing .of-card h3,
 html body.landing .of-card p {
@@ -673,74 +642,8 @@ html body.landing .guides-row {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Sticky stage + trust/stat areas                                             */
+/* Trust/stat areas                                                            */
 /* -------------------------------------------------------------------------- */
-
-html body.landing .stage-wrap {
-	gap: clamp(2.5rem, 6vw, 5rem);
-}
-
-html body.landing .stage {
-	/* Lowered floor from 520px: at 521-640px tall the pinned sticky (top:16vh) + a
-	   520px minimum overflowed the viewport before the base max-height:520 escape
-	   hatch engaged. 440px fits more short-but->520 viewports. */
-	height: clamp(440px, 64vh, 920px);
-	border-radius: var(--premium-radius-lg);
-	padding: clamp(1rem, 2vw, 1.5rem);
-}
-
-/* Premium's unconditional .stage height (spec 0,3,0) would otherwise defeat the
-   base un-stick fallbacks (.stage{height:auto} lives at spec 0,1,0 inside these
-   media queries / the no-JS selector). Re-assert height:auto here so the stage can
-   grow to fit its content on short viewports, with reduced motion, and without JS. */
-@media (max-height: 520px) {
-	html body.landing .stage {
-		height: auto;
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	html body.landing .stage {
-		height: auto;
-	}
-}
-
-html:not(.js) body.landing .stage {
-	height: auto;
-}
-
-html body.landing .stage .scene figure.shot {
-	width: min(96%, 860px);
-}
-
-html body.landing .stage-steps .step {
-	min-height: 64vh;
-	max-width: 37ch;
-	justify-content: center;
-	padding: clamp(1.5rem, 3vw, 2rem);
-	border-radius: var(--premium-radius);
-}
-
-html body.landing .step .num {
-	width: 46px;
-	height: 46px;
-	border-radius: 16px;
-	color: var(--of-paper-ink);
-}
-
-html body.landing .seal .hanko {
-	box-shadow:
-		0 8px 18px -12px color-mix(in srgb, var(--of-tancho) 70%, transparent),
-		inset 0 0 0 3px rgba(255, 255, 255, 0.22);
-}
-
-html body.landing .studio-vig .mac {
-	border-color: var(--premium-line-strong);
-	background:
-		linear-gradient(180deg, color-mix(in srgb, var(--of-text-1) 8%, transparent), transparent),
-		color-mix(in srgb, var(--of-canvas) 82%, transparent);
-	box-shadow: inset 0 1px 0 color-mix(in srgb, var(--of-text-1) 10%, transparent);
-}
 
 html body.landing .stat-row {
 	gap: 1rem;
@@ -792,16 +695,6 @@ html body.landing #ma .ma-body {
 	color: color-mix(in srgb, var(--of-text-2) 86%, var(--of-text-1));
 }
 
-html body.landing #ma .ma-pets {
-	margin-top: clamp(3rem, 6vw, 4.6rem);
-	gap: clamp(2rem, 6vw, 5rem);
-}
-
-html body.landing #ma .ma-pets img {
-	width: clamp(76px, 9vw, 116px);
-	filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.24));
-}
-
 html body.landing .pet {
 	margin-top: clamp(2.8rem, 5vw, 4rem);
 }
@@ -847,7 +740,10 @@ html body.landing #final-fold .dl-dev {
 html body.landing .final-crane {
 	width: min(52vw, 220px);
 	margin-bottom: clamp(2rem, 4vw, 3rem);
-	filter: drop-shadow(0 24px 32px rgba(0, 0, 0, 0.24));
+	/* No drop-shadow filter: this element inlines the crane SVG, which plays a finite
+	   SMIL fold-settle on load — a CSS filter would repaint the whole figure every
+	   frame while it animates. Matches the hero-crane treatment, where the shadow
+	   lives on the static container, not the animating SVG. */
 }
 
 html body.landing .callout-note {
@@ -1075,16 +971,6 @@ html body.landing .fold-shadow::after {
 		width: auto;
 	}
 
-	html body.landing .stage,
-	html body.landing .stage-steps .step {
-		border-radius: 28px;
-	}
-
-	html body.landing .stage-steps .step {
-		min-height: auto;
-		margin-top: 1rem;
-	}
-
 	html body.landing .pet {
 		align-items: center;
 	}
@@ -1114,12 +1000,6 @@ html body.landing .fold-shadow::after {
 
 	html body.landing figure.vig {
 		min-height: 300px;
-	}
-
-	html body.landing .gather .scrap {
-		width: 106px;
-		height: 136px;
-		margin: -68px 0 0 -53px;
 	}
 
 	html body.landing .pet .fig {

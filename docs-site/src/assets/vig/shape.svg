@@ -1,0 +1,31 @@
+<svg viewBox="0 0 640 420" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>A clean paper sheet with abstract text lines, one being edited</title>
+  <g stroke="var(--edge)" stroke-width="1" stroke-linejoin="round">
+    <!-- sheet with folded top-right corner -->
+    <polygon points="196,86 428,86 452,110 452,334 196,334" fill="var(--paper)"/>
+    <polygon points="428,86 452,110 428,110" fill="var(--paper-2)"/>
+    <polygon points="428,86 428,110 452,110" fill="var(--paper-3)"/>
+  </g>
+
+  <!-- abstract text lines (thin bars) -->
+  <g fill="var(--paper-2)" stroke="none">
+    <rect x="224" y="132" width="164" height="8" rx="4"/>
+    <rect x="224" y="160" width="196" height="6" rx="3"/>
+    <rect x="224" y="182" width="176" height="6" rx="3"/>
+    <rect x="224" y="240" width="188" height="6" rx="3"/>
+    <rect x="224" y="262" width="140" height="6" rx="3"/>
+    <rect x="224" y="292" width="168" height="6" rx="3"/>
+  </g>
+
+  <!-- edited line: accent selection bar + caret -->
+  <g>
+    <rect x="220" y="204" width="150" height="16" rx="4" fill="var(--accent)" opacity="0.16"/>
+    <rect x="224" y="209" width="130" height="6" rx="3" fill="var(--accent)" stroke="none"/>
+    <rect x="360" y="204" width="2.5" height="16" fill="var(--accent)" stroke="none">
+      <animate attributeName="opacity" values="1;1;0;0;1" dur="1.05s" begin="0s" repeatCount="3" fill="freeze"/>
+    </rect>
+  </g>
+
+  <!-- tancho accent dot: subtle edit marker -->
+  <circle cx="440" cy="212" r="5" fill="var(--tancho)" stroke="none"/>
+</svg>

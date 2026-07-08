@@ -81,6 +81,12 @@ html {
 	outline-offset: 3px;
 	border-radius: 4px;
 }
+/* Light theme: accent-bright (#15a3c4) is only 2.6:1 vs the light canvas —
+   below the 3:1 non-text floor (WCAG 1.4.11/2.4.11). The offset ring sits on
+   the canvas, so use the darker --of-accent (#0c67a6 → 5.24:1) there. */
+html[data-theme='light'] .landing :focus-visible {
+	outline-color: var(--of-accent);
+}
 
 /* ---- layout scaffolding --------------------------------------------------- */
 .fold {
