@@ -194,10 +194,6 @@ html body.landing .lede {
 	font-size: clamp(1.04rem, 1.25vw, 1.18rem);
 }
 
-html body.landing .two-col {
-	gap: clamp(3.5rem, 8vw, 7rem);
-}
-
 html body.landing .crease-line {
 	width: min(100% - clamp(4rem, 16vw, 18rem), 980px);
 	margin-inline: auto;
@@ -497,7 +493,6 @@ html body.landing .hero-crane svg {
 /* Visual artifacts — neutral washi, not yellow paper                          */
 /* -------------------------------------------------------------------------- */
 
-html body.landing figure.vig,
 html body.landing .stat,
 html body.landing .dl-user,
 html body.landing .dl-dev,
@@ -512,9 +507,9 @@ html body.landing #ma .crease {
 }
 
 /* .stat and .dl-user/.dl-dev otherwise only inherit the flat diagonal linear-gradient
-   above — figure.vig (landing-redesign.css) and .of-card (below) each layer a radial
-   accent glow on top of theirs, so these two card families read as a flatter material.
-   Add the same quiet glow term here to bring the whole card system into one family. */
+   above — .of-card (below) layers a radial accent glow on top of its own version of
+   this same material. Add the same quiet glow term here so the whole card system
+   (stat rows, download panels, feature cards) reads as one family. */
 html body.landing .stat,
 html body.landing .dl-user,
 html body.landing .dl-dev {
@@ -522,14 +517,6 @@ html body.landing .dl-dev {
 		radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--of-accent) 6%, transparent), transparent 60%),
 		linear-gradient(150deg, color-mix(in srgb, var(--of-text-1) 7%, transparent), transparent 38%),
 		var(--premium-glass-strong);
-}
-
-html body.landing figure.vig {
-	border-radius: var(--premium-radius-lg);
-	min-height: 360px;
-	/* Contain the scattered decorative scraps within the card so they never clip
-	   awkwardly at the screen edge on narrow viewports. */
-	overflow: clip;
 }
 
 html body.landing .pet .bubble {
@@ -568,9 +555,9 @@ html body.landing figure.shot:hover .chrome {
 }
 
 /* Light theme: the default/hover shadows above are raw un-tinted black, unlike
-   every other card material (.stat/figure.vig/.dl-user/.dl-dev all re-tint via
+   every other card material (.stat/.dl-user/.dl-dev all re-tint via
    --premium-shadow-tight/--premium-shadow). Re-cast with the same navy family
-   so the one real screenshot's frame matches the surrounding material weight
+   so every real screenshot's frame matches the surrounding material weight
    instead of looking like a pasted-in dark-mode shadow. */
 html[data-theme='light'] body.landing figure.shot .chrome {
 	box-shadow:
@@ -596,16 +583,10 @@ html body.landing figure.shot .bar i {
 	opacity: 0.42;
 }
 
-html body.landing figure.shot figcaption,
-html body.landing figure.vig figcaption {
+html body.landing figure.shot figcaption {
 	margin-top: 1rem;
 	line-height: 1.62;
 	color: color-mix(in srgb, var(--of-text-2) 88%, var(--of-text-1));
-}
-
-html body.landing figure.shot[style] {
-	max-width: min(100%, 560px) !important;
-	margin-top: clamp(2.6rem, 5vw, 4rem) !important;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -631,7 +612,7 @@ html body.landing .of-card {
 		linear-gradient(145deg, color-mix(in srgb, var(--of-text-1) 6%, transparent), color-mix(in srgb, var(--of-surface) 52%, transparent));
 	overflow: hidden;
 	/* Token, not a bespoke rgba(0,0,0,*) — inherits the theme-correct navy tint in
-	   light mode automatically, same as figure.vig/.stat/.dl-user/.dl-dev. */
+	   light mode automatically, same as .stat/.dl-user/.dl-dev. */
 	box-shadow: var(--premium-shadow-tight);
 	transition:
 		transform 320ms var(--ease-fold),
@@ -718,7 +699,7 @@ html body.landing .stat-row {
 	gap: 1rem;
 	grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
 	/* Equalize row heights: without this, grid auto-rows size each row to its tallest
-	   cell, so the three wrapped rows in the narrow .col-copy track render ragged
+	   cell, so the three wrapped rows in this single-column stat block render ragged
 	   (167/146/124px). 1fr makes every row match the tallest for a clean stat grid. */
 	grid-auto-rows: 1fr;
 	margin-top: 0;
@@ -812,10 +793,15 @@ html body.landing #final-fold .dl-dev {
 html body.landing .final-crane {
 	width: min(52vw, 220px);
 	margin-bottom: clamp(2rem, 4vw, 3rem);
-	/* No drop-shadow filter: this element inlines the crane SVG, which plays a finite
-	   SMIL fold-settle on load — a CSS filter would repaint the whole figure every
-	   frame while it animates. Matches the hero-crane treatment, where the shadow
-	   lives on the static container, not the animating SVG. */
+}
+html body.landing .final-crane img {
+	/* Static (the real app icon, not an animating SVG) — a drop-shadow here is a
+	   one-time paint, not a per-frame cost, so it's safe where it wasn't on the
+	   animating hero crane. */
+	filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.28));
+}
+html[data-theme='light'] body.landing .final-crane img {
+	filter: drop-shadow(0 18px 28px rgba(19, 31, 51, 0.22));
 }
 
 html body.landing .callout-note {
@@ -1058,14 +1044,6 @@ html body.landing .landing-footer .wrap {
 
 	html body.landing .btn {
 		align-items: center;
-	}
-
-	html body.landing figure.vig {
-		min-height: 300px;
-	}
-
-	html body.landing .pet .fig {
-		width: 64px;
 	}
 
 	html body.landing #final-fold .dl-user,

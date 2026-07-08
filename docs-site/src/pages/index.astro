@@ -4,8 +4,9 @@
  * A bare, non-Starlight route at the site root. One sheet of washi folds, act by
  * act, into a crane that takes flight; Gami guides the user arc, Ori the trust/dev arc.
  *
- * Bespoke origami SVG artifacts (crane, feature icons, product vignettes) carry the
- * story — no cheap screenshots. One real capture appears once, as an honesty proof.
+ * Bespoke SVG (crane, feature icons, pets) carries the brand story; the four product
+ * moments — gather/shape/seal/keep — are illustrated with real app screenshots framed
+ * in figure.shot/.chrome, "mixed well" Apple-product-page style (Rev 5).
  * Timestamp claims stay stubbed (the §2.7 TSA re-fix is not confirmed on main).
  */
 import '../styles/tokens.css';
@@ -17,11 +18,7 @@ import site from '../data/site.json';
 import stats from '../data/stats.json';
 import { getRelease } from '../lib/release';
 
-import craneHero from '../assets/crane-hero.svg?raw';
-import vigGather from '../assets/vig/gather.svg?raw';
-import vigShape from '../assets/vig/shape.svg?raw';
-import vigSeal from '../assets/vig/seal.svg?raw';
-import vigKeep from '../assets/vig/keep.svg?raw';
+import craneFold from '../assets/orifold-crane-fold.svg?raw';
 import gamiWag from '../assets/pets/gami-wag.svg?raw';
 import oriTwitch from '../assets/pets/ori-twitch.svg?raw';
 
@@ -193,7 +190,7 @@ const icoClipboard =
 								Not notarized yet — first launch takes one calm extra step. <a class="arrow-link" href="#final-fold">Here's how<span class="arrow-ico-wrap"><Fragment set:html={icoChevron} /></span></a>
 							</p>
 						</div>
-						<div class="hero-crane" id="hero-crane" set:html={craneHero}></div>
+						<div class="hero-crane" id="hero-crane" set:html={craneFold}></div>
 					</div>
 				</div>
 			</section>
@@ -211,9 +208,12 @@ const icoClipboard =
 							one workspace.
 						</p>
 					</div>
-					<figure class="vig crease">
-						<div class="vig-art" set:html={vigGather} aria-hidden="true"></div>
-						<figcaption>Fifty files in, one neat stack out.</figcaption>
+					<figure class="shot shot-hero crease">
+						<div class="chrome">
+							<div class="bar"><i></i><i></i><i></i></div>
+							<img src={cap('import-files-overview.png')} width="1600" height="1013" loading="lazy" decoding="async" alt="Orifold's import screen, mid drag-and-drop, with a file about to drop into the 'Release to import files' zone and Gami greeting in the corner." />
+						</div>
+						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. Drag anything in; broken PDFs are repaired on the way.</figcaption>
 					</figure>
 
 					<div class="pet crease" data-pet="gami">
@@ -231,25 +231,21 @@ const icoClipboard =
 			<!-- Shape -->
 			<section id="shape" class="fold">
 				<div class="wrap">
-					<div class="two-col copy-first act-visual">
-						<div class="col-copy">
-							<div class="act-head crease">
-								<p class="kicker">Second fold · Shape</p>
-								<h2>Edit the page itself.</h2>
-								<p class="lede">
-									Click the text and fix the typo. Orifold edits the real glyph geometry — not a
-									sticky note floating over a picture of the page. Then protect with AES-256,
-									compress, or sanitize, and export one clean file.
-								</p>
-							</div>
-						</div>
-						<div class="col-visual">
-							<figure class="vig crease">
-								<div class="vig-art" set:html={vigShape} aria-hidden="true"></div>
-								<figcaption>Real text, edited in place.</figcaption>
-							</figure>
-						</div>
+					<div class="act-head crease">
+						<p class="kicker">Second fold · Shape</p>
+						<h2>Edit the page itself.</h2>
+						<p class="lede">
+							Click the text and fix the typo. Orifold edits the real glyph geometry — not a
+							sticky note floating over a picture of the page. Then protect with AES-256,
+							compress, or sanitize, and export one clean file.
+						</p>
 					</div>
+					<figure class="shot shot-banner crease">
+						<div class="chrome">
+							<img src={cap('shape-edit-tight.png', 'landing')} width="1470" height="180" loading="lazy" decoding="async" alt="A floating text-formatting toolbar — font, size, style, alignment, color, Match/Copy/Paste/Reset — hovering directly over a real PDF page mid-edit." />
+						</div>
+						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. The format toolbar appears right where you click.</figcaption>
+					</figure>
 
 					<div id="features" class="feature-band crease">
 						<div class="card-grid">
@@ -284,26 +280,22 @@ const icoClipboard =
 			<!-- Seal -->
 			<section id="seal" class="fold">
 				<div class="wrap">
-					<div class="two-col act-visual">
-						<div class="col-visual">
-							<figure class="vig crease">
-								<div class="vig-art" set:html={vigSeal} aria-hidden="true"></div>
-								<figcaption>A hanko seal over the exact bytes.</figcaption>
-							</figure>
-						</div>
-						<div class="col-copy">
-							<div class="act-head crease">
-								<p class="kicker">Third fold · Seal</p>
-								<h2>A signature that holds up.</h2>
-								<p class="lede">
-									A drawn mark is a picture. A digital signature is math — a tamper-evident seal
-									over the exact bytes you signed. Orifold produces standards-based PAdES
-									signatures with Keychain and .p12 identities, verifiable anywhere PAdES is
-									understood. <a class="arrow-link" href={`${base}/fill-sign/signatures/`}>How signing works<span class="arrow-ico-wrap"><Fragment set:html={icoChevron} /></span></a>
-								</p>
-							</div>
-						</div>
+					<div class="act-head crease">
+						<p class="kicker">Third fold · Seal</p>
+						<h2>A signature that holds up.</h2>
+						<p class="lede">
+							A drawn mark is a picture. A digital signature is math — a tamper-evident seal
+							over the exact bytes you signed. Orifold produces standards-based PAdES
+							signatures with Keychain and .p12 identities, verifiable anywhere PAdES is
+							understood. <a class="arrow-link" href={`${base}/fill-sign/signatures/`}>How signing works<span class="arrow-ico-wrap"><Fragment set:html={icoChevron} /></span></a>
+						</p>
 					</div>
+					<figure class="shot shot-card crease">
+						<div class="chrome">
+							<img src={cap('seal-signatures-tight.png', 'landing')} width="415" height="745" loading="lazy" decoding="async" alt="The Signatures panel with Digital selected, a self-signed identity chosen, and a live cursive signature preview reading 'Umang D.' with a 'Signed: Jul 7, 2026 at 9:12 PM' timestamp below, before Sign & Export." />
+						</div>
+						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. PAdES signing, right where you're already working.</figcaption>
+					</figure>
 
 					<div class="pet crease" data-pet="ori">
 						<span class="fig pet-arrive-target">
@@ -317,55 +309,32 @@ const icoClipboard =
 
 			<hr class="crease-line" />
 
-			<!-- Proof — the one real capture, as honesty anchor -->
-			<section id="proof" class="fold proof-fold">
-				<div class="wrap">
-					<div class="act-head crease" style="text-align:center">
-						<p class="kicker" style="margin-inline:auto">Not a render · The real app</p>
-						<h2>This is the actual window.</h2>
-					</div>
-					<figure class="shot crease" style="margin-inline:auto">
-						<div class="chrome">
-							<div class="bar"><i></i><i></i><i></i></div>
-							<img src={cap('language-switcher.png')} width="1200" height="752" loading="lazy" decoding="async" alt="Orifold's welcome screen: the app open with Gami in the corner and a language menu showing English, Español, Français, हिन्दी, 简体中文, 日本語." />
-						</div>
-						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. Gami greets you in the app, in six languages.</figcaption>
-					</figure>
-				</div>
-			</section>
-
-			<hr class="crease-line" />
-
 			<!-- Keep -->
 			<section id="keep" class="fold">
 				<div class="wrap">
-					<div class="two-col act-visual">
-						<div class="col-visual">
-							<figure class="vig crease">
-								<div class="vig-art" set:html={vigKeep} aria-hidden="true"></div>
-								<figcaption>Nothing leaves the frame.</figcaption>
-							</figure>
-						</div>
-						<div class="col-copy">
-							<div class="act-head crease">
-								<p class="kicker">Fourth fold · Keep</p>
-								<h2>The studio has no windows.</h2>
-								<p class="lede">Everything happens on your Mac. The cloud was not consulted.</p>
-							</div>
-							<div class="stat-row crease">
-								<div class="stat"><b>0</b><span>The app asks the network for nothing.</span></div>
-								<div class="stat"><b>AES-256</b><span>Real encryption, not a "protected" flag a reader can ignore.</span></div>
-								<div class="stat"><b>Sanitize</b><span>A file that carries nothing you didn't intend to send.</span></div>
-								<div class="stat"><b>{stats.tests}</b><span>tests gate every release.</span></div>
-								<div class="stat"><b>MIT</b><span>Free forever, open source.</span></div>
-								<div class="stat"><b>6</b><span>languages, everything on-device.</span></div>
-							</div>
-							<p class="fine-print">
-								This page asks GitHub for the latest version number so the button below is always
-								current. The app never does.
-							</p>
-						</div>
+					<div class="act-head crease">
+						<p class="kicker">Fourth fold · Keep</p>
+						<h2>The studio has no windows.</h2>
+						<p class="lede">Everything happens on your Mac. The cloud was not consulted.</p>
 					</div>
+					<figure class="shot shot-card crease">
+						<div class="chrome">
+							<img src={cap('keep-export-tight.png', 'landing')} width="640" height="475" loading="lazy" decoding="async" alt="The Export dialog with Protect with password, Reduce file size, and Sanitize for sharing options, ready before export." />
+						</div>
+						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. Sanitize strips what you didn't mean to share.</figcaption>
+					</figure>
+					<div class="stat-row crease">
+						<div class="stat"><b>0</b><span>The app asks the network for nothing.</span></div>
+						<div class="stat"><b>AES-256</b><span>Real encryption, not a "protected" flag a reader can ignore.</span></div>
+						<div class="stat"><b>Sanitize</b><span>A file that carries nothing you didn't intend to send.</span></div>
+						<div class="stat"><b>{stats.tests}</b><span>tests gate every release.</span></div>
+						<div class="stat"><b>MIT</b><span>Free forever, open source.</span></div>
+						<div class="stat"><b>6</b><span>languages, everything on-device.</span></div>
+					</div>
+					<p class="fine-print">
+						This page asks GitHub for the latest version number so the button below is always
+						current. The app never does.
+					</p>
 
 					<div class="pet crease" data-pet="ori">
 						<span class="fig pet-arrive-target">
@@ -413,6 +382,14 @@ const icoClipboard =
 							</div>
 						</div>
 					</div>
+
+					<figure class="shot shot-proof crease">
+						<div class="chrome">
+							<div class="bar"><i></i><i></i><i></i></div>
+							<img src={cap('language-switcher.png')} width="1200" height="752" loading="lazy" decoding="async" alt="Orifold's welcome screen: the app open with Gami in the corner and a language menu showing English, Español, Français, हिन्दी, 简体中文, 日本語." />
+						</div>
+						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. Not a render — Gami greets you in the app, in six languages.</figcaption>
+					</figure>
 				</div>
 			</section>
 
@@ -425,7 +402,9 @@ const icoClipboard =
 						<p class="kicker" style="margin-inline:auto">Final fold · Take flight</p>
 						<h2>Take it home.</h2>
 					</div>
-					<div class="final-crane crease" id="final-crane" set:html={craneHero} aria-hidden="true"></div>
+					<div class="final-crane crease" aria-hidden="true">
+						<img src={`${base}/assets/orifold-app-icon-512.png`} width="512" height="512" loading="lazy" decoding="async" alt="" />
+					</div>
 					<div class="dl-grid">
 						<div class="dl-user crease" style="min-width:0">
 							<a class="btn btn-primary btn-lg" id="cta-final" href={downloadHref}>
@@ -618,23 +597,41 @@ const icoClipboard =
 					}
 				}
 
-				// ── hero + final crane: finite fold-settle; freeze at rest under reduced-motion ──
-				document.querySelectorAll('#hero-crane svg, #final-crane svg').forEach(function (svg) {
-					if (svg && svg.pauseAnimations && reduce) {
-						try { svg.setCurrentTime(3); svg.pauseAnimations(); } catch (e) {}
+				// ── hero crane: play once, then freeze (also gates reduced-motion) ──
+				// This is the real brand mark (orifold-crane-fold.svg — the same animated
+				// logo used in the README and docs), not a bespoke one-off. Its 65 SMIL
+				// animations all loop indefinitely over a 7.6s cycle with no begin offset,
+				// so the settle time must land on the fully-formed crane pose (WITH its
+				// tancho crown visible), not mid-transition or already folding onward into
+				// the app-icon shape. Verified frame-by-frame: the sheet is still flat at
+				// 0.1s, a recognizable crane appears by ~2.5s, and it holds a stable,
+				// crown-visible pose across at least 3.1s–3.4s before continuing to fold
+				// toward the icon — 3.2s sits centered in that held window. That window is
+				// only ~300ms wide, and a plain setTimeout can drift past it under real
+				// page-load contention (fires late relative to the SVG's own SMIL clock),
+				// so instead we poll the SVG's actual getCurrentTime() every animation
+				// frame and pause the instant it crosses the target — that stays locked to
+				// the real clock regardless of load, rather than an independent timer.
+				var heroCrane = document.getElementById('hero-crane');
+				var heroCraneSvg = heroCrane && heroCrane.querySelector('svg');
+				if (heroCraneSvg && heroCraneSvg.pauseAnimations) {
+					var settleTime = 3.2;
+					if (reduce) {
+						heroCraneSvg.setCurrentTime(settleTime);
+						heroCraneSvg.pauseAnimations();
+					} else {
+						(function watchSettle() {
+							try {
+								if (heroCraneSvg.getCurrentTime() >= settleTime) {
+									heroCraneSvg.pauseAnimations();
+									return;
+								}
+							} catch (e) {
+								return;
+							}
+							requestAnimationFrame(watchSettle);
+						})();
 					}
-				});
-
-				// ── product vignettes: freeze their one-shot fold under reduced-motion ──
-				// The vig SMIL is finite (fill=freeze / repeatCount=3) so it's not a 2.2.2 loop,
-				// but it still fires begin="0s" motion on load; an explicit reduced-motion
-				// preference should land it already-settled, matching the crane treatment.
-				if (reduce) {
-					document.querySelectorAll('.vig-art svg').forEach(function (svg) {
-						if (svg && svg.pauseAnimations) {
-							try { svg.setCurrentTime(5); svg.pauseAnimations(); } catch (e) {}
-						}
-					});
 				}
 
 				// ── copy buttons ─────────────────────────────────────────────

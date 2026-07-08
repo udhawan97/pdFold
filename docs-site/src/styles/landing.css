@@ -129,21 +129,6 @@ html[data-theme='light'] .landing :focus-visible {
 	color: var(--of-text-2);
 	font-size: 1.06rem;
 }
-.two-col {
-	display: grid;
-	gap: clamp(2rem, 5vw, 4rem);
-	align-items: center;
-	grid-template-columns: 1fr;
-}
-.two-col.copy-first .col-visual {
-	order: 2;
-}
-@media (min-width: 900px) {
-	.two-col {
-		grid-template-columns: 1fr 1fr;
-	}
-}
-
 /* real-capture frame — traffic-light chrome ONLY on real screenshots (§3.0) */
 figure.shot {
 	margin: 0;
@@ -175,14 +160,9 @@ figure.shot img {
 	width: 100%;
 	height: auto;
 }
-figure.shot figcaption,
-figure.vig figcaption {
+figure.shot figcaption {
 	margin-top: 0.7rem;
 	font-size: 0.82rem;
-	color: var(--of-text-2);
-}
-figure.vig figcaption::before {
-	content: 'Illustration · ';
 	color: var(--of-text-2);
 }
 
@@ -555,214 +535,6 @@ html.js .crease.is-revealed {
 		transform 0.5s var(--ease-fold);
 }
 
-/* ---- V1 The Gathering ----------------------------------------------------- */
-.gather {
-	position: relative;
-	height: 320px;
-}
-.gather .scrap {
-	position: absolute;
-	left: 50%;
-	top: 50%;
-	width: 128px;
-	height: 160px;
-	margin: -80px 0 0 -64px;
-	background: var(--of-paper);
-	border: 1px solid var(--of-paper-edge);
-	border-radius: 5px;
-	box-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.5);
-	background-image: linear-gradient(160deg, transparent 78%, var(--of-fold-shade) 82%);
-	transform: translate(var(--tx, 0), var(--ty, 0)) rotate(var(--rot, 0deg));
-	transition: transform 0.5s var(--ease-fold), opacity 0.5s var(--ease-fold);
-}
-.gather .scrap::before {
-	content: attr(data-label);
-	position: absolute;
-	left: 10px;
-	bottom: 10px;
-	font-size: 0.6rem;
-	color: var(--of-paper-ink);
-	opacity: 0.6;
-	font-family: ui-monospace, Menlo, monospace;
-}
-.gather .stack {
-	position: absolute;
-	left: 50%;
-	top: 50%;
-	width: 140px;
-	height: 172px;
-	margin: -86px 0 0 -70px;
-}
-.gather .stack-sheet {
-	position: absolute;
-	inset: 0;
-	background: var(--of-paper);
-	border: 1px solid var(--of-paper-edge);
-	border-radius: 6px;
-	opacity: 0;
-	transform: translateY(16px);
-	transition: transform 0.5s var(--ease-fold), opacity 0.5s var(--ease-fold);
-}
-.gather .stack-sheet:nth-child(2) {
-	transform: translateY(16px) translate(6px, 6px) rotate(2deg);
-}
-.gather .stack-sheet:nth-child(3) {
-	transform: translateY(16px) translate(-5px, 10px) rotate(-2deg);
-}
-.sheet-token::after {
-	content: '';
-	position: absolute;
-	top: 0;
-	right: 0;
-	width: 22px;
-	height: 22px;
-	background: linear-gradient(225deg, var(--of-canvas) 50%, var(--of-fold-shade) 50%);
-	border-left: 1px solid var(--of-paper-edge);
-	border-bottom: 1px solid var(--of-paper-edge);
-	border-radius: 0 6px 0 4px;
-}
-/* revealed: scraps settle inward and fade; stack rises */
-.gather.is-revealed .scrap {
-	--tx: 0 !important;
-	--ty: 0 !important;
-	--rot: 0deg !important;
-	opacity: 0;
-}
-.gather.is-revealed .stack-sheet {
-	opacity: 1;
-}
-.gather.is-revealed .stack-sheet:nth-child(1) {
-	transform: none;
-}
-.gather.is-revealed .stack-sheet:nth-child(2) {
-	transform: translate(6px, 6px) rotate(2deg);
-}
-.gather.is-revealed .stack-sheet:nth-child(3) {
-	transform: translate(-5px, 10px) rotate(-2deg);
-}
-/* finite ambient corner curl on the top stack sheet */
-.gather.is-revealed .stack-sheet:nth-child(1).curl {
-	animation: corner-lift 7s ease-in-out 2 both;
-	transform-origin: top right;
-}
-/* No-JS: force the revealed end-state directly (is-revealed never gets added) */
-html:not(.js) .gather .scrap {
-	opacity: 0;
-}
-html:not(.js) .gather .stack-sheet {
-	opacity: 1;
-}
-html:not(.js) .gather .stack-sheet:nth-child(1) {
-	transform: none;
-}
-html:not(.js) .gather .stack-sheet:nth-child(2) {
-	transform: translate(6px, 6px) rotate(2deg);
-}
-html:not(.js) .gather .stack-sheet:nth-child(3) {
-	transform: translate(-5px, 10px) rotate(-2deg);
-}
-
-/* ---- V2 Crease Stage ------------------------------------------------------ */
-.stage-wrap {
-	position: relative;
-}
-.stage {
-	position: sticky;
-	top: 16vh;
-	height: clamp(420px, 62vh, 900px);
-	display: grid;
-	place-items: center;
-	overflow: hidden;
-}
-.stage .scene {
-	position: absolute;
-	inset: 0;
-	display: grid;
-	place-items: center;
-	opacity: 0;
-	visibility: hidden;
-	transform: translateY(12px) scale(0.985);
-	transition:
-		opacity 0.5s var(--ease-fold),
-		transform 0.5s var(--ease-fold),
-		visibility 0.5s;
-}
-.stage[data-step='1'] .scene[data-scene='1'],
-.stage[data-step='2'] .scene[data-scene='2'] {
-	opacity: 1;
-	visibility: visible;
-	transform: none;
-}
-/* short viewports: sticky top offset + min-clamped height can exceed the
-   viewport and clip the figure permanently (sticky elements don't shrink to
-   fit) — fall back to the readable static column, same as no-JS/reduced-motion.
-   Placed after the base/unconditional .stage .scene rule so this override
-   wins in source order despite matching specificity. */
-@media (max-height: 520px) {
-	.stage {
-		position: static;
-		height: auto;
-	}
-	.stage .scene {
-		position: static;
-		opacity: 1;
-		visibility: visible;
-		transform: none;
-		margin-bottom: 1.5rem;
-	}
-}
-.stage .scene figure.shot {
-	width: min(92%, 720px);
-	max-height: 100%;
-	display: flex;
-	flex-direction: column;
-}
-.stage .scene figure.shot .chrome {
-	min-height: 0;
-	display: flex;
-	flex-direction: column;
-}
-.stage .scene figure.shot img {
-	min-height: 0;
-	flex: 1 1 auto;
-	width: auto;
-	max-width: 100%;
-	object-fit: contain;
-}
-.stage-steps .step {
-	min-height: 70vh;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	gap: 0.6rem;
-	max-width: 30ch;
-}
-.step .num {
-	display: grid;
-	place-items: center;
-	width: 40px;
-	height: 40px;
-	border-radius: 8px;
-	background: var(--of-paper);
-	color: var(--of-paper-ink);
-	border: 1px solid var(--of-paper-edge);
-	font-weight: 700;
-}
-@media (min-width: 900px) {
-	.stage-wrap {
-		display: grid;
-		grid-template-columns: 1fr 0.7fr;
-		gap: 3rem;
-	}
-	.stage {
-		grid-column: 1;
-		grid-row: 1;
-	}
-	.stage-steps {
-		grid-column: 2;
-	}
-}
-
 /* ---- crease-pattern grid (features) --------------------------------------- */
 .card-grid {
 	display: grid;
@@ -808,131 +580,6 @@ html:not(.js) .gather .stack-sheet:nth-child(3) {
 }
 .guides-row {
 	margin-top: 1.5rem;
-	color: var(--of-text-2);
-	font-size: 0.9rem;
-}
-
-/* ---- V3 The Seal ---------------------------------------------------------- */
-.seal {
-	position: relative;
-	display: grid;
-	place-items: center;
-	padding: 1rem;
-}
-.seal .sheet {
-	position: relative;
-	width: min(88%, 320px);
-	aspect-ratio: 3 / 4;
-	background: var(--of-paper);
-	border: 1px solid var(--of-paper-edge);
-	border-radius: 6px;
-	padding: 1.4rem;
-}
-.seal .sig-line {
-	position: absolute;
-	left: 1.4rem;
-	right: 1.4rem;
-	bottom: 5.2rem;
-	height: 1px;
-	background: var(--of-paper-ink);
-	opacity: 0.35;
-}
-.seal .hanko {
-	position: absolute;
-	right: 1.6rem;
-	bottom: 4.4rem;
-	width: 46px;
-	height: 46px;
-	border-radius: 50%;
-	background: var(--of-tancho);
-	transform: scale(0);
-}
-.seal.is-revealed .hanko {
-	animation: hanko-stamp 0.35s ease-out 0.1s both;
-}
-.seal .chain,
-.seal .verify {
-	position: absolute;
-	left: 1.4rem;
-	list-style: none;
-	padding: 0;
-	margin: 0;
-	font-size: 0.72rem;
-	color: var(--of-paper-ink);
-}
-.seal .chain {
-	top: 1.4rem;
-	display: flex;
-	gap: 0.4rem;
-}
-.seal .verify {
-	bottom: 1.2rem;
-}
-.seal .chain li,
-.seal .verify li {
-	opacity: 0;
-	transform: translateY(6px);
-}
-.seal.is-revealed .chain li,
-.seal.is-revealed .verify li {
-	animation: verify-unfold 0.4s var(--ease-fold) both;
-}
-.seal.is-revealed .chain li:nth-child(1) { animation-delay: 0.5s; }
-.seal.is-revealed .chain li:nth-child(2) { animation-delay: 0.62s; }
-.seal.is-revealed .chain li:nth-child(3) { animation-delay: 0.74s; }
-.seal.is-revealed .verify li:nth-child(1) { animation-delay: 0.9s; }
-.seal.is-revealed .verify li:nth-child(2) { animation-delay: 1.02s; }
-.seal.is-revealed .verify li:nth-child(3) { animation-delay: 1.14s; }
-/* No-JS: force the revealed end-state directly (is-revealed never gets added) */
-html:not(.js) .seal .hanko {
-	transform: scale(1);
-	opacity: 1;
-}
-html:not(.js) .seal .chain li,
-html:not(.js) .seal .verify li {
-	opacity: 1;
-	transform: none;
-}
-
-/* ---- V4 No Exit ----------------------------------------------------------- */
-.studio-vig {
-	position: relative;
-	display: grid;
-	place-items: center;
-	min-height: 280px;
-}
-.studio-vig .mac {
-	width: min(70%, 300px);
-	aspect-ratio: 4 / 3;
-	border: 2px solid var(--of-separator);
-	border-radius: 12px;
-	display: grid;
-	place-items: center;
-}
-.studio-vig .inner-sheet {
-	width: 46%;
-	aspect-ratio: 3 / 4;
-	background: var(--of-paper);
-	border: 1px solid var(--of-paper-edge);
-	border-radius: 4px;
-	position: relative;
-}
-.studio-vig .slip {
-	position: absolute;
-	font-size: 0.68rem;
-	font-weight: 600;
-	color: var(--of-text-2);
-	opacity: 0;
-	transform: translateX(0);
-}
-.studio-vig.is-revealed .slip {
-	animation: slip-out 0.6s var(--ease-fold) both;
-}
-.studio-vig.is-revealed .slip:nth-child(1) { animation-delay: 0.3s; }
-.studio-vig.is-revealed .slip:nth-child(2) { animation-delay: 0.4s; }
-.studio-vig.is-revealed .slip:nth-child(3) { animation-delay: 0.5s; }
-.no-exit-line {
-	margin-top: 1.4rem;
 	color: var(--of-text-2);
 	font-size: 0.9rem;
 }
@@ -1138,24 +785,6 @@ html.js .pet.pet-arrived .bubble {
 	50% { transform: translate3d(-26px, 12px, 0); }
 	100% { transform: translate3d(0, 0, 0); }
 }
-@keyframes corner-lift {
-	0%, 100% { transform: rotate(0deg); }
-	50% { transform: perspective(400px) rotateX(2deg) rotateZ(-0.4deg); }
-}
-@keyframes hanko-stamp {
-	0% { transform: scale(1.3); opacity: 0; }
-	70% { transform: scale(0.96); opacity: 1; }
-	100% { transform: scale(1); }
-}
-@keyframes verify-unfold {
-	from { opacity: 0; transform: translateY(6px); }
-	to { opacity: 1; transform: none; }
-}
-@keyframes slip-out {
-	from { opacity: 0; transform: translateX(0); }
-	40% { opacity: 0.9; }
-	to { opacity: 0; transform: translateX(22px); }
-}
 @keyframes pet-arrive {
 	from { opacity: 0; transform: translateX(-24px) rotate(6deg); }
 	to { opacity: 1; transform: none; }
@@ -1182,22 +811,6 @@ html.js .pet.pet-arrived .bubble {
 		opacity: 1 !important;
 		transform: none !important;
 	}
-	.gather.is-revealed .scrap {
-		opacity: 0;
-	}
-	.gather .stack-sheet {
-		opacity: 1;
-	}
-	.stage {
-		position: static;
-		height: auto;
-	}
-	.stage .scene {
-		position: static;
-		opacity: 1;
-		visibility: visible;
-		transform: none;
-	}
 	.of-card:hover {
 		transform: none;
 	}
@@ -1209,19 +822,7 @@ html.js .pet.pet-arrived .bubble {
 	}
 }
 
-/* No-JS: reveal pre-state is gated behind html.js, so everything is visible.
-   The sticky stage still un-stickies to a readable column when JS is absent. */
-html:not(.js) .stage {
-	position: static;
-	height: auto;
-}
-html:not(.js) .stage .scene {
-	position: static;
-	opacity: 1;
-	visibility: visible;
-	transform: none;
-	margin-bottom: 1.5rem;
-}
+/* No-JS: reveal pre-state is gated behind html.js, so everything is visible. */
 html:not(.js) .chip-cmd button,
 html:not(.js) .copy-btn {
 	display: none;

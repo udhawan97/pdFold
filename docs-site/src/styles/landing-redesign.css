@@ -1,63 +1,21 @@
 /* ============================================================================
    Orifold landing — REDESIGN layer (Rev 4, "One sheet, folded into flight").
    Loaded LAST, scoped to body.landing. Elevates the premium layer for the
-   bespoke-origami rebuild: crane hero, SVG vignettes, icon cards, icon CTAs,
-   living pets, and calmer typographic rhythm. Zero raw colors except the shared
-   paper/facet palette (the sanctioned exception, mirrors landing-premium.css).
+   bespoke-origami rebuild: icon cards, icon CTAs, living pets, real-screenshot
+   product moments, and calmer typographic rhythm. Zero raw colors except the
+   sanctioned exceptions already documented in landing-premium.css.
+
+   Rev 5: the four product-moment "vignettes" (gather/shape/seal/keep) were
+   replaced with real app screenshots per direction — real proof over
+   illustration. See §"real-screenshot product shots" below.
+
+   Rev 6: the hero uses the REAL brand mark (orifold-crane-fold.svg — the same
+   animated logo as the README/docs), not a bespoke one-off crane. Its container
+   styling (glass panel, glow, entrance animation, mobile sizing) is entirely
+   owned by landing-premium.css, which was already tuned for this exact asset —
+   nothing to override here. The final-fold spot uses the real, high-res app
+   icon (a static PNG) rather than replaying the same ~8s fold animation twice.
    ============================================================================ */
-
-/* ---- bespoke-SVG palette (crane + vignettes + icons theme through these) --- */
-html body.landing .hero-crane svg,
-html body.landing .final-crane svg,
-html body.landing .vig-art svg {
-	--paper: #eef1f5;
-	--paper-2: #d5dde6;
-	--paper-3: #e4eaf0;
-	--edge: #aeb9c6;
-	--accent: var(--of-accent-bright);
-	--tancho: var(--of-tancho);
-}
-html[data-theme='light'] body.landing .hero-crane svg,
-html[data-theme='light'] body.landing .final-crane svg,
-html[data-theme='light'] body.landing .vig-art svg {
-	--paper: #ffffff;
-	--paper-2: #c2cfdc;
-	--paper-3: #e9eef3;
-	/* darker edge so the decorative origami outlines clear the 3:1 graphical
-	   floor on the white paper fill (was #93a2b3 = 2.61:1) — stays cool/moon,
-	   no cream. */
-	--edge: #7d8ea1;
-	--accent: var(--of-accent);
-}
-
-/* ---- hero crane: let the elegant mark float (drop the heavy glass panel) --- */
-html body.landing .hero-crane {
-	width: min(92%, 480px);
-	padding: 0;
-	border: 0;
-	background: none;
-	box-shadow: none;
-	backdrop-filter: none;
-	-webkit-backdrop-filter: none;
-	justify-self: center;
-}
-html body.landing .hero-crane::before,
-html body.landing .hero-crane::after {
-	content: none;
-}
-html body.landing .hero-crane svg,
-html body.landing .final-crane svg {
-	width: 100%;
-	height: auto;
-	display: block;
-	overflow: visible;
-}
-@media (max-width: 899px) {
-	html body.landing .hero-crane {
-		order: -1;
-		width: min(74vw, 300px);
-	}
-}
 
 /* ---- typographic rhythm: calmer, easier to read at a glance ---------------- */
 html body.landing .act-head {
@@ -72,14 +30,6 @@ html body.landing h2 {
 	max-width: 15ch;
 	letter-spacing: -0.045em;
 	line-height: 0.98;
-}
-/* "A signature that holds up." sits in a narrower two-col copy rail; at
-   ~1360-1500px the shared .act-head 40ch cap lands right at the width where
-   text-wrap:balance strands "that" alone on a middle line. A few extra
-   px of headroom here lets it settle back onto a clean 2-line break without
-   touching the shared .act-head rhythm rule used by every other section. */
-html body.landing #seal .act-head {
-	max-width: 44ch;
 }
 html body.landing .act-head .lede {
 	margin-top: 1.35rem;
@@ -104,66 +54,52 @@ html body.landing .fine-print {
 html body.landing .fold {
 	padding-block: clamp(6rem, 13vh, 11rem);
 }
-html body.landing .two-col.act-visual {
-	align-items: center;
-	gap: clamp(3rem, 7vw, 6rem);
-}
 
-/* ---- product vignettes: framed origami artifacts (replace screenshots) ----- */
-html body.landing figure.vig {
-	display: flex;
-	flex-direction: column;
-	gap: 1rem;
-	padding: clamp(1.5rem, 4vw, 2.75rem);
-	border: 1px solid var(--premium-line);
-	border-radius: var(--premium-radius-lg);
-	background:
-		radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--of-accent) 8%, transparent), transparent 60%),
-		linear-gradient(160deg, color-mix(in srgb, var(--of-text-1) 6%, transparent), color-mix(in srgb, var(--of-canvas) 55%, transparent));
-	box-shadow: var(--premium-shadow-tight);
-	min-height: 0;
-	/* Don't override premium.css's overflow:clip here — it's the documented
-	   safety net that keeps the scattered decorative scraps from clipping
-	   awkwardly at the card edge on narrow viewports (landing-premium.css
-	   lines 512-514). Let that rule win. */
+/* -------------------------------------------------------------------------- */
+/* Real-screenshot product shots — replace the earlier bespoke SVG vignettes.  */
+/* Every product moment (gather/shape/seal/keep) now proves itself with a real */
+/* capture, centered below its headline, framed in the same premium card the   */
+/* site already uses for honest proof (figure.shot/.chrome from landing.css + */
+/* landing-premium.css) — a dark title bar with real traffic-light dots only   */
+/* where the capture itself shows them; a plain frame (no fabricated chrome)   */
+/* for tightly-cropped UI details, so real vs. fabricated chrome is never      */
+/* ambiguous. Every size below matches that specific image's real aspect ratio */
+/* — never force-cropped or stretched.                                        */
+/* -------------------------------------------------------------------------- */
+html body.landing figure.shot {
+	margin-top: clamp(2.25rem, 5vw, 3.5rem);
 }
-html[data-theme='light'] body.landing figure.vig {
-	background:
-		radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--of-accent) 10%, transparent), transparent 60%),
-		color-mix(in srgb, var(--of-canvas) 78%, #ffffff);
-}
-html body.landing .vig-art {
-	display: block;
-}
-html body.landing .vig-art svg {
-	width: 100%;
-	height: auto;
-	max-height: 360px;
-	display: block;
-	filter: drop-shadow(0 20px 30px rgba(0, 0, 0, 0.22));
-}
-/* light theme: swap the flat-black drop-shadow for the same navy-tinted ratio
-   used by --premium-shadow-tight, so the vignette's cast shadow matches the
-   card's near-white background instead of reading as a hard black smudge. */
-html[data-theme='light'] body.landing .vig-art svg {
-	filter: drop-shadow(0 20px 30px rgba(19, 31, 51, 0.22));
-}
-html body.landing figure.vig figcaption {
-	margin: 0;
-	text-align: center;
-	/* Keep the premium layer's AA-passing caption color (don't regress to
-	   --of-text-3, which fails 4.5:1 on the near-white vig card in light theme). */
-	color: color-mix(in srgb, var(--of-text-2) 88%, var(--of-text-1));
-	font-size: 0.82rem;
-}
-html body.landing figure.vig figcaption::before {
-	content: 'Illustration · ';
-	color: inherit;
-}
-/* single-column vignette acts (gather) center the artifact at a calm width */
-html body.landing #gather figure.vig {
-	max-width: 720px;
+/* the "hero" product shot (Gather: a full app window) reads widest and most
+   prominent — this is the page's biggest single proof moment after the crane. */
+html body.landing .shot-hero {
+	max-width: 880px;
 	margin-inline: auto;
+}
+/* the "banner" shot (Shape: a wide toolbar detail) spans further, framed short
+   and wide like a control callout, not stretched to fill a square. */
+html body.landing .shot-banner {
+	max-width: 900px;
+	margin-inline: auto;
+}
+html body.landing .shot-banner .chrome {
+	background: var(--of-canvas);
+}
+/* the "card" shots (Seal/Keep: cropped dialog details) sit centered at a calm,
+   moderate width — smaller than the hero shot so the page keeps one clear
+   focal size per act, not competing full-bleed images everywhere. */
+html body.landing .shot-card {
+	max-width: 420px;
+	margin-inline: auto;
+}
+html body.landing #keep .shot-card {
+	max-width: 480px;
+}
+/* the small supporting proof shot in #ma (pets appearing in the real app) —
+   deliberately modest, a grace note under the guide cards, not a hero moment. */
+html body.landing .shot-proof {
+	max-width: 480px;
+	margin-inline: auto;
+	margin-top: clamp(2.5rem, 6vw, 3.5rem);
 }
 
 /* ---- feature cards with bespoke origami icons ----------------------------- */
@@ -244,14 +180,6 @@ html body.landing .stat-row {
 	gap: 1.1rem;
 }
 
-/* ---- proof (the one real capture) ----------------------------------------- */
-html body.landing .proof-fold {
-	padding-block: clamp(5rem, 10vh, 8rem);
-}
-html body.landing #proof figure.shot {
-	margin-top: clamp(2.5rem, 5vw, 3.5rem);
-}
-
 /* ---- Ma: the living guides showcase --------------------------------------- */
 html body.landing .guides {
 	display: grid;
@@ -272,9 +200,9 @@ html body.landing .guide {
 	padding: 1.5rem 1.6rem;
 	border: 1px solid var(--premium-line);
 	border-radius: var(--premium-radius);
-	/* Same glow + diagonal layer as .stat/.dl-user/.dl-dev/figure.vig (landing-premium.css
-	   lines 500-507) so this card joins the same material family instead of reading
-	   flat next to its siblings. */
+	/* Same glow + diagonal layer as .stat/.dl-user/.dl-dev (landing-premium.css)
+	   so this card joins the same material family instead of reading flat next
+	   to its siblings. */
 	background:
 		radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--of-accent) 6%, transparent), transparent 60%),
 		linear-gradient(150deg, color-mix(in srgb, var(--of-text-1) 7%, transparent), transparent 38%),
@@ -354,12 +282,9 @@ html[data-theme='light'] body.landing .landing-footer .sig {
 	color: var(--of-text-2);
 }
 
-/* ---- reduced motion: drop the vignette drop-shadow paint (pets are handled by
-   the poster swap in index.astro's is:global block) ------------------------- */
+/* ---- reduced motion: pets are handled by the poster swap in index.astro's
+   is:global block; this covers everything else added by this layer -------- */
 @media (prefers-reduced-motion: reduce) {
-	html body.landing .vig-art svg {
-		filter: none;
-	}
 	html body.landing .arrow-link:hover .arrow-ico,
 	html body.landing .arrow-link:focus-visible .arrow-ico {
 		transform: none !important;
@@ -411,12 +336,6 @@ html body.landing .nav .links a.is-active {
 	box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--of-text-1) 55%, transparent);
 }
 
-/* ---- mobile spacing ------------------------------------------------------- */
-@media (max-width: 720px) {
-	html body.landing figure.vig {
-		padding: 1.4rem;
-	}
-}
 /* Guides go column/centered strictly BELOW the 2-col breakpoint (min-width:720px
    above), so the wide grid never inherits the narrow card internals at exactly
    720px — the row layout owns >=720, the stack owns <720. */
@@ -427,5 +346,52 @@ html body.landing .nav .links a.is-active {
 	}
 	html body.landing .guide-copy {
 		text-align: center;
+	}
+}
+
+/* -------------------------------------------------------------------------- */
+/* Scroll-linked screenshot reveal — the "Apple product page" feel, CSS-only.  */
+/*                                                                              */
+/* The existing .crease system (index.astro's IntersectionObserver) already   */
+/* gives every real-screenshot figure a calm one-shot fade + settle the first  */
+/* time it's scrolled into view — that's the universal baseline and it works  */
+/* everywhere, JS or not, reduced-motion or not.                              */
+/*                                                                              */
+/* This block LAYERS one more thing on top, only where the browser supports   */
+/* it: as you scroll, the screenshot itself continuously scales up from a     */
+/* slightly-smaller, slightly-faded state to its resting size — the same      */
+/* "settles into place as it arrives" motion Apple's product pages use, tied  */
+/* directly to scroll position via animation-timeline, so it costs zero JS    */
+/* and runs entirely on the compositor (no scroll listener, nothing to jank). */
+/*                                                                              */
+/* Targeted at the IMAGE, not .chrome (which already owns the mouse-hover lift */
+/* transform in landing-premium.css) — two different elements, so the hover   */
+/* lift and the scroll-driven scale never fight over the same `transform`.    */
+/*                                                                              */
+/* Range starts at `entry 20%`, not `entry 0%`: index.astro's IntersectionObs- */
+/* erver fires the outer .crease reveal at threshold 0.14 (~entry 14%), which  */
+/* runs its own 0.78s transform/opacity settle on figure.shot. Starting this   */
+/* inner scroll-tied animation at 0% would keep it mid-motion while the outer  */
+/* crease transition is also mid-motion — two settles compounding on nested    */
+/* elements. Starting at 20% lets the crease settle read first, so only one   */
+/* motion is visibly active at a time.                                        */
+/* -------------------------------------------------------------------------- */
+@supports (animation-timeline: view()) {
+	@media (prefers-reduced-motion: no-preference) {
+		html body.landing figure.shot .chrome img {
+			animation: shot-scroll-settle linear both;
+			animation-timeline: view();
+			animation-range: entry 20% cover 45%;
+		}
+		@keyframes shot-scroll-settle {
+			from {
+				opacity: 0.55;
+				transform: scale(0.94);
+			}
+			to {
+				opacity: 1;
+				transform: none;
+			}
+		}
 	}
 }
