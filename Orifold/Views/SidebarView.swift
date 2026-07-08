@@ -67,22 +67,29 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionHeader
 
-            List {
-                ForEach(viewModel.memberDocuments) { member in
-                    MemberDocRow(member: member, viewModel: viewModel, expandedDocs: $expandedDocs)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
-                        .onDrop(of: importDropContentTypes, isTargeted: $isImportDropTargeted) { providers in
-                            onImportDrop(providers, member.pageRefs.last)
-                        }
+            // A plain ScrollView + LazyVStack rather than a `List`: on macOS a `List` with
+            // `.onMove` is NSTableView-backed and its row-drag machinery swallows the nested
+            // `.onDrag` on page thumbnails, so page-level reordering never fired. Custom
+            // drag/drop here drives BOTH file-level and page-level reordering with a shared
+            // insertion indicator and no gesture conflict.
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(viewModel.memberDocuments) { member in
+                        MemberDocRow(
+                            member: member,
+                            viewModel: viewModel,
+                            expandedDocs: $expandedDocs,
+                            onImportDrop: { providers in onImportDrop(providers, member.pageRefs.last) }
+                        )
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 2)
+                    }
                 }
-                .onMove { viewModel.moveDocument(from: $0, to: $1) }
-                .onDelete { viewModel.removeDocument(at: $0) }
+                .padding(.vertical, 4)
             }
-            .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
         }
+        .frame(maxHeight: .infinity)
     }
 
     private var sectionHeader: some View {
@@ -329,9 +336,12 @@ struct MemberDocRow: View {
     var member: MemberDocument
     var viewModel: WorkspaceViewModel
     @Binding var expandedDocs: Set<UUID>
+    var onImportDrop: ([NSItemProvider]) -> Bool = { _ in false }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
     @State private var isHovered = false
+    @State private var dropEdge: VerticalEdge?
+    @State private var cardHeight: CGFloat = 0
     // Passed into L10n.format()/L10n.string() below so this view's `body` actually
     // reads it — SwiftUI only re-invokes `body` on a locale change for views that
     // read `\.locale` during the previous evaluation.
@@ -460,6 +470,39 @@ struct MemberDocRow: View {
             guard viewModel.canRemoveDocuments else { return }
             viewModel.removeDocument(member)
         }
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { cardHeight = geo.size.height }
+                    .onChange(of: geo.size.height) { _, newValue in cardHeight = newValue }
+            }
+        }
+        .overlay(alignment: .top) { if dropEdge == .top { SidebarInsertionLine() } }
+        .overlay(alignment: .bottom) { if dropEdge == .bottom { SidebarInsertionLine() } }
+        .onDrag {
+            viewModel.beginDraggingDocument(member)
+            let provider = NSItemProvider()
+            provider.registerDataRepresentation(
+                forTypeIdentifier: UTType.orifoldDocRef.identifier,
+                visibility: .ownProcess
+            ) { completion in
+                completion(member.id.uuidString.data(using: .utf8), nil)
+                return nil
+            }
+            return provider
+        }
+        .onDrop(
+            of: [.orifoldDocRef] + importDropContentTypes,
+            delegate: SidebarReorderDropDelegate(
+                reorderType: .orifoldDocRef,
+                importTypes: importDropContentTypes,
+                rowHeight: cardHeight,
+                isReorderActive: { viewModel.draggedMemberID != nil && viewModel.draggedMemberID != member.id },
+                setEdge: { dropEdge = $0 },
+                onReorder: { above in viewModel.moveDraggedDocument(to: member.id, insertAbove: above) },
+                onImport: onImportDrop
+            )
+        )
     }
 
     @ViewBuilder private var titleView: some View {
@@ -711,6 +754,8 @@ struct ThumbnailCell: View {
     @State private var thumbnail: NSImage? = nil
     @State private var isHovered = false
     @State private var isConfirmingDelete = false
+    @State private var dropEdge: VerticalEdge?
+    @State private var cellHeight: CGFloat = 0
     // Passed into L10n.format()/L10n.string() below so this view's `body` actually
     // reads it — SwiftUI only re-invokes `body` on a locale change for views that
     // read `\.locale` during the previous evaluation.
@@ -819,6 +864,15 @@ struct ThumbnailCell: View {
             let flags = NSApp.currentEvent?.modifierFlags ?? []
             viewModel.selectPage(pageRef, extendingSelection: flags.contains(.command) || flags.contains(.shift))
         }
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { cellHeight = geo.size.height }
+                    .onChange(of: geo.size.height) { _, newValue in cellHeight = newValue }
+            }
+        }
+        .overlay(alignment: .top) { if dropEdge == .top { SidebarInsertionLine() } }
+        .overlay(alignment: .bottom) { if dropEdge == .bottom { SidebarInsertionLine() } }
         .onDrag {
             viewModel.beginDraggingPage(pageRef)
             let provider = NSItemProvider()
@@ -831,9 +885,23 @@ struct ThumbnailCell: View {
             }
             return provider
         }
-        .onDrop(of: [.orifoldPageRef], isTargeted: nil) { _ in
-            viewModel.moveDraggedPage(to: pageRef)
-        }
+        .onDrop(
+            of: [.orifoldPageRef],
+            delegate: SidebarReorderDropDelegate(
+                reorderType: .orifoldPageRef,
+                importTypes: [],
+                rowHeight: cellHeight,
+                // Same-document only (MVP): reject drops when the dragged page belongs to
+                // another member so the indicator never shows and the drop is refused.
+                isReorderActive: {
+                    viewModel.draggedPageMemberID == pageRef.memberDocId
+                        && viewModel.draggedPageRefID != pageRef.id
+                },
+                setEdge: { dropEdge = $0 },
+                onReorder: { above in viewModel.moveDraggedPage(to: pageRef, insertAbove: above) },
+                onImport: { _ in false }
+            )
+        )
         .task(id: pageNumber) {
             guard thumbnail == nil else { return }
             thumbnail = page.thumbnail(of: Self.thumbSize, for: .mediaBox)
@@ -864,5 +932,75 @@ struct ThumbnailCell: View {
         if panel.runModal() == .OK {
             importFilesWithBatchLimit(urls: panel.urls, into: viewModel, insertingAfter: ref.id)
         }
+    }
+}
+
+// MARK: - Reorder drag/drop
+
+/// A 2pt accent rule shown at a row's top or bottom edge to preview where a dragged
+/// file or page will land.
+private struct SidebarInsertionLine: View {
+    var body: some View {
+        Capsule()
+            .fill(Color.dsAccent)
+            .frame(height: 2)
+            .padding(.horizontal, 4)
+            .transition(.opacity)
+    }
+}
+
+/// Drives custom drag-reordering for both the file rows and the page thumbnails. A single
+/// delegate handles the reorder type (drawing the insertion indicator and calling
+/// `onReorder`) and, for file rows, the file-import types (which fall through to `onImport`
+/// with no indicator). `rowHeight` is the measured height of the drop target and is used to
+/// decide whether the cursor is in the top or bottom half — i.e. insert before vs. after.
+private struct SidebarReorderDropDelegate: DropDelegate {
+    let reorderType: UTType
+    let importTypes: [UTType]
+    let rowHeight: CGFloat
+    let isReorderActive: () -> Bool
+    let setEdge: (VerticalEdge?) -> Void
+    let onReorder: (_ insertAbove: Bool) -> Bool
+    let onImport: ([NSItemProvider]) -> Bool
+
+    private func isReorder(_ info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [reorderType]) && isReorderActive()
+    }
+
+    private func edge(for info: DropInfo) -> VerticalEdge {
+        (rowHeight > 0 && info.location.y > rowHeight / 2) ? .bottom : .top
+    }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        if info.hasItemsConforming(to: [reorderType]) { return isReorderActive() }
+        return !importTypes.isEmpty && info.hasItemsConforming(to: importTypes)
+    }
+
+    func dropEntered(info: DropInfo) {
+        if isReorder(info) { setEdge(edge(for: info)) }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        if isReorder(info) {
+            setEdge(edge(for: info))
+            return DropProposal(operation: .move)
+        }
+        setEdge(nil)
+        return DropProposal(operation: .copy)
+    }
+
+    func dropExited(info: DropInfo) {
+        setEdge(nil)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let wasReorder = isReorder(info)
+        let insertAbove = edge(for: info) == .top
+        setEdge(nil)
+        if wasReorder {
+            return onReorder(insertAbove)
+        }
+        guard !importTypes.isEmpty else { return false }
+        return onImport(info.itemProviders(for: importTypes))
     }
 }
