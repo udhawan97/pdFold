@@ -2710,6 +2710,7 @@ final class WorkspaceViewModel {
             sourceBounds: sourceBlock.bounds,
             sourceLineBounds: sourceBlock.lines.map(\.bounds),
             sourceUnderlineBounds: sourceBlock.underlineBounds,
+            sourcePreserveRuleBounds: sourceBlock.protectedRuleBounds,
             sourceText: sourceBlock.text,
             editedBounds: editedBounds,
             columnBounds: sourceBlock.columnBounds,
@@ -2747,6 +2748,7 @@ final class WorkspaceViewModel {
             operation.sourceBounds = existingOp.sourceBounds
             operation.sourceLineBounds = existingOp.sourceLineBounds
             operation.sourceUnderlineBounds = existingOp.sourceUnderlineBounds
+            operation.sourcePreserveRuleBounds = existingOp.sourcePreserveRuleBounds
             operation.didApplyMatchedGeometry = operation.didApplyMatchedGeometry || existingOp.didApplyMatchedGeometry
             operation.sourceText = existingOp.sourceText.isEmpty ? operation.sourceText : existingOp.sourceText
             operation.columnBounds = operation.columnBounds ?? existingOp.columnBounds

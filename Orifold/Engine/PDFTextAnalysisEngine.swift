@@ -767,6 +767,12 @@ final class PDFTextAnalysisEngine {
         let underlineRule = graphics.underlineRule(forRun: bounds, baseline: bounds.minY, fontSize: fontSize)
         let underline = underlineRule != nil
         let underlineBounds = underlineRule.map { [$0.bounds] } ?? []
+        // Rules near this block that an erase patch could paint over once it grows (matched
+        // geometry, resize, or a taller replacement), minus this block's own underline
+        // (which we DO erase). The margin is a full cell's worth (~1.5em) so cell-boundary
+        // rules sitting in the surrounding padding are captured; over-capturing is harmless
+        // because the renderer only punches a hole where a rule actually intersects a patch.
+        let protectedRuleBounds = graphics.rulesNear(bounds, margin: max(12, fontSize * 1.5), excluding: underlineBounds)
         let run = PDFTextRun(
             text: text,
             bounds: bounds,
@@ -801,7 +807,8 @@ final class PDFTextAnalysisEngine {
             strokeColor: strokeColor,
             transform: transform,
             hasSyntheticGlyphs: hasSyntheticGlyphs,
-            underlineBounds: underlineBounds
+            underlineBounds: underlineBounds,
+            protectedRuleBounds: protectedRuleBounds
         )
     }
 
@@ -1067,6 +1074,7 @@ final class PDFTextAnalysisEngine {
             last.bounds = last.bounds.union(block.bounds)
             last.underline = last.underline || block.underline
             last.underlineBounds.append(contentsOf: block.underlineBounds)
+            last.protectedRuleBounds.append(contentsOf: block.protectedRuleBounds)
             if let existingColumn = last.columnBounds, let nextColumn = block.columnBounds {
                 let minX = min(existingColumn.minX, nextColumn.minX)
                 let maxX = min(existingColumn.maxX, nextColumn.maxX)

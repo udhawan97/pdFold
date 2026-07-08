@@ -47,7 +47,7 @@ enum PDFEditedPageRenderer {
         for operation in operations {
             let eraseBounds = eraseBounds(for: operation, on: page)
             for sourceBounds in eraseBounds {
-                drawErasePatch(for: sourceBounds, on: page, in: context)
+                drawErasePatch(for: sourceBounds, on: page, in: context, preservingRules: operation.sourcePreserveRuleBounds)
             }
         }
         for operation in operations {
@@ -150,13 +150,28 @@ enum PDFEditedPageRenderer {
         return sourceBounds + [destination]
     }
 
-    private static func drawErasePatch(for sourceBounds: CGRect, on page: PDFPage, in context: CGContext) {
+    private static func drawErasePatch(for sourceBounds: CGRect, on page: PDFPage, in context: CGContext, preservingRules: [CGRect] = []) {
         let patch = sourceBounds.standardized.insetBy(dx: -1, dy: -1)
         guard patch.width > 0, patch.height > 0 else { return }
 
         context.saveGState()
         context.setFillColor(sampledBackgroundColor(near: sourceBounds, on: page) ?? NSColor.white.cgColor)
-        context.fill(patch)
+        // Punch holes where table/separator rules cross this patch, so covering the old text
+        // never wipes the surrounding grid lines. Each rule is grown 0.35pt so the whole
+        // stroke (incl. anti-aliased edge) is spared; the fill uses the even-odd rule with
+        // the patch as the outer boundary and each rule intersection as a hole.
+        let holes = preservingRules
+            .map { $0.standardized.insetBy(dx: -0.35, dy: -0.35).intersection(patch) }
+            .filter { !$0.isNull && $0.width > 0 && $0.height > 0 }
+        if holes.isEmpty {
+            context.fill(patch)
+        } else {
+            let path = CGMutablePath()
+            path.addRect(patch)
+            for hole in holes { path.addRect(hole) }
+            context.addPath(path)
+            context.fillPath(using: .evenOdd)
+        }
         context.restoreGState()
     }
 

@@ -145,6 +145,11 @@ struct EditableTextBlock: Codable, Identifiable, Equatable {
     /// replacement — and so the replacement's own underline lines up with where the original
     /// sat. Empty when no underline was detected.
     var underlineBounds: [CGRect] = []
+    /// Table/separator rule rects near this block that the erase patch must PRESERVE (punch
+    /// holes for) rather than paint over — so editing a table cell never wipes the
+    /// surrounding grid lines. Excludes the block's own underline (which IS erased). Empty
+    /// when the block isn't near any rules.
+    var protectedRuleBounds: [CGRect] = []
 }
 
 struct PDFTextEditOperation: Codable, Identifiable, Equatable {
@@ -157,6 +162,10 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
     /// Erased in full on export so a commit never leaves half an underline exposed under the
     /// replacement. Empty when the source text was not underlined.
     var sourceUnderlineBounds: [CGRect] = []
+    /// Table/separator rule rects near the source that the erase patch must PRESERVE — the
+    /// export renderer punches holes for these so editing a table cell never wipes the grid
+    /// lines (see `EditableTextBlock.protectedRuleBounds`). Empty outside tables.
+    var sourcePreserveRuleBounds: [CGRect] = []
     var sourceText: String = ""
     var editedBounds: CGRect
     var columnBounds: CGRect? = nil
@@ -194,7 +203,7 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
     var modifiedAt: Date = Date()
 
     enum CodingKeys: String, CodingKey {
-        case id, pageRefID, sourceBlockID, sourceBounds, sourceLineBounds, sourceUnderlineBounds, sourceText, editedBounds, columnBounds
+        case id, pageRefID, sourceBlockID, sourceBounds, sourceLineBounds, sourceUnderlineBounds, sourcePreserveRuleBounds, sourceText, editedBounds, columnBounds
         case replacementText, fontName, fontSize, textColor, alignment, underline, originalFormat, isInsertion
         case didManuallyReposition, didManuallyResizeWidth, didManuallyResizeHeight, didManuallyChangeStyle
         case didApplyMatchedGeometry
@@ -208,6 +217,7 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
         sourceBounds: CGRect,
         sourceLineBounds: [CGRect] = [],
         sourceUnderlineBounds: [CGRect] = [],
+        sourcePreserveRuleBounds: [CGRect] = [],
         sourceText: String = "",
         editedBounds: CGRect,
         columnBounds: CGRect? = nil,
@@ -233,6 +243,7 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
         self.sourceBounds = sourceBounds
         self.sourceLineBounds = sourceLineBounds
         self.sourceUnderlineBounds = sourceUnderlineBounds
+        self.sourcePreserveRuleBounds = sourcePreserveRuleBounds
         self.sourceText = sourceText
         self.editedBounds = editedBounds
         self.columnBounds = columnBounds
@@ -269,6 +280,7 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
         sourceBounds = try c.decode(CGRect.self, forKey: .sourceBounds)
         sourceLineBounds = try c.decodeIfPresent([CGRect].self, forKey: .sourceLineBounds) ?? []
         sourceUnderlineBounds = try c.decodeIfPresent([CGRect].self, forKey: .sourceUnderlineBounds) ?? []
+        sourcePreserveRuleBounds = try c.decodeIfPresent([CGRect].self, forKey: .sourcePreserveRuleBounds) ?? []
         sourceText = try c.decodeIfPresent(String.self, forKey: .sourceText) ?? ""
         editedBounds = try c.decode(CGRect.self, forKey: .editedBounds)
         columnBounds = try c.decodeIfPresent(CGRect.self, forKey: .columnBounds)

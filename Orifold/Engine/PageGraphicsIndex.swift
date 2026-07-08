@@ -118,6 +118,21 @@ struct PageGraphicsIndex: Equatable {
         }?.bounds.midX
     }
 
+    /// The rule rects (horizontal and vertical) that sit close enough to `rect` that an
+    /// erase patch covering `rect` could paint over them — within `margin` points of the
+    /// box. Excludes any rule listed in `excluding` (typically the block's own underline,
+    /// which is meant to be erased, not preserved). Used to punch holes in the erase patch
+    /// so editing a table cell never wipes the surrounding rules.
+    func rulesNear(_ rect: CGRect, margin: CGFloat, excluding: [CGRect] = []) -> [CGRect] {
+        let box = rect.standardized.insetBy(dx: -margin, dy: -margin)
+        func isExcluded(_ r: CGRect) -> Bool {
+            excluding.contains { $0.standardized.insetBy(dx: -0.5, dy: -0.5).intersects(r.standardized) }
+        }
+        return (horizontalRules + verticalRules)
+            .map(\.bounds)
+            .filter { $0.standardized.intersects(box) && !isExcluded($0) }
+    }
+
     /// True when `rect` sits inside a ruled grid — it is crossed/bounded by at least
     /// `minVerticalRules` distinct vertical rules. Used to exclude table cells from
     /// body-style Match inference when the edit target is not itself in a grid.
