@@ -295,6 +295,7 @@ final class WorkspaceViewModel {
     var selectedPageRefID: UUID? = nil
     var selectedPageRefIDs: Set<UUID> = []
     var draggedPageRefID: UUID? = nil
+    var draggedMemberID: UUID? = nil
     var selectedCommentID: UUID? = nil
     var commentFilter: CommentFilter = .open
     private(set) var commentRevision = 0
@@ -2420,14 +2421,29 @@ final class WorkspaceViewModel {
 
     func beginDraggingPage(_ ref: PageRef) {
         guard canPerformMutatingAction() else { return }
+        draggedMemberID = nil
         draggedPageRefID = ref.id
     }
 
-    func moveDraggedPage(to targetRef: PageRef) -> Bool {
-        guard canPerformMutatingAction() else { return false }
+    /// The member document that owns the page currently being dragged, if any. Used by the
+    /// sidebar to gate page-reorder drops to same-document targets (the MVP scope).
+    var draggedPageMemberID: UUID? {
+        guard let draggedPageRefID else { return nil }
+        return document.workspace.pageOrder.first(where: { $0.id == draggedPageRefID })?.memberDocId
+    }
+
+    /// Reorders the dragged page relative to `targetRef` within the SAME document.
+    /// `insertAbove` mirrors the sidebar's insertion indicator: `true` drops the page just
+    /// before the target, `false` just after. Cross-document moves are intentionally refused
+    /// here — they force a pristine-base rebase on both members (see `movePage(_:after:)`),
+    /// which is the wrong trade-off to trigger from an easy-to-fat-finger drag.
+    @discardableResult
+    func moveDraggedPage(to targetRef: PageRef, insertAbove: Bool) -> Bool {
+        guard canPerformMutatingAction() else { draggedPageRefID = nil; return false }
         guard let draggedPageRefID,
               draggedPageRefID != targetRef.id,
               let sourceRef = document.workspace.pageOrder.first(where: { $0.id == draggedPageRefID }),
+              sourceRef.memberDocId == targetRef.memberDocId,
               let memberIndex = document.workspace.documents.firstIndex(where: { $0.id == targetRef.memberDocId }),
               let targetIndex = document.workspace.documents[memberIndex].pageRefs.firstIndex(of: targetRef.id)
         else {
@@ -2435,20 +2451,45 @@ final class WorkspaceViewModel {
             return false
         }
 
-        let didMove: Bool
-        if sourceRef.memberDocId == targetRef.memberDocId,
-           let sourceIndex = document.workspace.documents[memberIndex].pageRefs.firstIndex(of: sourceRef.id) {
-            let destination = targetIndex > sourceIndex ? targetIndex + 1 : targetIndex
-            didMove = movePage(sourceRef, toIndex: destination)
-        } else {
-            didMove = movePage(sourceRef, after: targetRef)
-        }
-        guard didMove else {
+        // `movePage(_:toIndex:)` takes a pre-removal destination index (SwiftUI `.onMove`
+        // convention) and adjusts internally when moving downward, so `targetIndex` inserts
+        // before the target and `targetIndex + 1` inserts after.
+        let destination = insertAbove ? targetIndex : targetIndex + 1
+        guard movePage(sourceRef, toIndex: destination) else {
             self.draggedPageRefID = nil
             return false
         }
         selectedPageRefID = sourceRef.id
         self.draggedPageRefID = nil
+        return true
+    }
+
+    func beginDraggingDocument(_ member: MemberDocument) {
+        guard canPerformMutatingAction() else { return }
+        draggedPageRefID = nil
+        draggedMemberID = member.id
+    }
+
+    /// Reorders the dragged member document relative to `targetID`. `insertAbove` mirrors the
+    /// sidebar's insertion indicator. Delegates to the tested `moveDocument(from:to:)` path.
+    @discardableResult
+    func moveDraggedDocument(to targetID: UUID, insertAbove: Bool) -> Bool {
+        guard canPerformMutatingAction() else { draggedMemberID = nil; return false }
+        guard let draggedMemberID,
+              draggedMemberID != targetID,
+              let sourceIndex = loadedPDFs.firstIndex(where: { $0.0.id == draggedMemberID }),
+              let targetIndex = loadedPDFs.firstIndex(where: { $0.0.id == targetID })
+        else {
+            self.draggedMemberID = nil
+            return false
+        }
+
+        // `moveDocument(from:to:)` uses `Array.move(fromOffsets:toOffset:)`, whose destination
+        // is a pre-removal index: `targetIndex` inserts before the target, `targetIndex + 1`
+        // after.
+        let destination = insertAbove ? targetIndex : targetIndex + 1
+        moveDocument(from: IndexSet(integer: sourceIndex), to: destination)
+        self.draggedMemberID = nil
         return true
     }
 

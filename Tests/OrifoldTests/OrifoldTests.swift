@@ -6232,6 +6232,135 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.document.sourcePayloads[second.member.id])
     }
 
+    // MARK: - Sidebar drag reorder (moveDraggedPage / moveDraggedDocument)
+
+    private func makeSingleDocViewModel(pageTexts: [String]) throws -> (vm: WorkspaceViewModel, refs: [PageRef]) {
+        let fixture = try makeMemberWithPDF(name: "Doc", pageTexts: pageTexts)
+        let document = WorkspaceDocument()
+        document.workspace.documents = [fixture.member]
+        document.workspace.pageOrder = fixture.refs
+        document.memberPDFData[fixture.member.id] = fixture.pdfData
+        return (WorkspaceViewModel(document: document), fixture.refs)
+    }
+
+    func testMoveDraggedPageInsertsAboveTarget() throws {
+        let (viewModel, refs) = try makeSingleDocViewModel(pageTexts: ["one", "two", "three"])
+        viewModel.beginDraggingPage(refs[2])
+        XCTAssertTrue(viewModel.moveDraggedPage(to: refs[0], insertAbove: true))
+        XCTAssertEqual(viewModel.document.workspace.pageOrder.map(\.id), [refs[2].id, refs[0].id, refs[1].id])
+        // Drag state cleared and the moved page stays selected.
+        XCTAssertNil(viewModel.draggedPageRefID)
+        XCTAssertEqual(viewModel.selectedPageRefID, refs[2].id)
+    }
+
+    func testMoveDraggedPageInsertsBelowTarget() throws {
+        let (viewModel, refs) = try makeSingleDocViewModel(pageTexts: ["one", "two", "three"])
+        viewModel.beginDraggingPage(refs[0])
+        XCTAssertTrue(viewModel.moveDraggedPage(to: refs[2], insertAbove: false))
+        XCTAssertEqual(viewModel.document.workspace.pageOrder.map(\.id), [refs[1].id, refs[2].id, refs[0].id])
+    }
+
+    func testMoveDraggedPageOntoItselfIsNoOp() throws {
+        let (viewModel, refs) = try makeSingleDocViewModel(pageTexts: ["one", "two"])
+        viewModel.beginDraggingPage(refs[0])
+        XCTAssertFalse(viewModel.moveDraggedPage(to: refs[0], insertAbove: true))
+        XCTAssertEqual(viewModel.document.workspace.pageOrder.map(\.id), [refs[0].id, refs[1].id])
+        XCTAssertNil(viewModel.draggedPageRefID)
+    }
+
+    func testMoveDraggedPageRejectsCrossDocument() throws {
+        let document = WorkspaceDocument()
+        let first = try makeMemberWithPDF(name: "First", pageTexts: ["one", "two"])
+        let second = try makeMemberWithPDF(name: "Second", pageTexts: ["three"])
+        document.workspace.documents = [first.member, second.member]
+        document.workspace.pageOrder = first.refs + second.refs
+        document.memberPDFData[first.member.id] = first.pdfData
+        document.memberPDFData[second.member.id] = second.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+
+        viewModel.beginDraggingPage(first.refs[0])
+        XCTAssertEqual(viewModel.draggedPageMemberID, first.member.id)
+        XCTAssertFalse(viewModel.moveDraggedPage(to: second.refs[0], insertAbove: true))
+        // Nothing moved across documents.
+        XCTAssertEqual(viewModel.document.workspace.documents[0].pageRefs, first.refs.map(\.id))
+        XCTAssertEqual(viewModel.document.workspace.documents[1].pageRefs, [second.refs[0].id])
+        XCTAssertNil(viewModel.draggedPageRefID)
+    }
+
+    func testMoveDraggedPageIsUndoable() throws {
+        let (viewModel, refs) = try makeSingleDocViewModel(pageTexts: ["one", "two", "three"])
+        let undoManager = UndoManager()
+        viewModel.undoManager = undoManager
+
+        viewModel.beginDraggingPage(refs[2])
+        XCTAssertTrue(viewModel.moveDraggedPage(to: refs[0], insertAbove: true))
+        XCTAssertEqual(viewModel.document.workspace.pageOrder.map(\.id), [refs[2].id, refs[0].id, refs[1].id])
+
+        undoManager.undo()
+        XCTAssertEqual(viewModel.document.workspace.pageOrder.map(\.id), [refs[0].id, refs[1].id, refs[2].id])
+    }
+
+    func testMoveDraggedDocumentReordersMembers() throws {
+        let document = WorkspaceDocument()
+        let a = try makeMemberWithPDF(name: "A", pageTexts: ["a"])
+        let b = try makeMemberWithPDF(name: "B", pageTexts: ["b"])
+        let c = try makeMemberWithPDF(name: "C", pageTexts: ["c"])
+        document.workspace.documents = [a.member, b.member, c.member]
+        document.workspace.pageOrder = a.refs + b.refs + c.refs
+        document.memberPDFData[a.member.id] = a.pdfData
+        document.memberPDFData[b.member.id] = b.pdfData
+        document.memberPDFData[c.member.id] = c.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+
+        // Drag C above A → [C, A, B].
+        viewModel.beginDraggingDocument(c.member)
+        XCTAssertTrue(viewModel.moveDraggedDocument(to: a.member.id, insertAbove: true))
+        XCTAssertEqual(viewModel.memberDocuments.map(\.id), [c.member.id, a.member.id, b.member.id])
+        XCTAssertNil(viewModel.draggedMemberID)
+    }
+
+    func testMoveDraggedDocumentBelowTarget() throws {
+        let document = WorkspaceDocument()
+        let a = try makeMemberWithPDF(name: "A", pageTexts: ["a"])
+        let b = try makeMemberWithPDF(name: "B", pageTexts: ["b"])
+        let c = try makeMemberWithPDF(name: "C", pageTexts: ["c"])
+        document.workspace.documents = [a.member, b.member, c.member]
+        document.workspace.pageOrder = a.refs + b.refs + c.refs
+        document.memberPDFData[a.member.id] = a.pdfData
+        document.memberPDFData[b.member.id] = b.pdfData
+        document.memberPDFData[c.member.id] = c.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+
+        // Drag A below B → [B, A, C].
+        viewModel.beginDraggingDocument(a.member)
+        XCTAssertTrue(viewModel.moveDraggedDocument(to: b.member.id, insertAbove: false))
+        XCTAssertEqual(viewModel.memberDocuments.map(\.id), [b.member.id, a.member.id, c.member.id])
+    }
+
+    func testMoveDraggedDocumentOntoItselfIsRejected() throws {
+        let document = WorkspaceDocument()
+        let a = try makeMemberWithPDF(name: "A", pageTexts: ["a"])
+        let b = try makeMemberWithPDF(name: "B", pageTexts: ["b"])
+        document.workspace.documents = [a.member, b.member]
+        document.workspace.pageOrder = a.refs + b.refs
+        document.memberPDFData[a.member.id] = a.pdfData
+        document.memberPDFData[b.member.id] = b.pdfData
+        let viewModel = WorkspaceViewModel(document: document)
+
+        viewModel.beginDraggingDocument(a.member)
+        XCTAssertFalse(viewModel.moveDraggedDocument(to: a.member.id, insertAbove: true))
+        XCTAssertEqual(viewModel.memberDocuments.map(\.id), [a.member.id, b.member.id])
+        XCTAssertNil(viewModel.draggedMemberID)
+    }
+
+    func testBeginDraggingPageClearsDocumentDragState() throws {
+        let (viewModel, refs) = try makeSingleDocViewModel(pageTexts: ["one", "two"])
+        viewModel.draggedMemberID = UUID()
+        viewModel.beginDraggingPage(refs[0])
+        XCTAssertNil(viewModel.draggedMemberID)
+        XCTAssertEqual(viewModel.draggedPageRefID, refs[0].id)
+    }
+
     @MainActor
     func testFirstImportIntoEmptyWorkspaceUpdatesWorkspaceTitle() throws {
         let tempURL = FileManager.default.temporaryDirectory
