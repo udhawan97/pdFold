@@ -191,16 +191,23 @@ final class UserFlowRegressionTests: XCTestCase {
             alignment: .left
         ))
 
-        // `.attributedString`, not `.string`: this page has the replacement sitting exactly
-        // where the still-present (visually-covered-only) original text is -- confirmed via a
-        // CI-only investigation (Xcode 16.4 / macOS 15, the toolchain pinned in ci.yml) that
-        // `PDFPage.string` interleaves character order on that older PDFKit for overlapping text
-        // runs: CI's raw extraction came back as " RSednsaictitveedoriginal value\n " -- the same
-        // 33 characters as "Sensitive original value" + "Redacted", just shuffled together.
-        // `.attributedString` uses a different, run-preserving extraction path that was confirmed
-        // clean ("Sensitive original value Redacted") on that same CI run. Not reproducible on the
-        // Xcode 26.6 dev toolchain, where `.string` itself is already correctly ordered.
-        let editedText = viewModel.loadedPDFs.first?.1.page(at: 0)?.attributedString?.string ?? ""
+        // Neither `.string` nor `.attributedString`: this page has the replacement sitting
+        // exactly where the still-present (visually-covered-only) original text is, and
+        // both PDFKit extraction paths were confirmed unreliable for this exact overlapping-
+        // runs shape on CI's pinned Xcode 16.4/macOS 15 toolchain -- `.string` interleaved
+        // character order (" RSednsaictitveedoriginal value\n ", the same characters shuffled
+        // together), and on a later CI run `.attributedString` came back empty/without either
+        // substring instead. `PDFTextAnalysisEngine` (PDFium-backed, reads the content
+        // stream's own text-showing operators directly rather than CoreText's glyph-position
+        // reconstruction) is the same fix already applied to this exact class of bug in
+        // `testImportEditExportReopenEditAgainRoundTrip` above, and was independently
+        // confirmed locally (see the Find & Replace body-text test suite) to correctly
+        // surface BOTH an original and a visually-overlapping replacement run rather than
+        // merging or dropping either.
+        let editedData = try XCTUnwrap(viewModel.document.memberPDFData[fixture.member.id])
+        let editedPage = try XCTUnwrap(PDFDocument(data: editedData)?.page(at: 0))
+        let editedAnalysis = PDFTextAnalysisEngine().analyze(data: editedData, pageIndex: 0, pageRefID: UUID(), fallbackPage: editedPage)
+        let editedText = editedAnalysis.blocks.map(\.text).joined(separator: " ")
         XCTAssertTrue(editedText.contains("Redacted"), "the replacement text should be present")
         // KNOWN LIMITATION (see doc comment above): the original value remains
         // structurally present even though it is visually covered. If this assertion ever
