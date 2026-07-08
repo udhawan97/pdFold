@@ -306,20 +306,19 @@ figure.vig figcaption::before {
 	color: var(--of-text-2);
 }
 
-/* ---- macOS download CTA (icon + stacked label) --------------------------- */
+/* ---- macOS download CTA (icon + stacked label) ---------------------------
+   Only the icon+label ROW layout lives here; the pill shape, gradient fill,
+   shadow, and hover lift come from the shared button rules (base .btn +
+   landing-premium.css), so the download CTA stays visually consistent with
+   every other button on the page. */
 .landing a.btn-primary.dl-btn {
 	flex-direction: row;
-	justify-content: flex-start;
+	justify-content: center;
 	gap: 0.65rem;
-	padding: 0.7rem 1.35rem;
-	box-shadow: 0 1px 2px color-mix(in srgb, var(--of-text-1) 16%, transparent);
-}
-.landing a.btn-primary.dl-btn:hover {
-	box-shadow: 0 4px 14px color-mix(in srgb, var(--of-text-1) 20%, transparent);
 }
 .landing a.btn-primary.dl-btn:active {
 	transform: translateY(0);
-	filter: brightness(0.92);
+	filter: brightness(0.94);
 }
 .dl-btn .btn-icon {
 	flex: none;
@@ -338,7 +337,7 @@ figure.vig figcaption::before {
 	font-weight: 650;
 }
 .dl-btn .btn-sub {
-	min-width: 17ch;
+	min-width: 18ch;
 	text-align: left;
 }
 
