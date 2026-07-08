@@ -40351,37 +40351,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Replacing text here changes how the page looks, but the original wording can sometimes still be found in the exported PDF — through search, copy-paste, or accessibility tools. For sensitive content, review the exported file carefully before sharing it."
+            "value": "Editing or deleting text here changes how the page looks, but the original wording can sometimes still be found in the exported PDF — through search, copy-paste, or accessibility tools. For sensitive content, review the exported file carefully before sharing it."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reemplazar texto aquí cambia el aspecto de la página, pero el texto original puede seguir encontrándose en el PDF exportado, mediante búsqueda, copiar y pegar, o herramientas de accesibilidad. Para contenido sensible, revisa con cuidado el archivo exportado antes de compartirlo."
+            "value": "Editar o eliminar texto aquí cambia el aspecto de la página, pero el texto original a veces todavía puede encontrarse en el PDF exportado, mediante búsqueda, copiar y pegar o herramientas de accesibilidad. Para contenido sensible, revisa cuidadosamente el archivo exportado antes de compartirlo."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remplacer du texte ici modifie l’apparence de la page, mais le texte d’origine peut parfois encore être retrouvé dans le PDF exporté, via la recherche, le copier-coller ou des outils d’accessibilité. Pour un contenu sensible, vérifiez attentivement le fichier exporté avant de le partager."
+            "value": "Modifier ou supprimer du texte ici change l’apparence de la page, mais le texte d’origine peut parfois encore être retrouvé dans le PDF exporté — via la recherche, le copier-coller ou les outils d’accessibilité. Pour un contenu sensible, vérifiez soigneusement le fichier exporté avant de le partager."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "यहां टेक्स्ट बदलने से पेज का दिखना बदल जाता है, लेकिन कभी-कभी मूल शब्द निर्यात की गई PDF में खोज, कॉपी-पेस्ट, या सुलभता साधनों के ज़रिए मिल सकता है। संवेदनशील सामग्री के लिए, साझा करने से पहले निर्यात की गई फ़ाइल को ध्यान से जांचें।"
+            "value": "यहाँ टेक्स्ट संपादित या हटाने से पृष्ठ का स्वरूप बदल जाता है, लेकिन मूल शब्द कभी-कभी निर्यात किए गए PDF में खोज, कॉपी-पेस्ट या एक्सेसिबिलिटी टूल के ज़रिए अब भी मिल सकते हैं। संवेदनशील सामग्री के लिए, साझा करने से पहले निर्यात की गई फ़ाइल को ध्यान से जाँचें।"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ここでテキストを差し替えるとページの見た目は変わりますが、元の文言は検索やコピー、アクセシビリティツールなどを通じて、書き出した PDF に依然として残っている場合があります。機密性のある内容の場合は、共有する前に書き出したファイルをよく確認してください。"
+            "value": "ここでテキストを編集または削除するとページの見た目は変わりますが、元の文言は検索・コピー＆ペースト・アクセシビリティツールを通じて書き出したPDFから見つかる場合があります。機密性の高い内容は、共有する前に書き出したファイルをよく確認してください。"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在此处替换文本只会改变页面的视觉效果，但在导出的 PDF 中，原文有时仍可通过搜索、复制粘贴或辅助功能工具找到。对于敏感内容，请在共享导出文件前仔细检查。"
+            "value": "在此编辑或删除文本会改变页面的外观，但原始文字有时仍可通过搜索、复制粘贴或辅助功能工具在导出的 PDF 中找到。对于敏感内容，请在分享前仔细检查导出的文件。"
           }
         }
       }
@@ -40751,6 +40751,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "编辑时此页面已更改，因此无法应用编辑。请再次点击文本以进行编辑。"
+          }
+        }
+      }
+    },
+    "readingCanvas.formatting.deleteText.tooltip": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete this text (visual only — the original may still be recoverable from the exported PDF)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar este texto (solo visual: el original aún podría recuperarse del PDF exportado)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer ce texte (visuel uniquement — l’original peut encore être récupérable dans le PDF exporté)"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यह टेक्स्ट हटाएँ (केवल दृश्य — मूल टेक्स्ट निर्यात किए गए PDF से अब भी पुनर्प्राप्त किया जा सकता है)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このテキストを削除（表示のみ — 元のテキストは書き出したPDFから復元できる場合があります）"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除此文本（仅视觉效果——原文仍可能从导出的 PDF 中恢复）"
+          }
+        }
+      }
+    },
+    "readingCanvas.formatting.deleteText.accessibilityDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete text"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar texto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer le texte"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "टेक्स्ट हटाएँ"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "テキストを削除"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除文本"
           }
         }
       }

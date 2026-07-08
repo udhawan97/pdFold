@@ -2989,6 +2989,21 @@ final class NoteEditorViewController: NSViewController {
         // `layoutActionGroup(inWidth:)` can pin it to the toolbar's right edge, keeping it
         // reachable even when the toolbar is clamped narrower than its full content.
         actionGroupItems = []
+        // "Delete text": clears this block's text and commits — a VISUAL deletion (the
+        // original glyphs remain in the content stream, not secure redaction; see the
+        // privacy notice). Offered whenever there is real text to delete, so the user has a
+        // one-click way to remove text rather than having to select-all + backspace + Done.
+        if !originalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let deleteText = NSButton(title: "", target: self, action: #selector(deleteTextButton))
+            deleteText.image = NSImage(systemSymbolName: "text.badge.minus", accessibilityDescription: L10n.string("readingCanvas.formatting.deleteText.accessibilityDescription"))
+            deleteText.imagePosition = .imageOnly
+            deleteText.bezelStyle = .rounded
+            deleteText.contentTintColor = .systemRed
+            deleteText.toolTip = L10n.string("readingCanvas.formatting.deleteText.tooltip")
+            deleteText.identifier = NSUserInterfaceItemIdentifier("inlineEditor.deleteText")
+            toolbar.addSubview(deleteText)
+            actionGroupItems.append((deleteText, 30, 0))
+        }
         if isExistingEdit {
             let revert = NSButton(title: "", target: self, action: #selector(revertButton))
             revert.image = NSImage(systemSymbolName: "trash", accessibilityDescription: L10n.string("readingCanvas.formatting.removeEdit.accessibilityDescription"))
@@ -4179,7 +4194,13 @@ final class NoteEditorViewController: NSViewController {
 
     private var shouldCancelWithoutCommit: Bool {
         let trimmed = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return true }
+        if trimmed.isEmpty {
+            // Emptying a block that HAD text is a deletion — a real, committable operation
+            // that removes the visible text (see `isDeletionCommit`). Only treat empty as
+            // cancel when there was nothing to delete to begin with (an insertion the user
+            // opened and left blank, or already-blank source).
+            return originalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
         return textView.string == originalText &&
             editorFontFamily == originalFontFamily &&
             abs(documentFontSize - originalFontSize) < 0.01 &&
@@ -4199,6 +4220,16 @@ final class NoteEditorViewController: NSViewController {
 
     @objc private func cancelButton() {
         cancel()
+    }
+
+    /// Clears the block's text and commits it — a visual deletion of the original text.
+    /// The empty replacement is what `shouldCancelWithoutCommit` now recognizes as a
+    /// deletion (rather than a cancel) for a block that had text.
+    @objc private func deleteTextButton() {
+        guard !didFinish else { return }
+        textView.string = ""
+        resizeTextViewHeight()
+        commitButton()
     }
 
     @objc private func revertButton() {
