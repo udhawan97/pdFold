@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 extension UTType {
     static let orifoldPageRef = UTType(exportedAs: "com.ud.Orifold.page-ref")
+    static let orifoldDocRef = UTType(exportedAs: "com.ud.Orifold.doc-ref")
     static let docx = UTType(filenameExtension: "docx") ?? UTType(importedAs: "org.openxmlformats.wordprocessingml.document")
     static let wordDoc = UTType(filenameExtension: "doc") ?? UTType(importedAs: "com.microsoft.word.doc")
     static let odt = UTType(filenameExtension: "odt") ?? UTType(importedAs: "org.oasis-open.opendocument.text")
