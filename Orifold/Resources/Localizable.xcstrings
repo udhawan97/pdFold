@@ -35062,37 +35062,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Replace the next matching comment"
+            "value": "Replace the selected match"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reemplazar la siguiente coincidencia en un comentario"
+            "value": "Reemplazar la coincidencia seleccionada"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remplacer la prochaine correspondance dans un commentaire"
+            "value": "Remplacer la correspondance sélectionnée"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "अगली मिलान वाली टिप्पणी बदलें"
+            "value": "चयनित मिलान बदलें"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "替换下一个匹配的评论"
+            "value": "替换所选匹配项"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "次に一致するコメントを置換します"
+            "value": "選択した一致を置換"
           }
         }
       }
@@ -35144,37 +35144,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld comment contains a match"
+            "value": "%lld match found"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld comentario contiene una coincidencia"
+            "value": "%lld coincidencia encontrada"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld commentaire contient une correspondance"
+            "value": "%lld correspondance trouvée"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld टिप्पणी में मिलान है"
+            "value": "%lld मिलान मिला"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld 条评论包含匹配项"
+            "value": "找到 %lld 处匹配项"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld 件のコメントに一致があります"
+            "value": "%lld 件の一致が見つかりました"
           }
         }
       }
@@ -35185,37 +35185,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld comments contain matches"
+            "value": "%lld matches found"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld comentarios contienen coincidencias"
+            "value": "%lld coincidencias encontradas"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld commentaires contiennent des correspondances"
+            "value": "%lld correspondances trouvées"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld टिप्पणियों में मिलान हैं"
+            "value": "%lld मिलान मिले"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld 条评论包含匹配项"
+            "value": "找到 %lld 处匹配项"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld 件のコメントに一致があります"
+            "value": "%lld 件の一致が見つかりました"
           }
         }
       }
@@ -35226,78 +35226,78 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No comments contain this text"
+            "value": "No matches found"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ningún comentario contiene este texto"
+            "value": "No se encontraron coincidencias"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucun commentaire ne contient ce texte"
+            "value": "Aucune correspondance trouvée"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "किसी भी टिप्पणी में यह टेक्स्ट नहीं है"
+            "value": "कोई मिलान नहीं मिला"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有评论包含此文本"
+            "value": "未找到匹配项"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "この文字列を含むコメントはありません"
+            "value": "一致するものが見つかりません"
           }
         }
       }
     },
-    "search.replace.locked.notice": {
+    "search.replace.emptyQuery": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Matches in PDF page text are find-only — Replace can only edit your own comments."
+            "value": "Enter text to find before replacing."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Las coincidencias en el texto de la página del PDF son solo de búsqueda; Reemplazar solo puede editar tus propios comentarios."
+            "value": "Escribe el texto que quieres buscar antes de reemplazar."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les correspondances dans le texte de la page PDF sont en lecture seule — Remplacer ne peut modifier que vos propres commentaires."
+            "value": "Saisissez le texte à rechercher avant de remplacer."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "PDF पेज टेक्स्ट में मिलान केवल खोजे जा सकते हैं — बदलें केवल आपकी अपनी टिप्पणियाँ संपादित कर सकता है।"
+            "value": "बदलने से पहले खोजने के लिए टेक्स्ट दर्ज करें।"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "PDF 页面文本中的匹配项仅供查找 — 替换只能编辑您自己的评论。"
+            "value": "请先输入要查找的文本，然后再替换。"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "PDFページ本文の一致は検索専用です — 置換はご自身のコメントのみ編集できます。"
+            "value": "置換する前に検索するテキストを入力してください。"
           }
         }
       }
@@ -35349,37 +35349,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Replace the match in 1 comment with “%@”? This can be undone in one step."
+            "value": "Replace 1 match with “%@”? This can be undone in one step."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "¿Reemplazar la coincidencia en 1 comentario por “%@”? Se puede deshacer en un solo paso."
+            "value": "¿Reemplazar 1 coincidencia por “%@”? Se puede deshacer en un solo paso."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remplacer la correspondance dans 1 commentaire par « %@ » ? Cette action peut être annulée en une seule fois."
+            "value": "Remplacer 1 correspondance par « %@ » ? Cette action peut être annulée en une seule fois."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "1 टिप्पणी में मिलान को “%@” से बदलें? इसे एक चरण में पूर्ववत किया जा सकता है।"
+            "value": "1 मिलान को “%@” से बदलें? इसे एक चरण में पूर्ववत किया जा सकता है।"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将 1 条评论中的匹配项替换为“%@”？此操作可一步撤销。"
+            "value": "将 1 处匹配项替换为“%@”？此操作可一步撤销。"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "1件のコメント内の一致を“%@”に置換しますか？この操作は一度で取り消せます。"
+            "value": "1件の一致を“%@”に置換しますか？この操作は一度で取り消せます。"
           }
         }
       }
@@ -35390,37 +35390,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Replace matches in %lld comments with “%@”? This can be undone in one step."
+            "value": "Replace %lld matches with “%@”? This can be undone in one step."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "¿Reemplazar las coincidencias en %lld comentarios por “%@”? Se puede deshacer en un solo paso."
+            "value": "¿Reemplazar %lld coincidencias por “%@”? Se puede deshacer en un solo paso."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remplacer les correspondances dans %lld commentaires par « %@ » ? Cette action peut être annulée en une seule fois."
+            "value": "Remplacer %lld correspondances par « %@ » ? Cette action peut être annulée en une seule fois."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld टिप्पणियों में मिलान को “%@” से बदलें? इसे एक चरण में पूर्ववत किया जा सकता है।"
+            "value": "%lld मिलानों को “%@” से बदलें? इसे एक चरण में पूर्ववत किया जा सकता है।"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将 %lld 条评论中的匹配项替换为“%@”？此操作可一步撤销。"
+            "value": "将 %lld 处匹配项替换为“%@”？此操作可一步撤销。"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld件のコメント内の一致を“%@”に置換しますか？この操作は一度で取り消せます。"
+            "value": "%lld件の一致を“%@”に置換しますか？この操作は一度で取り消せます。"
           }
         }
       }
@@ -35513,78 +35513,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Replaced text in 1 comment."
+            "value": "Replaced 1 occurrence of “%@” with “%@”."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se reemplazó el texto en 1 comentario."
+            "value": "Se reemplazó 1 aparición de “%@” por “%@”."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Texte remplacé dans 1 commentaire."
+            "value": "1 occurrence de « %@ » remplacée par « %@ »."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "1 टिप्पणी में टेक्स्ट बदला गया।"
+            "value": "“%@” की 1 प्रविष्टि को “%@” से बदला गया।"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已在 1 条评论中替换文本。"
+            "value": "已将 1 处“%@”替换为“%@”。"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "1件のコメント内のテキストを置換しました。"
-          }
-        }
-      }
-    },
-    "search.replace.result.other": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Replaced text in %lld comments."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Se reemplazó el texto en %lld comentarios."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Texte remplacé dans %lld commentaires."
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld टिप्पणियों में टेक्स्ट बदला गया।"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已在 %lld 条评论中替换文本。"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld件のコメント内のテキストを置換しました。"
+            "value": "“%@”を1件“%@”に置換しました。"
           }
         }
       }
@@ -41120,6 +41079,211 @@
           "stringUnit": {
             "state": "translated",
             "value": "第 %1$d/%2$d 处编辑"
+          }
+        }
+      }
+    },
+    "search.replace.all.result.one": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Successfully replaced 1 occurrence of “%@” with “%@”."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se reemplazó correctamente 1 aparición de “%@” por “%@”."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 occurrence de « %@ » remplacée avec succès par « %@ »."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” की 1 प्रविष्टि को सफलतापूर्वक “%@” से बदला गया।"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已成功将 1 处“%@”替换为“%@”。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@”を1件“%@”に正常に置換しました。"
+          }
+        }
+      }
+    },
+    "search.replace.all.result.other": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Successfully replaced %lld occurrences of “%@” with “%@”."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se reemplazaron correctamente %lld apariciones de “%@” por “%@”."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld occurrences de « %@ » remplacées avec succès par « %@ »."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” की %lld प्रविष्टियों को सफलतापूर्वक “%@” से बदला गया।"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已成功将 %lld 处“%@”替换为“%@”。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@”を%lld件“%@”に正常に置換しました。"
+          }
+        }
+      }
+    },
+    "search.replace.all.result.zero": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No occurrences found for “%@”."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se encontraron apariciones de “%@”."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune occurrence de « %@ » trouvée."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” की कोई प्रविष्टि नहीं मिली।"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未找到“%@”的匹配项。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@”は見つかりませんでした。"
+          }
+        }
+      }
+    },
+    "search.replace.all.result.skippedSuffix.one": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " 1 match in protected text couldn’t be replaced automatically."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " 1 coincidencia en texto protegido no se pudo reemplazar automáticamente."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " 1 correspondance dans du texte protégé n’a pas pu être remplacée automatiquement."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " सुरक्षित टेक्स्ट में 1 मिलान को स्वचालित रूप से नहीं बदला जा सका।"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " 受保护文本中的 1 处匹配项无法自动替换。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " 保護されたテキスト内の1件の一致は自動的に置換できませんでした。"
+          }
+        }
+      }
+    },
+    "search.replace.all.result.skippedSuffix.other": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " %lld matches in protected text couldn’t be replaced automatically."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " %lld coincidencias en texto protegido no se pudieron reemplazar automáticamente."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " %lld correspondances dans du texte protégé n’ont pas pu être remplacées automatiquement."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " सुरक्षित टेक्स्ट में %lld मिलानों को स्वचालित रूप से नहीं बदला जा सका।"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " 受保护文本中的 %lld 处匹配项无法自动替换。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " 保護されたテキスト内の%lld件の一致は自動的に置換できませんでした。"
           }
         }
       }

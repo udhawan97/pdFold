@@ -32,10 +32,10 @@ struct SearchView: View {
         reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
-    private var replaceMatchCount: Int { viewModel.replaceableCommentMatches.count }
+    private var replaceMatchCount: Int { viewModel.bodyReplaceMatchCount + viewModel.replaceableCommentMatches.count }
 
     private var replaceStatusLabel: String {
-        guard !viewModel.searchQuery.isEmpty else { return "" }
+        guard !viewModel.searchQuery.isEmpty else { return L10n.string("search.replace.emptyQuery", locale: locale) }
         if replaceMatchCount == 0 { return L10n.string("search.replace.noMatches", locale: locale) }
         return L10n.format(replaceMatchCount == 1 ? "search.replace.matches.one" : "search.replace.matches.other", replaceMatchCount, locale: locale)
     }
@@ -181,7 +181,7 @@ struct SearchView: View {
                 .buttonStyle(.bordered)
                 .font(.dsCaption())
                 .help("search.replace.one.help")
-                .disabled(!canReplaceCurrentMatch)
+                .disabled(!viewModel.canReplaceCurrentMatch)
 
                 Button("search.replace.all.button") {
                     isConfirmingReplaceAll = true
@@ -195,16 +195,11 @@ struct SearchView: View {
                 Text(replaceResultMessage)
                     .font(.dsCaption())
                     .foregroundStyle(replaceResultWasSkipped ? Color.dsWarningAccent : Color.dsSuccessAccent)
-            } else if !viewModel.searchQuery.isEmpty {
+            } else {
                 Text(replaceStatusLabel)
                     .font(.dsCaption())
                     .foregroundStyle(Color.dsTextTertiary)
             }
-
-            Text("search.replace.locked.notice")
-                .font(.dsCaption())
-                .foregroundStyle(Color.dsTextTertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, .dsMD)
         .padding(.vertical, .dsSM)
@@ -214,9 +209,7 @@ struct SearchView: View {
             titleVisibility: .visible
         ) {
             Button("search.replace.confirm.replace") {
-                let count = viewModel.replaceAllCommentMatches()
-                replaceResultWasSkipped = false
-                replaceResultMessage = L10n.format(count == 1 ? "search.replace.result.one" : "search.replace.result.other", count, locale: locale)
+                performReplaceAll()
             }
             Button("search.replace.confirm.cancel", role: .cancel) {}
         } message: {
@@ -229,20 +222,31 @@ struct SearchView: View {
         }
     }
 
-    /// The active search result row must actually be one of the currently editable comment
-    /// matches — not a PDF-page-text match — before the single "Replace" button can act.
-    private var canReplaceCurrentMatch: Bool {
-        guard !viewModel.searchQuery.isEmpty, !viewModel.replaceableCommentMatches.isEmpty else { return false }
-        return true
-    }
-
     private func replaceCurrentMatch() {
-        guard let comment = viewModel.replaceableCommentMatches.first else { return }
-        let didReplace = viewModel.replaceMatches(in: comment)
+        let didReplace = viewModel.replaceCurrentMatch()
         replaceResultWasSkipped = !didReplace
         replaceResultMessage = didReplace
-            ? L10n.string("search.replace.result.one", locale: locale)
+            ? L10n.format("search.replace.result.one", viewModel.searchQuery, viewModel.replaceText, locale: locale)
             : L10n.string("search.replace.skippedEmpty", locale: locale)
+    }
+
+    private func performReplaceAll() {
+        let (replaced, skipped) = viewModel.replaceAllMatches()
+        replaceResultWasSkipped = false
+        guard replaced > 0 else {
+            replaceResultMessage = L10n.format("search.replace.all.result.zero", viewModel.searchQuery, locale: locale)
+            return
+        }
+        var message = replaced == 1
+            ? L10n.format("search.replace.all.result.one", viewModel.searchQuery, viewModel.replaceText, locale: locale)
+            : L10n.format("search.replace.all.result.other", replaced, viewModel.searchQuery, viewModel.replaceText, locale: locale)
+        if skipped > 0 {
+            message += skipped == 1
+                ? L10n.format("search.replace.all.result.skippedSuffix.one", skipped, locale: locale)
+                : L10n.format("search.replace.all.result.skippedSuffix.other", skipped, locale: locale)
+            replaceResultWasSkipped = true
+        }
+        replaceResultMessage = message
     }
 }
 

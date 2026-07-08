@@ -4326,12 +4326,7 @@ final class WorkspaceViewModel {
 
     // MARK: - Find & Replace
 
-    /// Comments whose body contains the current search query — the only content Find &
-    /// Replace can safely rewrite. PDF page text (`searchResults`) stays find-only: rewriting
-    /// PDF content streams needs the full text-edit engine behind the "Edit Text" tool, which
-    /// operates on a single interactively-clicked block at a time. Reusing it blind for a
-    /// batch Replace All risks silently mangling layout, so that stays out of scope here —
-    /// only content Orifold fully owns (comment text) is safe to rewrite in bulk.
+    /// Comments whose body contains the current search query.
     var replaceableCommentMatches: [WorkspaceComment] {
         guard !searchQuery.isEmpty else { return [] }
         return document.workspace.comments.filter {
@@ -4352,6 +4347,28 @@ final class WorkspaceViewModel {
             searchRange = range.upperBound..<text.endIndex
         }
         result += text[searchRange]
+        return result
+    }
+
+    /// All non-overlapping case-insensitive ranges of `query` within `text`, in order.
+    private func caseInsensitiveOccurrences(of query: String, in text: String) -> [Range<String.Index>] {
+        guard !query.isEmpty else { return [] }
+        var ranges: [Range<String.Index>] = []
+        var searchRange = text.startIndex..<text.endIndex
+        while let range = text.range(of: query, options: .caseInsensitive, range: searchRange) {
+            ranges.append(range)
+            searchRange = range.upperBound..<text.endIndex
+        }
+        return ranges
+    }
+
+    /// Replaces only the occurrence at `index` (from `caseInsensitiveOccurrences`) with
+    /// `replacement`, leaving every other occurrence in `text` untouched.
+    private func replacingOccurrence(at index: Int, of query: String, with replacement: String, in text: String) -> String {
+        let occurrences = caseInsensitiveOccurrences(of: query, in: text)
+        guard occurrences.indices.contains(index) else { return text }
+        var result = text
+        result.replaceSubrange(occurrences[index], with: replacement)
         return result
     }
 
@@ -4388,6 +4405,295 @@ final class WorkspaceViewModel {
             }
         }
         return changedCount
+    }
+
+    // MARK: - Find & Replace: document body text
+    //
+    // Body-text Replace reuses the exact same op-based engine behind the click-to-edit
+    // "Edit Text" tool (`applyInlineTextEdit`/`PDFTextEditOperation`) rather than touching
+    // PDF content streams directly, so erase-patching, reflow, undo, persistence, and every
+    // export path (PDF, Word/RTF/ODT, etc. — all of which already reconcile committed
+    // `PDFTextEditOperation`s) behave exactly as they do for a manual edit.
+
+    /// A page-body paragraph containing at least one occurrence of the current search
+    /// query, plus the live (possibly already-edited) text/geometry to replace within.
+    private struct BodyTextMatch {
+        var pageRef: PageRef
+        var block: EditableTextBlock
+        var occurrences: [Range<String.Index>]
+    }
+
+    /// The text-analysis blocks for `ref`, with any block that already has a committed
+    /// inline-edit operation swapped for a SYNTHETIC block carrying that operation's live
+    /// replacement text/geometry/format instead of the stale pristine reading — mirroring
+    /// exactly how `editableTextBlock(at:)` routes a click into a re-edit of an existing op
+    /// (same geometry containment check, same `id: existingOp.sourceBlockID` trick so a
+    /// later `applyInlineTextEdit` call recognizes this as an update to that same operation
+    /// rather than a brand-new one). Needed because `textAnalysis` always reads PRISTINE
+    /// bytes — without this, Find & Replace would search text the user already edited away.
+    private func liveTextBlocks(for ref: PageRef, page: PDFPage, memberID: UUID, localIndex: Int) -> [EditableTextBlock] {
+        let analysis = textAnalysis(for: ref, page: page, memberID: memberID, localIndex: localIndex)
+        let ops = document.workspace.pageEditStates.first(where: { $0.pageRefID == ref.id })?.operations ?? []
+        guard !ops.isEmpty else { return analysis.blocks }
+
+        var consumedOpIDs = Set<UUID>()
+        var result: [EditableTextBlock] = []
+        for block in analysis.blocks {
+            let center = CGPoint(x: block.bounds.midX, y: block.bounds.midY)
+            // Nearest candidate by distance, not first-in-array-order: an op's `editedBounds`
+            // can grow well past its original footprint (see `measuredBounds`), so its inset
+            // box can contain more than one fresh block's center. Picking by proximity keeps a
+            // block from being paired with a farther op just because it happened to iterate
+            // first, which would otherwise report/replace that block's text as the wrong op's
+            // (stale-looking or duplicated) live content.
+            guard let op = ops
+                .filter({ op in
+                    !consumedOpIDs.contains(op.id) &&
+                    (op.editedBounds.insetBy(dx: -3, dy: -3).contains(center) ||
+                     op.sourceBounds.insetBy(dx: -2, dy: -2).contains(center))
+                })
+                .min(by: { distanceSquared(from: center, to: $0.editedBounds) < distanceSquared(from: center, to: $1.editedBounds) })
+            else {
+                result.append(block)
+                continue
+            }
+            consumedOpIDs.insert(op.id)
+            result.append(syntheticLiveBlock(for: op, pageRefID: ref.id, page: page))
+        }
+        // Ops with no corresponding fresh block at all — a pure insertion into blank space,
+        // or an edit whose original geometry no longer matches any detected block — still
+        // hold live, user-authored text that Find & Replace must be able to reach.
+        for op in ops where !consumedOpIDs.contains(op.id) {
+            result.append(syntheticLiveBlock(for: op, pageRefID: ref.id, page: page))
+        }
+        return result
+    }
+
+    private func syntheticLiveBlock(for op: PDFTextEditOperation, pageRefID: UUID, page: PDFPage) -> EditableTextBlock {
+        let bounds = reopenedBounds(for: op)
+        return EditableTextBlock(
+            id: op.sourceBlockID,
+            pageRefID: pageRefID,
+            text: op.replacementText,
+            bounds: bounds,
+            lines: [],
+            columnBounds: op.columnBounds,
+            fontName: op.fontName,
+            fontSize: op.fontSize,
+            textColor: op.textColor,
+            alignment: op.alignment,
+            underline: op.underline,
+            rotation: 0,
+            pageRotation: page.rotation,
+            baseline: bounds.minY,
+            confidence: .high
+        )
+    }
+
+    /// One page-order walk of the whole document producing both halves of what Replace All
+    /// needs — the replaceable matches AND the skipped-occurrence count — instead of two
+    /// separate full-document scans (each independently re-running `liveTextBlocks`/
+    /// `textAnalysis` per page) for what's ultimately one classification pass over the same
+    /// blocks.
+    private struct BodyMatchScan {
+        var matches: [BodyTextMatch]
+        var skippedCount: Int
+    }
+
+    private func scanBodyMatches(query: String) -> BodyMatchScan {
+        guard !query.isEmpty else { return BodyMatchScan(matches: [], skippedCount: 0) }
+        var matches: [BodyTextMatch] = []
+        var skippedCount = 0
+        for ref in document.workspace.pageOrder {
+            guard let lookup = memberPDF(for: ref),
+                  let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
+                  let page = lookup.pdf.page(at: localIdx) else { continue }
+            for block in liveTextBlocks(for: ref, page: page, memberID: ref.memberDocId, localIndex: localIdx) {
+                switch block.editability {
+                case .direct, .replace:
+                    let occurrences = caseInsensitiveOccurrences(of: query, in: block.text)
+                    guard !occurrences.isEmpty else { continue }
+                    matches.append(BodyTextMatch(pageRef: ref, block: block, occurrences: occurrences))
+                case .hiddenOCRLayer, .lowVisibility:
+                    // Real, findable text Replace deliberately skips rather than rewrites in
+                    // bulk — counted so a Replace All total lower than the visible search
+                    // count is always explained, never silently unaccounted for.
+                    skippedCount += caseInsensitiveOccurrences(of: query, in: block.text).count
+                case .overlayOnly, .insertion:
+                    continue
+                }
+            }
+        }
+        return BodyMatchScan(matches: matches, skippedCount: skippedCount)
+    }
+
+    /// Total body-text occurrences of the current search query that Replace can act on —
+    /// the count the Replace row and Replace All gating use.
+    var bodyReplaceMatchCount: Int {
+        scanBodyMatches(query: searchQuery).matches.reduce(0) { $0 + $1.occurrences.count }
+    }
+
+    private func overlapArea(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        let intersection = a.standardized.intersection(b.standardized)
+        guard !intersection.isNull else { return 0 }
+        return intersection.width * intersection.height
+    }
+
+    /// Disambiguates WHICH occurrence in a multi-occurrence block the current selection
+    /// actually points at, by matching the selection's line against the block's own
+    /// per-line bounds. Deliberately has no further fallback beyond occurrence 0: a
+    /// character-count-to-pixel-position proportional guess was tried here and removed —
+    /// Swift `Character` counts don't correspond proportionally to rendered glyph width for
+    /// any real proportional font, so that guess could confidently land on the WRONG
+    /// occurrence and silently replace text the user never selected while leaving the
+    /// clicked occurrence untouched. Occurrence 0 is at least deterministic and, unlike the
+    /// proportional guess, never claims a precision it doesn't have.
+    private func bestOccurrenceIndex(selectionBounds: CGRect, block: EditableTextBlock, occurrences: [Range<String.Index>]) -> Int {
+        guard occurrences.count > 1 else { return 0 }
+        return lineBasedOccurrenceIndex(selectionBounds: selectionBounds, block: block, occurrences: occurrences) ?? 0
+    }
+
+    private func lineBasedOccurrenceIndex(selectionBounds: CGRect, block: EditableTextBlock, occurrences: [Range<String.Index>]) -> Int? {
+        guard !block.lines.isEmpty else { return nil }
+        let text = block.text
+        var cursor = text.startIndex
+        var lineRanges: [(range: Range<String.Index>, bounds: CGRect)] = []
+        for line in block.lines {
+            let trimmed = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, let found = text.range(of: trimmed, range: cursor..<text.endIndex) else { continue }
+            lineRanges.append((found, line.bounds))
+            cursor = found.upperBound
+        }
+        guard !lineRanges.isEmpty else { return nil }
+        let targetY = selectionBounds.midY
+        guard let nearestLine = lineRanges.min(by: { abs($0.bounds.midY - targetY) < abs($1.bounds.midY - targetY) }) else { return nil }
+        return occurrences.enumerated().first { nearestLine.range.contains($0.element.lowerBound) }?.offset
+    }
+
+    private func commitBodyBlockReplacement(pageRef: PageRef, block: EditableTextBlock, newText: String) -> Bool {
+        guard newText != block.text else { return false }
+        return applyInlineTextEdit(
+            pageRef: pageRef,
+            sourceBlock: block,
+            replacementText: newText,
+            editedBounds: block.bounds,
+            fontName: block.fontName,
+            fontSize: block.fontSize,
+            textColor: block.textColor.nsColor,
+            alignment: (block.alignment ?? .left).nsTextAlignment,
+            underline: block.underline
+        )
+    }
+
+    /// A resolved single-Replace target: which block on which page, and which occurrence
+    /// within that block's text corresponds to the currently-selected search result.
+    private struct CurrentBodyReplaceTarget {
+        var pageRef: PageRef
+        var block: EditableTextBlock
+        var occurrenceIndex: Int
+    }
+
+    /// Resolves `searchResults[searchResultIndex]` to a specific replaceable block and
+    /// occurrence, or nil when the current selection isn't (or is no longer) a live,
+    /// eligible body match — shared by `canReplaceCurrentMatch` (so the Replace button can
+    /// reflect eligibility BEFORE a click) and `replaceCurrentBodyMatch` (so the commit acts
+    /// on exactly what was reported as eligible), rather than the two independently
+    /// re-deriving candidates and risking disagreement.
+    private func currentBodyReplaceTarget() -> CurrentBodyReplaceTarget? {
+        guard searchResults.indices.contains(searchResultIndex) else { return nil }
+        let selection = searchResults[searchResultIndex]
+        guard let page = selection.pages.first,
+              let ref = pageRef(for: page, in: combinedPDF),
+              let lookup = memberPDF(for: ref),
+              let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
+              let memberPage = lookup.pdf.page(at: localIdx) else { return nil }
+
+        let selectionBounds = selection.bounds(for: page)
+        let candidates = liveTextBlocks(for: ref, page: memberPage, memberID: ref.memberDocId, localIndex: localIdx)
+            .filter { $0.editability == .direct || $0.editability == .replace }
+            .compactMap { block -> (block: EditableTextBlock, overlap: CGFloat, occurrences: [Range<String.Index>])? in
+                let occurrences = caseInsensitiveOccurrences(of: searchQuery, in: block.text)
+                guard !occurrences.isEmpty else { return nil }
+                return (block, overlapArea(block.bounds, selectionBounds), occurrences)
+            }
+        guard !candidates.isEmpty else { return nil }
+
+        // Prefer genuine geometric overlap with the selection. When nothing overlaps at all
+        // (e.g. the block was relocated via Match/Apply Style — `didApplyMatchedGeometry` —
+        // and `reopenedBounds` doesn't yet reflect that new location), fall back to the
+        // NEAREST candidate by distance rather than an arbitrary array-order pick, so the
+        // choice is at least the geometrically closest real occurrence on the page.
+        let chosen: (block: EditableTextBlock, overlap: CGFloat, occurrences: [Range<String.Index>])
+        if let overlapping = candidates.filter({ $0.overlap > 0 }).max(by: { $0.overlap < $1.overlap }) {
+            chosen = overlapping
+        } else {
+            let selectionCenter = CGPoint(x: selectionBounds.midX, y: selectionBounds.midY)
+            chosen = candidates.min(by: { distanceSquared(from: selectionCenter, to: $0.block.bounds) < distanceSquared(from: selectionCenter, to: $1.block.bounds) })!
+        }
+
+        let occurrenceIndex = bestOccurrenceIndex(selectionBounds: selectionBounds, block: chosen.block, occurrences: chosen.occurrences)
+        return CurrentBodyReplaceTarget(pageRef: ref, block: chosen.block, occurrenceIndex: occurrenceIndex)
+    }
+
+    /// Whether `replaceCurrentMatch()` can actually act on the current selection. A search
+    /// result can land on text that's real and findable but not eligible for rewriting (an
+    /// invisible OCR layer, a near-transparent fill — see `scanBodyMatches`); without this
+    /// check the Replace button stayed enabled for that selection and clicking it silently
+    /// no-opped with a misleading "would leave the comment empty" message, since no comment
+    /// was ever involved.
+    var canReplaceCurrentMatch: Bool {
+        guard !searchQuery.isEmpty else { return false }
+        if searchResults.indices.contains(searchResultIndex) {
+            return currentBodyReplaceTarget() != nil
+        }
+        return !replaceableCommentMatches.isEmpty
+    }
+
+    /// Replaces the currently-selected search result (a body-text match) if there is one;
+    /// falls back to the first replaceable comment when the query only appears in comments
+    /// (there is no comment entry in the results list to "select"). Returns whether a
+    /// replacement actually happened.
+    @discardableResult
+    func replaceCurrentMatch() -> Bool {
+        guard !searchQuery.isEmpty else { return false }
+        if replaceCurrentBodyMatch() { return true }
+        guard let comment = replaceableCommentMatches.first else { return false }
+        return replaceMatches(in: comment)
+    }
+
+    private func replaceCurrentBodyMatch() -> Bool {
+        guard let target = currentBodyReplaceTarget() else { return false }
+        let newText = replacingOccurrence(at: target.occurrenceIndex, of: searchQuery, with: replaceText, in: target.block.text)
+        guard commitBodyBlockReplacement(pageRef: target.pageRef, block: target.block, newText: newText) else { return false }
+        performSearch(query: searchQuery, autoJump: true)
+        return true
+    }
+
+    /// Replaces every occurrence of `searchQuery` with `replaceText` across every eligible
+    /// body-text paragraph AND every comment, in one atomic undo step. Returns the number
+    /// of occurrences actually replaced and the number skipped as unsafe to rewrite in bulk.
+    @discardableResult
+    func replaceAllMatches() -> (replaced: Int, skipped: Int) {
+        guard !searchQuery.isEmpty else { return (0, 0) }
+        let scan = scanBodyMatches(query: searchQuery)
+        let bodyMatches = scan.matches
+        let skipped = scan.skippedCount
+        guard !bodyMatches.isEmpty || !replaceableCommentMatches.isEmpty else { return (0, skipped) }
+
+        var totalReplaced = 0
+        registerIsolatedUndo {
+            for match in bodyMatches {
+                let newText = replacingAllOccurrences(of: searchQuery, with: replaceText, in: match.block.text)
+                guard commitBodyBlockReplacement(pageRef: match.pageRef, block: match.block, newText: newText) else { continue }
+                totalReplaced += match.occurrences.count
+            }
+            totalReplaced += replaceAllCommentMatches()
+            if totalReplaced > 0 {
+                undoManager?.setActionName(L10n.string("undo.replaceText"))
+            }
+        }
+        performSearch(query: searchQuery, autoJump: false)
+        return (totalReplaced, skipped)
     }
 
     // MARK: - Zoom
