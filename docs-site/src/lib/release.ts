@@ -12,7 +12,7 @@
  *   2. latest release exists but no dmg yet  → zip button + `dmgMissing` warning
  *      (this is today's reality: releases are zip-only until the PR-1 pipeline
  *      ships Orifold.dmg). The stable dmg URL is still returned optimistically.
- *   3. API unreachable / rate-limited         → LAST_KNOWN_GOOD, `stale: true`.
+ *   3. API unreachable / rate-limited         → LAST_KNOWN_GOOD fallback values.
  */
 
 import site from '../data/site.json';
@@ -42,8 +42,6 @@ export interface ReleaseInfo {
 	releaseUrl: string;
 	/** URL that always lists every release. */
 	allReleasesUrl: string;
-	/** True when the API could not be reached and LAST_KNOWN_GOOD was used. */
-	stale: boolean;
 }
 
 /** Bump this whenever a release ships, so the offline build stays truthful. */
@@ -82,7 +80,6 @@ function fallback(reason: string): ReleaseInfo {
 		zipUrl: stableUrl(ZIP),
 		releaseUrl: `https://github.com/${REPO}/releases/tag/${LAST_KNOWN_GOOD.tag}`,
 		allReleasesUrl: `https://github.com/${REPO}/releases`,
-		stale: reason !== '',
 	};
 }
 
@@ -122,6 +119,5 @@ export async function getRelease(): Promise<ReleaseInfo> {
 		zipUrl: stableUrl(ZIP),
 		releaseUrl: data.html_url ?? `https://github.com/${REPO}/releases/tag/${tag}`,
 		allReleasesUrl: `https://github.com/${REPO}/releases`,
-		stale: false,
 	};
 }

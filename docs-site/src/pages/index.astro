@@ -73,9 +73,8 @@ const cards = [
 		class="landing"
 		data-guide="gami"
 		data-repo={site.repo}
-		data-dmg={rel.dmgUrl}
-		data-zip={rel.zipUrl}
-		data-releases={rel.allReleasesUrl}
+		data-repo-url={site.repoUrl}
+		data-dmg-asset={site.dmgAsset}
 	>
 		<a class="skip-link" href="#fold-1">Skip to content</a>
 
@@ -145,25 +144,25 @@ const cards = [
 						<p class="lede">
 							A "simple PDF task" is rarely simple. It is six PDFs, two screenshots, a Word
 							document, a scanned form, and one determined file named
-							<code>final_final_revised_ACTUAL.pdf</code>.
+							<code style="overflow-wrap:anywhere">final_final_revised_ACTUAL.pdf</code>.
 						</p>
 					</div>
 					<div class="two-col">
 						<div class="col-visual">
-							<figure class="vig gather crease" aria-hidden="true">
-								<span class="scrap sheet-token" data-label="report.pdf" style="--tx:-140px;--ty:-70px;--rot:-11deg"></span>
-								<span class="scrap" data-label="scan_0007" style="--tx:150px;--ty:-40px;--rot:9deg"></span>
-								<span class="scrap" data-label="notes.docx" style="--tx:-120px;--ty:80px;--rot:7deg"></span>
-								<span class="scrap" data-label="shot.png" style="--tx:130px;--ty:90px;--rot:-8deg"></span>
-								<span class="scrap" data-label="ACTUAL.pdf" style="--tx:0px;--ty:-120px;--rot:4deg"></span>
-								<span class="scrap" data-label="invoice" style="--tx:60px;--ty:40px;--rot:-4deg"></span>
-								<span class="scrap" data-label="draft.pdf" style="--tx:-60px;--ty:-20px;--rot:3deg"></span>
-								<span class="stack">
+							<figure class="vig gather crease">
+								<span class="scrap sheet-token" data-label="report.pdf" style="--tx:-140px;--ty:-70px;--rot:-11deg" aria-hidden="true"></span>
+								<span class="scrap" data-label="scan_0007" style="--tx:150px;--ty:-40px;--rot:9deg" aria-hidden="true"></span>
+								<span class="scrap" data-label="notes.docx" style="--tx:-120px;--ty:80px;--rot:7deg" aria-hidden="true"></span>
+								<span class="scrap" data-label="shot.png" style="--tx:130px;--ty:90px;--rot:-8deg" aria-hidden="true"></span>
+								<span class="scrap" data-label="ACTUAL.pdf" style="--tx:0px;--ty:-120px;--rot:4deg" aria-hidden="true"></span>
+								<span class="scrap" data-label="invoice" style="--tx:60px;--ty:40px;--rot:-4deg" aria-hidden="true"></span>
+								<span class="scrap" data-label="draft.pdf" style="--tx:-60px;--ty:-20px;--rot:3deg" aria-hidden="true"></span>
+								<span class="stack" aria-hidden="true">
 									<span class="stack-sheet sheet-token"></span>
 									<span class="stack-sheet"></span>
 									<span class="stack-sheet"></span>
 								</span>
-								<figcaption>Fifty files in, one stack out.</figcaption>
+								<figcaption><span class="sr-only">Illustration · </span>Fifty files in, one stack out.</figcaption>
 							</figure>
 						</div>
 						<div class="col-copy">
@@ -172,7 +171,7 @@ const cards = [
 									<div class="bar"><i></i><i></i><i></i></div>
 									<img src={cap('import-files-overview.png')} width="1600" height="1013" loading="lazy" decoding="async" alt="Orifold's workspace with a 'Release to import' drop zone and Gami greeting in the corner." />
 								</div>
-								<figcaption>Real capture — Orifold v0.8.1. Drag anything in; broken PDFs are repaired on the way.</figcaption>
+								<figcaption>Real capture — Orifold v{rel.version}. Drag anything in; broken PDFs are repaired on the way.</figcaption>
 							</figure>
 							<p class="lede">
 								Merge up to 50 files, drag them in from anywhere, and reorder page thumbnails in
@@ -220,16 +219,16 @@ const cards = [
 										<div class="bar"><i></i><i></i><i></i></div>
 										<img src={cap('edit-text-workflow.png', 'landing')} width="1582" height="864" loading="lazy" decoding="async" alt="A line of PDF text selected with a floating format toolbar above it — font, size, alignment, and Match/Copy/Paste controls." />
 									</div>
-									<figcaption>Real capture — Orifold v0.8.1. Edit the glyphs in place.</figcaption>
+									<figcaption>Real capture — Orifold v{rel.version}. Edit the glyphs in place.</figcaption>
 								</figure>
 							</div>
 							<div class="scene" data-scene="2">
 								<figure class="shot">
 									<div class="chrome">
 										<div class="bar"><i></i><i></i><i></i></div>
-										<img src={cap('export-save-confirmation.png', 'gifs')} width="1600" height="923" loading="lazy" decoding="async" alt="The Export dialog with Protect with password, Reduce file size, and Sanitize for sharing options." />
+										<img src={cap('export-save-confirmation.png', 'gifs')} width="1590" height="923" loading="lazy" decoding="async" alt="The Export dialog with Protect with password, Reduce file size, and Sanitize for sharing options." />
 									</div>
-									<figcaption>Real capture — Orifold v0.8.1. Protect, compress, or sanitize, then export.</figcaption>
+									<figcaption>Real capture — Orifold v{rel.version}. Protect, compress, or sanitize, then export.</figcaption>
 								</figure>
 							</div>
 						</div>
@@ -282,14 +281,14 @@ const cards = [
 					</div>
 					<div class="two-col copy-first">
 						<div class="col-visual">
-							<figure class="vig seal crease" aria-hidden="true">
-								<span class="sheet sheet-token">
+							<figure class="vig seal crease">
+								<div class="sheet sheet-token" aria-hidden="true">
 									<ol class="chain"><li>hash</li><li>certificate</li><li>signed</li></ol>
 									<span class="sig-line"></span>
 									<span class="hanko"></span>
 									<ul class="verify"><li>Document unchanged</li><li>Signer verified</li><li>Sealed with your key</li></ul>
-								</span>
-								<figcaption>A hanko seal over the exact bytes.</figcaption>
+								</div>
+								<figcaption><span class="sr-only">Illustration · </span>A hanko seal over the exact bytes.</figcaption>
 							</figure>
 						</div>
 						<div class="col-copy">
@@ -300,8 +299,8 @@ const cards = [
 								</div>
 								<figcaption>
 									Real capture — the Digital signing palette. Verifies as intact in Adobe and any
-									PAdES-aware viewer; the zero-setup self-signed identity shows as "unknown signer"
-									until trusted.
+									PAdES-aware viewer; the zero-setup self-signed identity shows as "identity not
+									verified" until trusted.
 								</figcaption>
 							</figure>
 							<p class="lede">
@@ -333,15 +332,15 @@ const cards = [
 					</div>
 					<div class="two-col">
 						<div class="col-visual">
-							<figure class="vig studio-vig crease" aria-hidden="true">
-								<span class="mac">
+							<figure class="vig studio-vig crease">
+								<span class="mac" aria-hidden="true">
 									<span class="inner-sheet sheet-token">
 										<span class="slip" style="top:20%;right:-30%">metadata</span>
 										<span class="slip" style="top:45%;right:-34%">edit history</span>
 										<span class="slip" style="top:70%;right:-28%">comments</span>
 									</span>
 								</span>
-								<figcaption>Nothing leaves the frame.</figcaption>
+								<figcaption><span class="sr-only">Illustration · </span>Nothing leaves the frame.</figcaption>
 							</figure>
 							<p class="no-exit-line">No analytics · No accounts · No uploads</p>
 						</div>
@@ -406,14 +405,14 @@ const cards = [
 						<img src={`${base}/assets/orifold-app-icon-128.png`} width="128" height="128" alt="" />
 					</div>
 					<div class="dl-grid">
-						<div class="dl-user crease">
+						<div class="dl-user crease" style="min-width:0">
 							<a class="btn btn-primary" id="cta-final" href={downloadHref}>
 								<span class="btn-main">Download for Mac</span>
 								<span class="btn-sub">{subLabel}</span>
 							</a>
 							<p class="meta-row tabnum">
-								<span>{assetKind} · v{rel.version}</span>
-								{rel.dmgSize && <span>· {rel.dmgSize}</span>}
+								<span id="asset-kind-label">{assetKind} · v{rel.version}</span>
+								{rel.dmgSize && <span id="asset-size-label">· {rel.dmgSize}</span>}
 								<span>· {site.arch} · macOS {site.minMacOS}+</span>
 							</p>
 							<p class="lede">
@@ -439,19 +438,19 @@ const cards = [
 								<summary>Other ways to install</summary>
 								<div class="chip-cmd" style="margin-top:0.8rem">
 									<code>brew install --cask orifold</code>
-									<button class="copy-btn" data-copy="brew install --cask orifold" aria-label="Copy Homebrew command">Copy</button>
+									<button type="button" class="copy-btn" data-copy="brew install --cask orifold" aria-label="Copy Homebrew command">Copy</button>
 								</div>
 								<p class="lede" style="font-size:0.85rem;margin-top:0.8rem">
-									Or the one-line installer (no dialogs — curl downloads aren't quarantined), or the
+									Or the one-line installer (no dialogs — it clears quarantine automatically), or the
 									direct <a href={rel.zipUrl}>.zip</a>. <a href={rel.allReleasesUrl}>All releases →</a>
 								</p>
 							</details>
 						</div>
 
-						<div class="dl-dev crease">
+						<div class="dl-dev crease" style="min-width:0">
 							<h3>Build it yourself</h3>
 							<div class="term-card">
-								<div><span class="prompt">❯</span> git clone {site.repoUrl}.git</div>
+								<div style="overflow-wrap:anywhere"><span class="prompt">❯</span> git clone {site.repoUrl}.git</div>
 								<div><span class="prompt">❯</span> cd Orifold</div>
 								<div><span class="prompt">❯</span> ./scripts/install-mac.command</div>
 							</div>
@@ -484,7 +483,7 @@ const cards = [
 					<a href={`${site.repoUrl}/blob/main/LICENSE`}>License</a>
 					<a class="tabnum" href={rel.releaseUrl}>v{rel.version}{releasedDate ? ` · released ${releasedDate}` : ''}</a>
 				</p>
-				<p class="sig">
+				<p class="sig" style="color:var(--of-text-2)">
 					Since nothing you do in Orifold ever leaves your Mac, stars are the only telemetry we
 					get. ⭐
 				</p>
@@ -570,11 +569,15 @@ const cards = [
 				var crane = document.getElementById('hero-crane');
 				var svg = crane && crane.querySelector('svg');
 				if (svg && svg.pauseAnimations) {
+					// The SMIL loop is 7.6s with no `begin` offset, so any settle time must
+					// land within the finished-pose window (~4.1s–7.0s), not just before the
+					// 7.6s wrap. 4.2s sits safely inside that window.
+					var settleTime = 4.2;
 					if (reduce) {
-						svg.setCurrentTime(8);
+						svg.setCurrentTime(settleTime);
 						svg.pauseAnimations();
 					} else {
-						setTimeout(function () { try { svg.pauseAnimations(); } catch (e) {} }, 8000);
+						setTimeout(function () { try { svg.pauseAnimations(); } catch (e) {} }, settleTime * 1000);
 					}
 				}
 
@@ -600,14 +603,33 @@ const cards = [
 						.then(function (data) {
 							if (!data || !data.tag_name) return;
 							var v = data.tag_name.replace(/^release-/, '').replace(/^v/, '');
-							var dmg = (data.assets || []).filter(function (a) { return a.name === 'Orifold.dmg'; })[0];
+							var dmgAsset = body.dataset.dmgAsset || 'Orifold.dmg';
+							var dmg = (data.assets || []).filter(function (a) { return a.name === dmgAsset; })[0];
 							document.querySelectorAll('.btn-sub').forEach(function (el) {
 								el.textContent = el.textContent.replace(/v[0-9][^\s·]*/, 'v' + v);
 							});
-							if (dmg) {
+							// Keep the meta-row label's version in sync with .btn-sub above it
+							// so the two adjacent pieces of copy never diverge.
+							var kindLabel = document.getElementById('asset-kind-label');
+							if (kindLabel) kindLabel.textContent = kindLabel.textContent.replace(/v[0-9][^\s·]*/, 'v' + v);
+							if (dmg && !d.classList.contains('not-mac')) {
 								document.querySelectorAll('#cta-hero, #cta-final').forEach(function (a) {
 									a.setAttribute('href', dmg.browser_download_url);
 								});
+								// Keep the visible asset-kind/size label in sync with the swapped href
+								// so the link and its label never diverge (was previously left stale).
+								if (kindLabel) kindLabel.textContent = kindLabel.textContent.replace(/^\.[a-z0-9]+/i, '.dmg');
+								var sizeLabel = document.getElementById('asset-size-label');
+								var mb = dmg.size ? (dmg.size / (1024 * 1024)).toFixed(1) + ' MB' : null;
+								if (mb) {
+									if (sizeLabel) sizeLabel.textContent = '· ' + mb;
+									else if (kindLabel && kindLabel.parentNode) {
+										var span = document.createElement('span');
+										span.id = 'asset-size-label';
+										span.textContent = '· ' + mb;
+										kindLabel.insertAdjacentElement('afterend', span);
+									}
+								}
 							}
 						});
 				}
@@ -615,7 +637,7 @@ const cards = [
 				// ── non-Mac CTA swap (detection ran pre-paint in <head>) ─────
 				if (d.classList.contains('not-mac')) {
 					document.querySelectorAll('#cta-hero, #cta-final').forEach(function (a) {
-						a.setAttribute('href', body.dataset.repo || a.href);
+						a.setAttribute('href', body.dataset.repoUrl || a.href);
 						var main = a.querySelector('.btn-main');
 						var sub = a.querySelector('.btn-sub');
 						if (main) main.textContent = 'View on GitHub';
@@ -626,4 +648,3 @@ const cards = [
 		</script>
 	</body>
 </html>
----
