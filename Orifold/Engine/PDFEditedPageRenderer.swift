@@ -121,6 +121,12 @@ enum PDFEditedPageRenderer {
         let plausibleMaxHeight = max(operation.originalFormat.fontSize * 6, operation.editedBounds.standardized.height * 4, 96)
         let plausibleSourceBounds = sourceBounds.filter { $0.height <= plausibleMaxHeight }
         sourceBounds = plausibleSourceBounds.isEmpty ? [operation.editedBounds.standardized] : plausibleSourceBounds
+        // Cover the ORIGINAL underline stroke in full: PDF underlines are separate vector
+        // path objects, so without this the erase patch (sized to glyph ink) leaves the
+        // stroke exposed and a commit that drops the underline still shows the old one
+        // beneath the replacement. Each stroke is a thin rect — pad slightly so the whole
+        // line, including any anti-aliased edge, is covered.
+        sourceBounds.append(contentsOf: operation.sourceUnderlineBounds.map { $0.standardized.insetBy(dx: -0.5, dy: -0.5) })
         // Automatic width/height growth is only layout help for the replacement text.
         // It should not stamp a background-colored rectangle over nearby content. Only
         // explicit geometry changes — a manual drag/resize, or Match/Copy/Restore Style

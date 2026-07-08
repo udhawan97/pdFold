@@ -2709,6 +2709,7 @@ final class WorkspaceViewModel {
             sourceBlockID: sourceBlock.id,
             sourceBounds: sourceBlock.bounds,
             sourceLineBounds: sourceBlock.lines.map(\.bounds),
+            sourceUnderlineBounds: sourceBlock.underlineBounds,
             sourceText: sourceBlock.text,
             editedBounds: editedBounds,
             columnBounds: sourceBlock.columnBounds,
@@ -2745,6 +2746,7 @@ final class WorkspaceViewModel {
            let existingOp = document.workspace.pageEditStates[stateIndex].operations.first(where: { $0.sourceBlockID == sourceBlock.id }) {
             operation.sourceBounds = existingOp.sourceBounds
             operation.sourceLineBounds = existingOp.sourceLineBounds
+            operation.sourceUnderlineBounds = existingOp.sourceUnderlineBounds
             operation.didApplyMatchedGeometry = operation.didApplyMatchedGeometry || existingOp.didApplyMatchedGeometry
             operation.sourceText = existingOp.sourceText.isEmpty ? operation.sourceText : existingOp.sourceText
             operation.columnBounds = operation.columnBounds ?? existingOp.columnBounds

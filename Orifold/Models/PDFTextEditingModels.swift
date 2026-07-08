@@ -90,6 +90,11 @@ struct PDFTextRun: Codable, Identifiable, Equatable {
     /// genuine read of the document's own content. A signal of lower extraction confidence,
     /// independent of `confidence` (which reflects which analysis path produced the block).
     var hasSyntheticGlyphs: Bool = false
+    /// True when a horizontal rule was detected sitting just below this run's baseline
+    /// (see `PageGraphicsIndex.underlineRule`). PDF underlines are drawn as separate vector
+    /// path objects, not text attributes, so this is the only way to recover them — without
+    /// it, opening the editor and committing any edit silently drops the underline.
+    var underline: Bool = false
 }
 
 struct PDFTextLine: Codable, Identifiable, Equatable {
@@ -134,6 +139,12 @@ struct EditableTextBlock: Codable, Identifiable, Equatable {
     var transform: PDFTextTransform? = nil
     /// See `PDFTextRun.hasSyntheticGlyphs`.
     var hasSyntheticGlyphs: Bool = false
+    /// The detected underline stroke rects for this block (one per underlined line), in raw
+    /// page coordinates. Carried onto the committed operation so the export renderer can
+    /// erase the WHOLE original stroke (not leave half of it exposed) before redrawing the
+    /// replacement — and so the replacement's own underline lines up with where the original
+    /// sat. Empty when no underline was detected.
+    var underlineBounds: [CGRect] = []
 }
 
 struct PDFTextEditOperation: Codable, Identifiable, Equatable {
@@ -142,6 +153,10 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
     var sourceBlockID: UUID
     var sourceBounds: CGRect
     var sourceLineBounds: [CGRect] = []
+    /// Detected underline stroke rects on the original text (see `EditableTextBlock.underlineBounds`).
+    /// Erased in full on export so a commit never leaves half an underline exposed under the
+    /// replacement. Empty when the source text was not underlined.
+    var sourceUnderlineBounds: [CGRect] = []
     var sourceText: String = ""
     var editedBounds: CGRect
     var columnBounds: CGRect? = nil
@@ -179,7 +194,7 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
     var modifiedAt: Date = Date()
 
     enum CodingKeys: String, CodingKey {
-        case id, pageRefID, sourceBlockID, sourceBounds, sourceLineBounds, sourceText, editedBounds, columnBounds
+        case id, pageRefID, sourceBlockID, sourceBounds, sourceLineBounds, sourceUnderlineBounds, sourceText, editedBounds, columnBounds
         case replacementText, fontName, fontSize, textColor, alignment, underline, originalFormat, isInsertion
         case didManuallyReposition, didManuallyResizeWidth, didManuallyResizeHeight, didManuallyChangeStyle
         case didApplyMatchedGeometry
@@ -192,6 +207,7 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
         sourceBlockID: UUID,
         sourceBounds: CGRect,
         sourceLineBounds: [CGRect] = [],
+        sourceUnderlineBounds: [CGRect] = [],
         sourceText: String = "",
         editedBounds: CGRect,
         columnBounds: CGRect? = nil,
@@ -216,6 +232,7 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
         self.sourceBlockID = sourceBlockID
         self.sourceBounds = sourceBounds
         self.sourceLineBounds = sourceLineBounds
+        self.sourceUnderlineBounds = sourceUnderlineBounds
         self.sourceText = sourceText
         self.editedBounds = editedBounds
         self.columnBounds = columnBounds
@@ -251,6 +268,7 @@ struct PDFTextEditOperation: Codable, Identifiable, Equatable {
         sourceBlockID = try c.decode(UUID.self, forKey: .sourceBlockID)
         sourceBounds = try c.decode(CGRect.self, forKey: .sourceBounds)
         sourceLineBounds = try c.decodeIfPresent([CGRect].self, forKey: .sourceLineBounds) ?? []
+        sourceUnderlineBounds = try c.decodeIfPresent([CGRect].self, forKey: .sourceUnderlineBounds) ?? []
         sourceText = try c.decodeIfPresent(String.self, forKey: .sourceText) ?? ""
         editedBounds = try c.decode(CGRect.self, forKey: .editedBounds)
         columnBounds = try c.decodeIfPresent(CGRect.self, forKey: .columnBounds)

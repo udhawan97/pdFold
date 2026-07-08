@@ -109,8 +109,17 @@ private func FPDFTextObj_GetTextRenderMode(_ textObject: OpaquePointer?) -> Int3
 /// PDFium's `FPDF_PAGEOBJ_TEXT` page-object type constant.
 private let kPDFPageObjectTypeText: Int32 = 1
 
+/// PDFium's `FPDF_PAGEOBJ_PATH` page-object type constant — stroked/filled vector paths,
+/// which is where table rules, cell separators, and text underlines live.
+private let kPDFPageObjectTypePath: Int32 = 2
+
 /// PDFium's `FPDF_TEXTRENDERMODE_INVISIBLE` (PDF spec `Tr 3`) constant.
 private let kPDFTextRenderModeInvisible: Int32 = 3
+
+/// Safety cap on how many page objects the graphics-index scan will inspect, so a
+/// pathological vector-art page (tens of thousands of tiny path objects) can't stall text
+/// analysis. Beyond this the scan stops and marks the index truncated.
+private let kMaxGraphicsScanObjects: Int32 = 6000
 
 /// PDF font-descriptor `/Flags` bit for an italic/oblique face (bit 7, value 64). Set even
 /// when the embedded font's PostScript name carries no "Italic"/"Oblique" token, so it is
@@ -120,6 +129,9 @@ private let kPDFFontFlagItalic: Int32 = 1 << 6
 struct PDFTextPageAnalysis {
     var pageRefID: UUID?
     var blocks: [EditableTextBlock]
+    /// Thin vector rules (table lines, separators, underlines) detected on the page, in raw
+    /// page coordinates. Empty on the PDFKit-fallback path (no page-object access there).
+    var graphics: PageGraphicsIndex = .empty
 }
 
 final class PDFTextAnalysisEngine {
@@ -188,6 +200,34 @@ final class PDFTextAnalysisEngine {
             ))
         }
         return regions
+    }
+
+    /// Scans the page's PATH objects and classifies the thin ones into horizontal/vertical
+    /// rules (see `PageGraphicsIndex`). Bounds-only, capped for safety. Called once per page
+    /// during PDFium analysis; the page pointer is the same one already open for text.
+    private func graphicsIndex(page: OpaquePointer?) -> PageGraphicsIndex {
+        let count = FPDFPage_CountObjects(page)
+        guard count > 0 else { return .empty }
+        var index = PageGraphicsIndex()
+        let limit = min(count, kMaxGraphicsScanObjects)
+        if count > kMaxGraphicsScanObjects {
+            index.didTruncateScan = true
+            NSLog("[Orifold] PageGraphicsIndex: page has %d objects, scanning first %d for rules.", count, kMaxGraphicsScanObjects)
+        }
+        for objectIndex in 0..<limit {
+            guard let object = FPDFPage_GetObject(page, objectIndex),
+                  FPDFPageObj_GetType(object) == kPDFPageObjectTypePath else { continue }
+            var left: Float = 0
+            var bottom: Float = 0
+            var right: Float = 0
+            var top: Float = 0
+            guard FPDFPageObj_GetBounds(object, &left, &bottom, &right, &top) != 0 else { continue }
+            let rect = CGRect(x: CGFloat(left), y: CGFloat(bottom), width: CGFloat(right - left), height: CGFloat(top - bottom))
+            if let rule = PageGraphicsIndex.classify(bounds: rect) {
+                index.add(rule)
+            }
+        }
+        return index
     }
 
     /// The render mode of whichever region's bounds most tightly contain `bounds`'s center —
@@ -266,6 +306,7 @@ final class PDFTextAnalysisEngine {
             guard count > 0 else { return PDFTextPageAnalysis(pageRefID: pageRefID, blocks: []) }
 
             let regions = renderModeRegions(page: page)
+            let graphics = graphicsIndex(page: page)
             var samples: [CharacterSample] = []
             samples.reserveCapacity(count)
             for index in 0..<count {
@@ -308,8 +349,8 @@ final class PDFTextAnalysisEngine {
                 ))
             }
 
-            let blocks = blocksFromSamples(samples, pageRefID: pageRefID, confidence: .high, sourcePage: sourcePage)
-            return PDFTextPageAnalysis(pageRefID: pageRefID, blocks: blocks)
+            let blocks = blocksFromSamples(samples, pageRefID: pageRefID, confidence: .high, sourcePage: sourcePage, graphics: graphics)
+            return PDFTextPageAnalysis(pageRefID: pageRefID, blocks: blocks, graphics: graphics)
         }
     }
 
@@ -484,7 +525,7 @@ final class PDFTextAnalysisEngine {
         )
     }
 
-    private func blocksFromSamples(_ samples: [CharacterSample], pageRefID: UUID?, confidence: PDFTextEditConfidence, sourcePage: PDFPage?) -> [EditableTextBlock] {
+    private func blocksFromSamples(_ samples: [CharacterSample], pageRefID: UUID?, confidence: PDFTextEditConfidence, sourcePage: PDFPage?, graphics: PageGraphicsIndex = .empty) -> [EditableTextBlock] {
         var lines: [[CharacterSample]] = []
         for sample in samples {
             if CharacterSet.newlines.contains(sample.scalar) {
@@ -517,14 +558,14 @@ final class PDFTextAnalysisEngine {
             // heading and its right-aligned date) collapse into one line. Split on large
             // horizontal gaps so each column becomes its own editable block — otherwise
             // editing one cell reflows the whole row left-aligned and destroys the spacing.
-            return splitIntoColumns(sorted).compactMap { segment in
-                buildBlock(from: segment, pageRefID: pageRefID, confidence: confidence, sourcePage: sourcePage)
+            return splitIntoColumns(sorted, graphics: graphics).compactMap { segment in
+                buildBlock(from: segment, pageRefID: pageRefID, confidence: confidence, sourcePage: sourcePage, graphics: graphics)
             }
         }
         let pageBounds = sourcePage?.bounds(for: .cropBox)
             ?? unionBounds(lineBlocks.map(\.bounds))?.insetBy(dx: -24, dy: -24)
             ?? .zero
-        let merged = mergeWrappedLines(assignColumnBounds(to: lineBlocks, pageBounds: pageBounds))
+        let merged = mergeWrappedLines(assignColumnBounds(to: lineBlocks, pageBounds: pageBounds), graphics: graphics)
         return inferAlignment(tightenColumnsToParagraphMargins(merged))
             .sorted { $0.bounds.minY > $1.bounds.minY }
     }
@@ -647,7 +688,7 @@ final class PDFTextAnalysisEngine {
     /// horizontal gap between consecutive glyphs is far wider than a normal inter-word
     /// space. Normal prose (word gaps ≈ 0.2–0.4× the text height) stays intact; real
     /// column gutters (several × the text height) break into their own segments.
-    private func splitIntoColumns(_ sortedLine: [CharacterSample]) -> [[CharacterSample]] {
+    private func splitIntoColumns(_ sortedLine: [CharacterSample], graphics: PageGraphicsIndex = .empty) -> [[CharacterSample]] {
         let heights = sortedLine.compactMap { $0.bounds?.height }.sorted()
         guard heights.count > 1 else { return [sortedLine] }
         let medianHeight = heights[heights.count / 2]
@@ -658,12 +699,27 @@ final class PDFTextAnalysisEngine {
         // sit at several ems; 2.2× ink height (~1.2em) keeps stretched word gaps intact
         // while still splitting genuine gutters.
         let gapThreshold = max(medianHeight * 2.2, 8)
+        // A vertical table rule in the gap is a definitive column boundary even when the
+        // gap itself is narrower than `gapThreshold` — this restores cell separation for
+        // tight-gutter tables that the (deliberately conservative) prose threshold would
+        // otherwise merge, without re-lowering that threshold for ordinary text.
+        let lineYBand: ClosedRange<CGFloat>? = {
+            let ys = sortedLine.compactMap { $0.bounds }
+            guard let minY = ys.map(\.minY).min(), let maxY = ys.map(\.maxY).max(), maxY >= minY else { return nil }
+            return minY...maxY
+        }()
         var segments: [[CharacterSample]] = []
         var current: [CharacterSample] = []
         var prevMaxX: CGFloat?
         for sample in sortedLine {
             if let bounds = sample.bounds {
-                if let prev = prevMaxX, bounds.minX - prev > gapThreshold, !current.isEmpty {
+                let gap = prevMaxX.map { bounds.minX - $0 } ?? 0
+                var shouldSplit = gap > gapThreshold && !current.isEmpty
+                if !shouldSplit, !current.isEmpty, let prev = prevMaxX, let band = lineYBand,
+                   graphics.verticalRuleSplittingGap(leftMaxX: prev, rightMinX: bounds.minX, yBand: band) != nil {
+                    shouldSplit = true
+                }
+                if shouldSplit {
                     segments.append(current)
                     current = []
                 }
@@ -678,7 +734,7 @@ final class PDFTextAnalysisEngine {
         return segments
     }
 
-    private func buildBlock(from segment: [CharacterSample], pageRefID: UUID?, confidence: PDFTextEditConfidence, sourcePage: PDFPage?) -> EditableTextBlock? {
+    private func buildBlock(from segment: [CharacterSample], pageRefID: UUID?, confidence: PDFTextEditConfidence, sourcePage: PDFPage?, graphics: PageGraphicsIndex = .empty) -> EditableTextBlock? {
         let sorted = segment.sorted {
             ($0.bounds?.minX ?? .greatestFiniteMagnitude) < ($1.bounds?.minX ?? .greatestFiniteMagnitude)
         }
@@ -706,6 +762,11 @@ final class PDFTextAnalysisEngine {
         let hasSyntheticGlyphs = inkSamples.contains(where: \.isGenerated)
         let pageRotation = sourcePage?.rotation ?? 0
         let editability = editability(for: inkSamples, color: color)
+        // Underlines are separate vector path objects, not text attributes — detect one
+        // sitting just below this run's baseline so it survives editing (see WP-1).
+        let underlineRule = graphics.underlineRule(forRun: bounds, baseline: bounds.minY, fontSize: fontSize)
+        let underline = underlineRule != nil
+        let underlineBounds = underlineRule.map { [$0.bounds] } ?? []
         let run = PDFTextRun(
             text: text,
             bounds: bounds,
@@ -717,7 +778,8 @@ final class PDFTextAnalysisEngine {
             confidence: confidence,
             strokeColor: strokeColor,
             transform: transform,
-            hasSyntheticGlyphs: hasSyntheticGlyphs
+            hasSyntheticGlyphs: hasSyntheticGlyphs,
+            underline: underline
         )
         let line = PDFTextLine(text: text, bounds: bounds, runs: [run], confidence: confidence)
         return EditableTextBlock(
@@ -729,6 +791,7 @@ final class PDFTextAnalysisEngine {
             fontName: fontName,
             fontSize: fontSize,
             textColor: color,
+            underline: underline,
             rotation: rotationDegrees,
             pageRotation: pageRotation,
             baseline: bounds.minY,
@@ -737,7 +800,8 @@ final class PDFTextAnalysisEngine {
             textSource: .pdfiumGlyphs,
             strokeColor: strokeColor,
             transform: transform,
-            hasSyntheticGlyphs: hasSyntheticGlyphs
+            hasSyntheticGlyphs: hasSyntheticGlyphs,
+            underlineBounds: underlineBounds
         )
     }
 
@@ -981,7 +1045,7 @@ final class PDFTextAnalysisEngine {
         }
     }
 
-    private func mergeWrappedLines(_ blocks: [EditableTextBlock]) -> [EditableTextBlock] {
+    private func mergeWrappedLines(_ blocks: [EditableTextBlock], graphics: PageGraphicsIndex = .empty) -> [EditableTextBlock] {
         let sorted = blocks.sorted {
             if abs($0.bounds.midY - $1.bounds.midY) > max($0.fontSize, $1.fontSize) {
                 return $0.bounds.midY > $1.bounds.midY
@@ -990,7 +1054,7 @@ final class PDFTextAnalysisEngine {
         }
         var merged: [EditableTextBlock] = []
         for block in sorted {
-            guard let mergeIndex = merged.indices.reversed().first(where: { shouldMergeWrappedLine(previous: merged[$0], next: block) }) else {
+            guard let mergeIndex = merged.indices.reversed().first(where: { shouldMergeWrappedLine(previous: merged[$0], next: block, graphics: graphics) }) else {
                 merged.append(block)
                 continue
             }
@@ -1001,6 +1065,8 @@ final class PDFTextAnalysisEngine {
                 .joined(separator: " ")
             last.lines.append(contentsOf: block.lines)
             last.bounds = last.bounds.union(block.bounds)
+            last.underline = last.underline || block.underline
+            last.underlineBounds.append(contentsOf: block.underlineBounds)
             if let existingColumn = last.columnBounds, let nextColumn = block.columnBounds {
                 let minX = min(existingColumn.minX, nextColumn.minX)
                 let maxX = min(existingColumn.maxX, nextColumn.maxX)
@@ -1019,9 +1085,16 @@ final class PDFTextAnalysisEngine {
         return merged
     }
 
-    private func shouldMergeWrappedLine(previous: EditableTextBlock, next: EditableTextBlock) -> Bool {
+    private func shouldMergeWrappedLine(previous: EditableTextBlock, next: EditableTextBlock, graphics: PageGraphicsIndex = .empty) -> Bool {
         guard previous.confidence != .low, next.confidence != .low else { return false }
         guard fontsMatch(previous, next), colorsMatch(previous.textColor, next.textColor) else { return false }
+        // A horizontal table rule between the two lines is a hard separator — never merge a
+        // heading into the cell below it, or two stacked cells, across a ruled boundary.
+        // The upper block's own underline stroke is exempt so an underlined line still merges
+        // normally with its wrapped continuation.
+        if graphics.hasHorizontalRuleBetween(previous.bounds, next.bounds, ignoring: previous.underlineBounds) {
+            return false
+        }
         // `previous` is the in-progress merge accumulator: once it has already absorbed
         // several wrapped lines, its `.bounds` is the UNION of every line merged so far, so
         // `.bounds.height` is the whole paragraph's height, not one line's. Every tolerance
