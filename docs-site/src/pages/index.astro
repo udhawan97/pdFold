@@ -91,15 +91,21 @@ const icoBook =
 			})();
 		</script>
 		<style is:global>
-			/* No-JS guide-pet safety (WCAG 2.2.2): the inlined SMIL pets loop forever with
-			   begin="0s" repeatCount="indefinite" and only JS can pause them. html.js is set
-			   synchronously pre-paint above, so gate on it: JS present shows the (JS-gated,
-			   finite) animated figure; JS absent shows only a static poster and hides the SMIL,
-			   so no-JS visitors get no perpetual motion. */
-			.guide-fig { display: none; }
-			.guide-poster { display: block; width: 96px; height: 96px; flex: 0 0 auto; }
-			html.js .guide-fig { display: block; }
-			html.js .guide-poster { display: none; }
+			/* No-JS + reduced-motion pet safety (WCAG 2.2.2): the inlined SMIL pets (act pets
+			   AND the #ma guides) loop forever (begin="0s" repeatCount="indefinite") and only
+			   JS can pause them. html.js is set synchronously pre-paint above, so gate on it:
+			   JS present shows the (JS-gated, on-screen-only) animated figure; JS absent OR
+			   reduced motion shows only a static poster and hides the SMIL — no perpetual motion. */
+			.pet-anim, .guide-fig { display: none; }
+			.pet-poster, .guide-poster { display: block; }
+			html.js .pet-anim, html.js .guide-fig { display: block; }
+			html.js .pet-poster, html.js .guide-poster { display: none; }
+		</style>
+		<style is:global>
+			@media (prefers-reduced-motion: reduce) {
+				html.js .pet-anim, html.js .guide-fig { display: none; }
+				html.js .pet-poster, html.js .guide-poster { display: block; }
+			}
 		</style>
 	</head>
 	<body
@@ -205,7 +211,8 @@ const icoBook =
 
 					<div class="pet crease" data-pet="gami">
 						<span class="fig pet-arrive-target">
-							<img class="pet-static" src={`${base}/assets/gami-figure.svg`} width="88" height="112" alt="" />
+							<span class="pet-anim" set:html={gamiWag} aria-hidden="true"></span>
+							<img class="pet-poster" src={`${base}/assets/gami-figure.svg`} width="128" height="128" alt="" aria-hidden="true" />
 						</span>
 						<p class="bubble">Bring the whole messy pile. I'll keep it straight.</p>
 					</div>
@@ -257,7 +264,8 @@ const icoBook =
 
 					<div class="pet crease" data-pet="gami" data-handoff="true">
 						<span class="fig pet-arrive-target">
-							<img class="pet-static" src={`${base}/assets/gami-figure.svg`} width="88" height="112" alt="" />
+							<span class="pet-anim" set:html={gamiWag} aria-hidden="true"></span>
+							<img class="pet-poster" src={`${base}/assets/gami-figure.svg`} width="128" height="128" alt="" aria-hidden="true" />
 						</span>
 						<p class="bubble">Signatures are Ori's craft. Over to her.</p>
 					</div>
@@ -292,7 +300,8 @@ const icoBook =
 
 					<div class="pet crease" data-pet="ori">
 						<span class="fig pet-arrive-target">
-							<img class="pet-static" src={`${base}/assets/ori-figure.svg`} width="88" height="112" alt="" />
+							<span class="pet-anim" set:html={oriTwitch} aria-hidden="true"></span>
+							<img class="pet-poster" src={`${base}/assets/ori-figure.svg`} width="128" height="128" alt="" aria-hidden="true" />
 						</span>
 						<p class="bubble">Real cryptography. Not a picture of ink.</p>
 					</div>
@@ -351,7 +360,8 @@ const icoBook =
 
 					<div class="pet crease" data-pet="ori">
 						<span class="fig pet-arrive-target">
-							<img class="pet-static" src={`${base}/assets/ori-figure.svg`} width="88" height="112" alt="" />
+							<span class="pet-anim" set:html={oriTwitch} aria-hidden="true"></span>
+							<img class="pet-poster" src={`${base}/assets/ori-figure.svg`} width="128" height="128" alt="" aria-hidden="true" />
 						</span>
 						<p class="bubble">Don't trust me. <a href={site.repoUrl}>Read the source.</a> I did.</p>
 					</div>
@@ -424,7 +434,8 @@ const icoBook =
 
 							<div class="pet" data-pet="gami">
 								<span class="fig pet-arrive-target">
-									<img class="pet-static" src={`${base}/assets/gami-figure.svg`} width="76" height="96" alt="" />
+									<span class="pet-anim" set:html={gamiWag} aria-hidden="true"></span>
+									<img class="pet-poster" src={`${base}/assets/gami-figure.svg`} width="104" height="104" alt="" aria-hidden="true" />
 								</span>
 								<p class="bubble">One-time thing. Two seconds. Here's how —</p>
 							</div>
@@ -457,7 +468,8 @@ const icoBook =
 							</div>
 							<div class="pet" data-pet="ori">
 								<span class="fig pet-arrive-target">
-									<img class="pet-static" src={`${base}/assets/ori-figure.svg`} width="76" height="96" alt="" />
+									<span class="pet-anim" set:html={oriTwitch} aria-hidden="true"></span>
+									<img class="pet-poster" src={`${base}/assets/ori-figure.svg`} width="104" height="104" alt="" aria-hidden="true" />
 								</span>
 								<p class="bubble">Doubt me? Build it yourself.</p>
 							</div>
@@ -515,34 +527,25 @@ const icoBook =
 					document.querySelectorAll('.crease').forEach(function (el) { el.classList.add('is-revealed'); });
 				}
 
-				// ── pet controller: arrival + finite idle, ≤1 idling at a time ─
-				var idling = null;
-				function playPetIdle(pet) {
-					var svg = pet.querySelector('.guide-fig svg');
-					if (!svg || !svg.unpauseAnimations) return;
-					if (idling && idling !== svg) { try { idling.pauseAnimations(); } catch (e) {} }
-					try { svg.setCurrentTime(0); svg.unpauseAnimations(); } catch (e) {}
-					idling = svg;
-					setTimeout(function () { try { svg.pauseAnimations(); } catch (e) {} if (idling === svg) idling = null; }, 5000);
-				}
-				// Freeze the showcase-pet SMIL at frame 0 on init, ALWAYS. The pets carry
-				// begin="0s" repeatCount="indefinite" animations that CSS animation-play-state
-				// cannot stop, so JS is the only lever. Pausing unconditionally means:
-				//   • normal motion → petIO/playPetIdle unpauses on scroll-in (finite, ≤1 idling)
-				//   • reduced motion → never unpaused (playPetIdle is !reduce-gated) = stays frozen
-				// This satisfies WCAG 2.2.2 and the reduced-motion contract in one pass, and
-				// stops the per-frame feDropShadow re-raster for reduced-motion users.
-				document.querySelectorAll('.guide-fig svg').forEach(function (svg) {
-					if (svg.pauseAnimations) { try { svg.setCurrentTime(0); svg.pauseAnimations(); } catch (e) {} }
+				// ── pet controller: pets play while on screen, pause off-screen (smooth) ─
+				function petSvg(el) { return el.querySelector('.pet-anim svg') || el.querySelector('.guide-fig svg'); }
+				// Pause every pet's SMIL on load (they carry begin="0s" repeatCount="indefinite",
+				// which only JS can stop). We then unpause a pet only while it's on screen and
+				// re-pause it when it leaves — so at most the visible pets ever animate, and
+				// reduced-motion visitors (who see the static poster instead) never trigger a play.
+				document.querySelectorAll('.pet-anim svg, .guide-fig svg').forEach(function (svg) {
+					if (svg.pauseAnimations) { try { svg.pauseAnimations(); } catch (e) {} }
 				});
 				if ('IntersectionObserver' in window) {
 					var petIO = new IntersectionObserver(
 						function (entries) {
 							entries.forEach(function (e) {
+								var svg = petSvg(e.target);
 								if (e.isIntersecting) {
 									e.target.classList.add('pet-arrived');
-									if (!reduce && e.target.classList.contains('guide')) playPetIdle(e.target);
-									petIO.unobserve(e.target);
+									if (!reduce && svg && svg.unpauseAnimations) { try { svg.unpauseAnimations(); } catch (er) {} }
+								} else if (svg && svg.pauseAnimations) {
+									try { svg.pauseAnimations(); } catch (er) {}
 								}
 							});
 						},

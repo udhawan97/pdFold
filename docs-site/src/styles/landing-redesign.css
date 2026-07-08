@@ -253,10 +253,11 @@ html body.landing .guide {
 	background: color-mix(in srgb, var(--of-surface) 55%, transparent);
 	text-align: left;
 }
-html body.landing .guide-fig {
+html body.landing .guide-fig,
+html body.landing .guide-poster {
 	flex: 0 0 auto;
-	width: 96px;
-	height: 96px;
+	width: 118px;
+	height: 118px;
 }
 html body.landing .guide-fig svg {
 	width: 100%;
@@ -272,23 +273,36 @@ html body.landing .guide-copy p {
 	line-height: 1.6;
 }
 
-/* ---- pets in acts: alive on arrival (gentle finite idle) ------------------- */
-html body.landing .pet .fig {
-	width: 88px;
+/* ---- act pets: enlarged, animated while on screen (JS-gated), static fallback -- */
+html body.landing .pet {
+	align-items: center;
+	gap: 1.25rem;
 }
-html body.landing .pet .fig img {
+html body.landing .pet .fig {
+	flex: 0 0 auto;
+	width: 128px;
+}
+html body.landing #final-fold .pet .fig {
+	width: 104px;
+}
+/* size only — the animated span vs static poster display is owned by the
+   is:global JS/no-JS/reduced-motion gate in index.astro (don't force display here,
+   or both render at once). */
+html body.landing .pet .fig .pet-anim,
+html body.landing .pet .fig .pet-poster {
+	width: 100%;
+	height: auto;
+}
+html body.landing .pet .fig .pet-anim svg {
 	width: 100%;
 	height: auto;
 	display: block;
 }
-html.js body.landing .pet.pet-arrived .fig {
-	animation: pet-breathe 3.4s var(--ease-fold) 2 both;
-	transform-origin: bottom center;
-}
-@keyframes pet-breathe {
-	0%, 100% { transform: translateY(0) rotate(0deg); }
-	28% { transform: translateY(-4px) rotate(-2deg); }
-	62% { transform: translateY(0) rotate(1.5deg); }
+/* the whole pet block fades in with its .crease reveal — no separate opacity
+   pre-state on the figure (that was the earlier "invisible pet" bug). */
+html.js body.landing .pet .pet-arrive-target {
+	opacity: 1;
+	transform: none;
 }
 
 /* ---- download crane sits smaller, centered -------------------------------- */
@@ -311,11 +325,9 @@ html[data-theme='light'] body.landing .landing-footer .sig {
 	color: var(--of-text-2);
 }
 
-/* ---- reduced motion: freeze the pet idle + fold reveals ------------------- */
+/* ---- reduced motion: drop the vignette drop-shadow paint (pets are handled by
+   the poster swap in index.astro's is:global block) ------------------------- */
 @media (prefers-reduced-motion: reduce) {
-	html.js body.landing .pet.pet-arrived .fig {
-		animation: none;
-	}
 	html body.landing .vig-art svg {
 		filter: none;
 	}
