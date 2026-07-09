@@ -109,7 +109,11 @@ enum PDFObjectEditEngine {
         let ordered = ops.sorted { orderRank($0.type) < orderRank($1.type) }
 
         for op in ordered {
-            guard let idx = resolve(op: op, in: live, claimed: claimed) else {
+            // A structural op (delete/reorder) may target the SAME object a prior transform/style
+            // already claimed — in-place mutation doesn't consume the object, so allow it to match
+            // a claimed index. Otherwise a transform+delete pair on one object would drop the delete.
+            let allowClaimed = op.type == .objectDelete || op.type == .objectReorder
+            guard let idx = resolve(op: op, in: live, claimed: claimed, allowClaimed: allowClaimed) else {
                 unresolved.insert(op.id)
                 continue
             }
@@ -126,8 +130,12 @@ enum PDFObjectEditEngine {
                 // Remove then re-insert at the target index (clamped) — realizes bring/send.
                 if poe_RemoveObject(page, handle) != 0 {
                     let target = max(0, min(op.newZIndex, Int(poe_CountObjects(page))))
-                    _ = poe_InsertObjectAtIndex(page, handle, target)
-                    applied.insert(op.id)
+                    if poe_InsertObjectAtIndex(page, handle, target) != 0 {
+                        applied.insert(op.id)
+                    } else {
+                        poe_Destroy(handle)   // re-insert failed: free the detached object, don't leak
+                        unresolved.insert(op.id)
+                    }
                 } else { unresolved.insert(op.id) }
             case .objectDelete:
                 if op.replacementStrategy == .pdfiumStructural, poe_RemoveObject(page, handle) != 0 {
@@ -156,13 +164,15 @@ enum PDFObjectEditEngine {
     }
 
     /// Resolve an op to a live object index: exact structuralDigest match, tie-broken by nearest
-    /// quantized-bounds hint; unclaimed objects only. (AddMark fast-path is added in a later phase.)
-    private static func resolve(op: ObjectEditOperation, in live: [LiveObject], claimed: Set<Int>) -> Int? {
+    /// quantized-bounds hint. `allowClaimed` lets a structural op (delete/reorder) target an object
+    /// a prior transform/style already claimed. (AddMark fast-path is added in a later phase.)
+    private static func resolve(op: ObjectEditOperation, in live: [LiveObject], claimed: Set<Int>,
+                                allowClaimed: Bool = false) -> Int? {
         let wantDigest = op.sourceObjectKey.structuralDigest
         let wantBounds = op.sourceObjectKey.quantizedBoundsHint
         var best: Int?
         var bestDist = Int.max
-        for (i, o) in live.enumerated() where !claimed.contains(i) && o.digest == wantDigest {
+        for (i, o) in live.enumerated() where (allowClaimed || !claimed.contains(i)) && o.digest == wantDigest {
             let dist = boundsDistance(o.boundsHint, wantBounds)
             if dist < bestDist { bestDist = dist; best = i }
         }

@@ -170,6 +170,34 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         XCTAssertFalse(rectPresent(in: vm.document.memberPDFData[member]), "rect not deleted")
     }
 
+    // Regression (audit CRITICAL): text + object edits on the same member must NOT silently
+    // clobber each other. When a member already has a text edit, an object edit on it is refused
+    // (no silent data loss); the reverse direction is guarded by the same helper in applyInlineTextEdit.
+    func testCrossLaneObjectEditRefusedWhenMemberHasTextEdits() throws {
+        let vm = try makeViewModel()
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let member = ref.memberDocId
+        let map = vm.objectMap(for: ref)
+        let image = try XCTUnwrap(map.objects.first { $0.objectType == .imageXObject })
+
+        // Simulate an existing inline-text edit on this member's page.
+        let textOp = PDFTextEditOperation(
+            pageRefID: ref.id, sourceBlockID: UUID(), sourceBounds: CGRect(x: 72, y: 700, width: 80, height: 16),
+            editedBounds: CGRect(x: 72, y: 700, width: 80, height: 16), replacementText: "hello",
+            fontName: "Helvetica", fontSize: 12, textColor: CodableColor(red: 0, green: 0, blue: 0), alignment: .left)
+        vm.document.workspace.pageEditStates = [PageEditState(pageRefID: ref.id, operations: [textOp])]
+        XCTAssertTrue(vm.memberHasTextEdits(member))
+
+        let baselineImage = try XCTUnwrap(imageBounds(in: vm.document.memberPDFData[member]))
+        // The object edit must be REFUSED, leaving both lanes untouched.
+        XCTAssertFalse(vm.applyObjectEdit([transformOp(image, ref: ref, member: member, dx: 40, dy: -15)]),
+                       "object edit must be refused when the member has text edits")
+        XCTAssertFalse(vm.hasObjectEdits, "refused object edit must not record any object op")
+        XCTAssertTrue(near(try XCTUnwrap(imageBounds(in: vm.document.memberPDFData[member])), baselineImage, tol: 1),
+                      "member bytes changed despite the object edit being refused")
+        XCTAssertTrue(vm.memberHasTextEdits(member), "text edit was clobbered")
+    }
+
     // objectMap caches per pageRef and returns the same identities on repeat calls.
     func testObjectMapIsCachedAndStable() throws {
         let vm = try makeViewModel()

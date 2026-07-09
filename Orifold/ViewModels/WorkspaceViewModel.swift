@@ -294,7 +294,9 @@ final class WorkspaceViewModel {
     var pendingSignatureData: Data? = nil
     var pendingSignatureOptions: PendingSignaturePlacementOptions? = nil
     var pendingStampOptions: PendingStampPlacementOptions? = nil
-    var selectedStampDecorationID: UUID? = nil
+    var selectedStampDecorationID: UUID? = nil {
+        didSet { if selectedStampDecorationID != nil { objectSelection = nil } }
+    }
     private(set) var decorationStateVersion = 0
     var selectedPageRefID: UUID? = nil
     var selectedPageRefIDs: Set<UUID> = []
@@ -344,7 +346,9 @@ final class WorkspaceViewModel {
     var inkColor: NSColor = .dsInk                        // ink strokes
 
     // MARK: - Annotation selection (for Delete key deletion)
-    var selectedAnnotation: PDFAnnotation? = nil
+    var selectedAnnotation: PDFAnnotation? = nil {
+        didSet { if selectedAnnotation != nil { objectSelection = nil } }
+    }
 
     // MARK: - Canvas state (updated by PDFView via Coordinator)
     var currentPageNumber: Int = 0
@@ -1321,6 +1325,7 @@ final class WorkspaceViewModel {
         var editStates: [PageEditState]
         var objectEditStates: [PageObjectEditState]   // object editing rides the same snapshot
         var objectBaseData: [UUID: Data]              // per-member base bytes object ops apply to
+        var objectSelection: ObjectSelectionState?    // so undo doesn't leave a stale overlay
         var pageRotations: [UUID: Int]
         var pdfData: [UUID: Data]
     }
@@ -1433,6 +1438,7 @@ final class WorkspaceViewModel {
             editStates: document.workspace.pageEditStates,
             objectEditStates: document.workspace.objectEditStates,
             objectBaseData: objectBaseData,
+            objectSelection: objectSelection,
             pageRotations: currentPageRotations(),
             pdfData: currentPDFData()
         )
@@ -1443,6 +1449,7 @@ final class WorkspaceViewModel {
         document.workspace.pageEditStates = snapshot.editStates
         document.workspace.objectEditStates = snapshot.objectEditStates
         objectBaseData = snapshot.objectBaseData
+        objectSelection = snapshot.objectSelection
         objectAnalysisCache.removeAll()
         // Merge rather than replace: members imported AFTER this snapshot was captured
         // have no entry in it, and wholesale replacement silently dropped them from
@@ -2809,6 +2816,12 @@ final class WorkspaceViewModel {
         didRestoreOriginalStyle: Bool = false
     ) -> Bool {
         guard canPerformMutatingAction() else { return false }
+        // v1 SAFETY (see applyObjectEdit): text and object edits on the same member don't compose;
+        // refuse a text edit on a member that already carries object edits rather than dropping them.
+        if memberHasObjectEdits(pageRef.memberDocId) {
+            showEditMessage(L10n.string("object.error.mixedEditsUnsupported"), isError: true)
+            return false
+        }
         guard let basePage = originalBasePage(for: pageRef) else {
             showEditMessage(L10n.string("error.pageEdit.cannotAccessOriginal"), isError: true)
             return false
@@ -3022,13 +3035,36 @@ final class WorkspaceViewModel {
     /// Commit one or more object operations atomically: snapshot → upsert → regenerate affected
     /// members via the PDFium structural engine → live update → single undo step. Rolls back
     /// (including member bytes) on any regeneration failure. Returns false if blocked or failed.
+    /// True when any inline-text edit exists on a page belonging to `memberID`.
+    func memberHasTextEdits(_ memberID: UUID) -> Bool {
+        document.workspace.pageEditStates.contains { state in
+            !state.operations.isEmpty && workspacePageRef(state.pageRefID)?.memberDocId == memberID
+        }
+    }
+
+    /// True when any object edit exists on a page belonging to `memberID`.
+    func memberHasObjectEdits(_ memberID: UUID) -> Bool {
+        document.workspace.objectEditStates.contains { state in
+            !state.operations.isEmpty && workspacePageRef(state.pageRefID)?.memberDocId == memberID
+        }
+    }
+
     @discardableResult
     func applyObjectEdit(_ operations: [ObjectEditOperation]) -> Bool {
         guard canPerformMutatingAction(), !operations.isEmpty else { return false }
-        let snapshot = captureInlineTextEditSnapshot()
 
         let affectedMembers = Set(operations.compactMap { workspacePageRef($0.pageRefID)?.memberDocId })
         guard !affectedMembers.isEmpty else { return false }
+
+        // v1 SAFETY: object and inline-text edits regenerate a member's bytes from independent
+        // bases and don't compose yet (plan §0.1.4). Committing an object edit on a member that
+        // already has text edits would silently drop those text edits — refuse instead.
+        if affectedMembers.contains(where: { memberHasTextEdits($0) }) {
+            showEditMessage(L10n.string("object.error.mixedEditsUnsupported"), isError: true)
+            return false
+        }
+
+        let snapshot = captureInlineTextEditSnapshot()
 
         // Freeze each affected member's object base on its first edit of the session. Any
         // previously-persisted ops for that member are already baked into these base bytes
@@ -3047,6 +3083,7 @@ final class WorkspaceViewModel {
             document.workspace.pageEditStates = snapshot.editStates
             document.workspace.objectEditStates = snapshot.objectEditStates
             objectBaseData = snapshot.objectBaseData
+            objectSelection = snapshot.objectSelection
             document.memberPDFData = snapshot.pdfData
             loadedPDFs = document.workspace.documents.compactMap { m in
                 snapshot.pdfData[m.id].flatMap { PDFDocument(data: $0) }.map { (m, $0) }
@@ -3117,6 +3154,12 @@ final class WorkspaceViewModel {
             document.workspace.objectEditStates[stateIndex].operations.removeAll {
                 $0.sourceObjectKey == op.sourceObjectKey && $0.type != .objectDelete
             }
+        } else if document.workspace.objectEditStates[stateIndex].operations.contains(where: {
+            $0.sourceObjectKey == op.sourceObjectKey && $0.type == .objectDelete
+        }) {
+            // A delete for this object is already recorded — the object is gone; ignore further
+            // transforms/styles for it (prevents a stranded non-delete op reaching the engine).
+            return
         }
 
         if let opIndex = document.workspace.objectEditStates[stateIndex].operations.firstIndex(where: {
@@ -3209,6 +3252,7 @@ final class WorkspaceViewModel {
     @discardableResult
     func commitObjectBoundsChange(from oldBoundsPdf: CGRect, to proposedBoundsPdf: CGRect) -> CGRect {
         guard let sel = objectSelection, sel.object.editability.capabilities.canMove,
+              sel.object.pageRotation == 0,   // rotated-page editing is punted in v1
               oldBoundsPdf.width > 0.5, oldBoundsPdf.height > 0.5,
               proposedBoundsPdf.width > 1, proposedBoundsPdf.height > 1 else { return oldBoundsPdf }
         let object = sel.object
@@ -6855,6 +6899,10 @@ final class WorkspaceViewModel {
         let normalizedRotation = (rotation + 360) % 360
         guard before != normalizedRotation else { return }
         page.rotation = normalizedRotation
+        // The object selection overlay draws in unrotated content space and object editing is
+        // punted on rotated pages — a rotation invalidates any active object selection.
+        clearObjectSelection()
+        objectAnalysisCache.removeValue(forKey: ref.id)
         rebuild()
         markWorkspaceModified()
         undoManager?.registerUndo(withTarget: self) { vm in

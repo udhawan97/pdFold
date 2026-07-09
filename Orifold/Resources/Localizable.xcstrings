@@ -22551,6 +22551,47 @@
         }
       }
     },
+    "object.error.mixedEditsUnsupported": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can’t mix text edits and object edits on the same document yet — finish or undo one before starting the other."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todavía no puedes combinar ediciones de texto y de objetos en el mismo documento: termina o deshaz una antes de empezar la otra."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous ne pouvez pas encore mélanger les modifications de texte et d’objets dans le même document — terminez ou annulez l’une avant de commencer l’autre."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आप अभी एक ही दस्तावेज़ पर टेक्स्ट संपादन और ऑब्जेक्ट संपादन एक साथ नहीं कर सकते — दूसरा शुरू करने से पहले एक को पूरा करें या पूर्ववत करें।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同じ書類でテキスト編集とオブジェクト編集をまだ併用できません。片方を終えるか取り消してからもう片方を始めてください。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时无法在同一文档中同时进行文本编辑和对象编辑——请先完成或撤销其中一个再开始另一个。"
+          }
+        }
+      }
+    },
     "object.error.rotatedPageUnsupported": {
       "extractionState": "manual",
       "localizations": {
@@ -33371,6 +33412,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "現在確認できませんでした"
+          }
+        }
+      }
+    },
+    "settings.updates.status.installIncomplete": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The last update didn’t finish. Your current version is untouched."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La última actualización no se completó. Tu versión actual no se modificó."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La dernière mise à jour ne s’est pas terminée. Votre version actuelle est intacte."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "पिछला अपडेट पूरा नहीं हुआ। आपका मौजूदा संस्करण अछूता है।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前回の更新は完了しませんでした。現在のバージョンはそのままです。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上次更新未完成。你当前的版本未受影响。"
           }
         }
       }
@@ -44240,6 +44322,47 @@
         }
       }
     },
+    "update.action.tryAgain": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try Again"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reintentar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réessayer"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "फिर से प्रयास करें"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再試行"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试"
+          }
+        }
+      }
+    },
     "update.action.viewRelease": {
       "extractionState": "manual",
       "localizations": {
@@ -44687,88 +44810,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "关于 Orifold"
-          }
-        }
-      }
-    },
-    "update.action.tryAgain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Try Again"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reintentar"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Réessayer"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "फिर से प्रयास करें"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "再試行"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "重试"
-          }
-        }
-      }
-    },
-    "settings.updates.status.installIncomplete": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The last update didn’t finish. Your current version is untouched."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La última actualización no se completó. Tu versión actual no se modificó."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La dernière mise à jour ne s’est pas terminée. Votre version actuelle est intacte."
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "पिछला अपडेट पूरा नहीं हुआ। आपका मौजूदा संस्करण अछूता है।"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "前回の更新は完了しませんでした。現在のバージョンはそのままです。"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上次更新未完成。你当前的版本未受影响。"
           }
         }
       }

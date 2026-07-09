@@ -420,6 +420,7 @@ final class WorkspaceDocument: ReferenceFileDocument {
               snapshot.workspace.signatures.isEmpty,
               !snapshot.workspace.hasActiveDecorations,
               snapshot.workspace.pageEditStates.isEmpty,
+              snapshot.workspace.objectEditStates.isEmpty,   // object edits also disable the source fast-path
               let member = snapshot.workspace.documents.first,
               let payload = snapshot.sourcePayloads[member.id],
               snapshot.workspace.pageOrder.map(\.id) == member.pageRefs else {
