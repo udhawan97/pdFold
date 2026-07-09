@@ -28,4 +28,20 @@ enum UpdateStorePaths {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
+
+    /// A clearly-scoped, updater-owned cache for downloaded update artifacts and staging
+    /// (zips/dmgs, staged bundles, temp dirs). This is the *only* directory the artifact
+    /// cleaner is allowed to empty wholesale — nothing here is user data. Kept deliberately
+    /// separate from `Recovery/` (which holds the user's pre-update work and is never
+    /// auto-deleted).
+    static func updaterCacheDirectory(in base: URL = supportDirectory) -> URL {
+        let dir = base.appendingPathComponent("UpdaterCache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// Directory names the artifact cleaner is permitted to operate inside. A blast-radius
+    /// guard: the cleaner refuses any directory whose last path component isn't in this set,
+    /// so it can never be pointed at `Recovery/`, the support root, or the home folder.
+    static let cleanerOwnedDirectoryNames: Set<String> = ["UpdaterCache", "Rollback"]
 }
