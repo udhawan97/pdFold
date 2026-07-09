@@ -62,12 +62,13 @@ private struct P0FileWrite {
     var version: Int32
     var writeBlock: (@convention(c) (UnsafeMutableRawPointer?, UnsafeRawPointer?, CUnsignedLong) -> Int32)?
 }
-@_silgen_name("FPDF_SaveAsCopy") private func p0_SaveAsCopy(_ d: OpaquePointer?, _ fw: UnsafeMutablePointer<P0FileWrite>?, _ flags: UInt32) -> Int32
+// flags is FPDF_DWORD = `unsigned long` (8 bytes on 64-bit) — bind as UInt, not UInt32, for ABI correctness.
+@_silgen_name("FPDF_SaveAsCopy") private func p0_SaveAsCopy(_ d: OpaquePointer?, _ fw: UnsafeMutablePointer<P0FileWrite>?, _ flags: UInt) -> Int32
 private var p0SaveBuffer = Data()   // guarded by pdfiumLock in the test body; not reentrant
 
-private let FPDF_PAGEOBJ_TEXT: Int32 = 1
-private let FPDF_PAGEOBJ_PATH: Int32 = 2
-private let FPDF_PAGEOBJ_IMAGE: Int32 = 3
+private let fpdfPageObjTypeText: Int32 = 1
+private let fpdfPageObjTypePath: Int32 = 2
+private let fpdfPageObjTypeImage: Int32 = 3
 
 final class Phase0PDFiumRoundTripSpikeTests: XCTestCase {
 
@@ -101,7 +102,7 @@ final class Phase0PDFiumRoundTripSpikeTests: XCTestCase {
             if let data, size > 0 { p0SaveBuffer.append(data.assumingMemoryBound(to: UInt8.self), count: Int(size)) }
             return 1
         })
-        return p0_SaveAsCopy(doc, &fw, UInt32(1 << 1)) != 0 ? p0SaveBuffer : Data()   // FPDF_NO_INCREMENTAL
+        return p0_SaveAsCopy(doc, &fw, UInt(1 << 1)) != 0 ? p0SaveBuffer : Data()   // FPDF_NO_INCREMENTAL
     }
 
     /// THE production write-back recipe. Loads `original`, lets `mutate` edit the object list, then
@@ -114,7 +115,7 @@ final class Phase0PDFiumRoundTripSpikeTests: XCTestCase {
             defer { p0_ClosePage(page) }
             mutate(page, enumerate(page))
             if preserveColors {
-                for o in enumerate(page) where o.type == FPDF_PAGEOBJ_PATH {
+                for o in enumerate(page) where o.type == fpdfPageObjTypePath {
                     var r: UInt32 = 0, g: UInt32 = 0, b: UInt32 = 0, a: UInt32 = 0
                     if p0_GetFillColor(o.handle, &r, &g, &b, &a) != 0 { _ = p0_SetFillColor(o.handle, r, g, b, a) }
                     var sr: UInt32 = 0, sg: UInt32 = 0, sb: UInt32 = 0, sa: UInt32 = 0
@@ -238,8 +239,8 @@ final class Phase0PDFiumRoundTripSpikeTests: XCTestCase {
             guard let page = p0_LoadPage(doc, 0) else { return nil }
             defer { p0_ClosePage(page) }
             let objs = enumerate(page)
-            guard let img = objs.first(where: { $0.type == FPDF_PAGEOBJ_IMAGE }) else { return nil }
-            let rect = objs.contains { $0.type == FPDF_PAGEOBJ_PATH && rectApprox($0.bounds, rectPDF) }
+            guard let img = objs.first(where: { $0.type == fpdfPageObjTypeImage }) else { return nil }
+            let rect = objs.contains { $0.type == fpdfPageObjTypePath && rectApprox($0.bounds, rectPDF) }
             return (Int32(objs.count), img.bounds, rect, imageDigest(img))
         } ?? nil, "baseline enumeration failed")
         XCTAssertGreaterThan(base.count, 0)
@@ -254,7 +255,7 @@ final class Phase0PDFiumRoundTripSpikeTests: XCTestCase {
         let dx: CGFloat = 90, dy: CGFloat = -40
         let addMarkName = "OrifoldObjID"
         let movedData = editAndSave(original) { _, objs in
-            guard let image = objs.first(where: { $0.type == FPDF_PAGEOBJ_IMAGE })?.handle else { return }
+            guard let image = objs.first(where: { $0.type == fpdfPageObjTypeImage })?.handle else { return }
             var m = P0Matrix(a: 1, b: 0, c: 0, d: 1, e: 0, f: 0); _ = p0_GetMatrix(image, &m)
             m.e += Float(dx); m.f += Float(dy)
             XCTAssertNotEqual(p0_SetMatrix(image, &m), 0, "SetMatrix failed")
@@ -266,7 +267,7 @@ final class Phase0PDFiumRoundTripSpikeTests: XCTestCase {
             guard let page = p0_LoadPage(doc, 0) else { return nil }
             defer { p0_ClosePage(page) }
             let objs = enumerate(page)
-            guard let img = objs.first(where: { $0.type == FPDF_PAGEOBJ_IMAGE }) else { return nil }
+            guard let img = objs.first(where: { $0.type == fpdfPageObjTypeImage }) else { return nil }
             return (Int32(objs.count), img.bounds, imageDigest(img), markNames(img.handle))
         } ?? nil, "reopen after translate failed")
 
@@ -282,7 +283,7 @@ final class Phase0PDFiumRoundTripSpikeTests: XCTestCase {
 
         // ── (2) DELETE the filled rect via RemoveObject+Destroy, same recipe ──
         let deletedData = editAndSave(original) { page, objs in
-            guard let rect = objs.first(where: { $0.type == FPDF_PAGEOBJ_PATH && rectApprox($0.bounds, rectPDF) })?.handle else { return }
+            guard let rect = objs.first(where: { $0.type == fpdfPageObjTypePath && rectApprox($0.bounds, rectPDF) })?.handle else { return }
             XCTAssertNotEqual(p0_RemoveObject(page, rect), 0, "RemoveObject failed")
             p0_Destroy(rect)   // ownership transferred by RemoveObject
         }
@@ -292,7 +293,7 @@ final class Phase0PDFiumRoundTripSpikeTests: XCTestCase {
             guard let page = p0_LoadPage(doc, 0) else { return nil }
             defer { p0_ClosePage(page) }
             let objs = enumerate(page)
-            return (Int32(objs.count), objs.contains { $0.type == FPDF_PAGEOBJ_PATH && rectApprox($0.bounds, rectPDF) })
+            return (Int32(objs.count), objs.contains { $0.type == fpdfPageObjTypePath && rectApprox($0.bounds, rectPDF) })
         } ?? nil, "reopen after delete failed")
 
         XCTAssertEqual(del.count, base.count - 1, "R1: object count did not decrement by exactly 1 after delete")
@@ -325,7 +326,7 @@ final class Phase0PDFiumRoundTripSpikeTests: XCTestCase {
 
         // Same translate, but WITHOUT the color-touch pass.
         let unmitigated = editAndSave(original, preserveColors: false) { _, objs in
-            guard let image = objs.first(where: { $0.type == FPDF_PAGEOBJ_IMAGE })?.handle else { return }
+            guard let image = objs.first(where: { $0.type == fpdfPageObjTypeImage })?.handle else { return }
             var m = P0Matrix(a: 1, b: 0, c: 0, d: 1, e: 0, f: 0); _ = p0_GetMatrix(image, &m)
             m.e += 5; _ = p0_SetMatrix(image, &m)
         }
@@ -336,7 +337,7 @@ final class Phase0PDFiumRoundTripSpikeTests: XCTestCase {
 
         // And WITH the mitigation the same edit preserves the color.
         let mitigated = editAndSave(original) { _, objs in
-            guard let image = objs.first(where: { $0.type == FPDF_PAGEOBJ_IMAGE })?.handle else { return }
+            guard let image = objs.first(where: { $0.type == fpdfPageObjTypeImage })?.handle else { return }
             var m = P0Matrix(a: 1, b: 0, c: 0, d: 1, e: 0, f: 0); _ = p0_GetMatrix(image, &m)
             m.e += 5; _ = p0_SetMatrix(image, &m)
         }

@@ -18,6 +18,10 @@ struct PDFObjectDetectionEngine {
     /// Safety cap mirroring PageGraphicsIndex — beyond it the map is marked `didTruncateScan`.
     static let maxObjectsScan = 4000
 
+    /// An object whose AABB covers at least this fraction of the page area is treated as a
+    /// full-bleed background/artifact (not default-selectable) rather than real content.
+    static let backgroundAreaFractionThreshold = 0.92
+
     /// Detect page objects on `pageIndex` of pristine member `pdfData`. `allowsEditing == false`
     /// (permission-restricted / signed) forces every object to `lockedOrPermissionRestricted`.
     static func detect(pdfData: Data, pageIndex: Int, pageRefID: UUID,
@@ -69,7 +73,8 @@ struct PDFObjectDetectionEngine {
     private static func build(obj: OpaquePointer?, zOrder: Int, type: Int32, pageRefID: UUID,
                               pageRotation: CGFloat, pageArea: Double, allowsEditing: Bool) -> DetectedObject? {
         var l: Float = 0, b: Float = 0, r: Float = 0, t: Float = 0
-        guard poe_GetBounds(obj, &l, &b, &r, &t) != 0 else { return nil }
+        guard poe_GetBounds(obj, &l, &b, &r, &t) != 0,
+              l.isFinite, b.isFinite, r.isFinite, t.isFinite else { return nil }
         let bounds = CGRect(x: CGFloat(min(l, r)), y: CGFloat(min(b, t)),
                             width: CGFloat(abs(r - l)), height: CGFloat(abs(t - b)))
         guard bounds.width.isFinite, bounds.height.isFinite else { return nil }
@@ -82,7 +87,7 @@ struct PDFObjectDetectionEngine {
         if poe_GetClipPath(obj) != nil { clip.hasClip = true }
 
         let areaFraction = Double(bounds.width * bounds.height) / pageArea
-        let isBackgroundLike = areaFraction >= 0.92
+        let isBackgroundLike = areaFraction >= backgroundAreaFractionThreshold
 
         var style = PDFObjectStyle()
         var pathData: PDFPathData?
@@ -93,6 +98,7 @@ struct PDFObjectDetectionEngine {
         var objectType: PDFObjectType
         var confidence: PDFTextEditConfidence
         var digestValues: [Double]
+        var digestSalt: UInt64 = 0   // for content hashes too wide-range for the geometry clamp
 
         switch type {
         case POEObjType.image:
@@ -100,10 +106,17 @@ struct PDFObjectDetectionEngine {
             confidence = .high
             var pw: UInt32 = 0, ph: UInt32 = 0
             _ = poe_ImageGetPixelSize(obj, &pw, &ph)
-            imageMeta = PDFObjectImageMetadata(pixelWidth: Int(pw), pixelHeight: Int(ph), hasSoftMask: clip.hasSoftMask)
+            // Sampled pixel content, not just dimensions — two different images that happen to
+            // share pixel dimensions must NOT collide onto the same PDFObjectStableKey (identity
+            // is keyed on structuralDigest alone; dimensions-only would merge distinct images).
+            // Fed in as `salt` (unclamped) — folding a full-range hash through the geometry
+            // clamp would collapse every image's contribution to the same boundary constant.
+            let pixelDigest = poeImagePixelDigest(obj, pixelWidth: Int(pw), pixelHeight: Int(ph))
+            imageMeta = PDFObjectImageMetadata(pixelWidth: Int(pw), pixelHeight: Int(ph),
+                                               hasSoftMask: clip.hasSoftMask, pixelDigest: pixelDigest)
             style.opacity = 1
-            // Intrinsic = source pixel dims (invariant to move AND resize).
             digestValues = [Double(pw), Double(ph)]
+            digestSalt = pixelDigest
 
         case POEObjType.form:
             objectType = .formXObject
@@ -132,7 +145,7 @@ struct PDFObjectDetectionEngine {
             digestValues = [Double(round(bounds.width)), Double(round(bounds.height))]
         }
 
-        let digest = poeStructuralDigest(digestValues + [Double(objectType.hashDiscriminator)])
+        let digest = poeStructuralDigest(digestValues + [Double(objectType.hashDiscriminator)], salt: digestSalt)
         let stableKey = PDFObjectStableKey(
             pageRefID: pageRefID,
             structuralDigest: digest,

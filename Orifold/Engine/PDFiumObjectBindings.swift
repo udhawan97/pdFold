@@ -76,6 +76,10 @@ func poe_GetBounds(_ obj: OpaquePointer?, _ l: UnsafeMutablePointer<Float>?, _ b
 
 // MARK: - Image
 @_silgen_name("FPDFImageObj_GetImagePixelSize") func poe_ImageGetPixelSize(_ obj: OpaquePointer?, _ w: UnsafeMutablePointer<UInt32>?, _ h: UnsafeMutablePointer<UInt32>?) -> Int32
+@_silgen_name("FPDFImageObj_GetBitmap") func poe_ImageGetBitmap(_ obj: OpaquePointer?) -> OpaquePointer?
+@_silgen_name("FPDFBitmap_GetBuffer") func poe_BitmapGetBuffer(_ bmp: OpaquePointer?) -> UnsafeMutableRawPointer?
+@_silgen_name("FPDFBitmap_GetStride") func poe_BitmapGetStride(_ bmp: OpaquePointer?) -> Int32
+@_silgen_name("FPDFBitmap_Destroy") func poe_BitmapDestroy(_ bmp: OpaquePointer?)
 
 // MARK: - Form XObject
 @_silgen_name("FPDFFormObj_CountObjects") func poe_FormCountObjects(_ formObject: OpaquePointer?) -> Int32
@@ -103,13 +107,65 @@ extension POEFSMatrix {
 
 /// FNV-1a over quantized doubles — the `structuralDigest` primitive (0.01 quantization,
 /// sign-folded so it is mirror-stable). Proven translation-invariant in Phase 0.
-func poeStructuralDigest(_ values: [Double]) -> UInt64 {
+///
+/// `values` are geometry-shaped doubles (coordinates, counts) and are CLAMPED to a safe range
+/// before the trapping `Int64(Double)` conversion: a malformed/adversarial content stream can
+/// legitimately carry a huge or non-finite path coordinate (e.g. a corrupt MOVETO far outside
+/// any real page), and `Int64(Double)` traps (crashes) on NaN/±infinity/out-of-range input. Real
+/// PDF geometry never approaches ±1e12 (a page is at most a few thousand points), so the clamp
+/// only ever engages on hostile input.
+///
+/// `salt`, if non-zero, is an already-integer 64-bit value (e.g. a content hash) mixed in
+/// UNCLAMPED via the same FNV byte loop — it must NOT go through the geometry clamp above, or a
+/// full-range hash would collapse to the clamp boundary and lose all its differentiating power.
+func poeStructuralDigest(_ values: [Double], salt: UInt64 = 0) -> UInt64 {
+    let safeBound: Double = 1e12
     var h: UInt64 = 0xcbf29ce484222325
     for v in values {
-        var q = Int64((v * 100).rounded()).magnitude
+        let scaled = v * 100
+        let bounded = scaled.isFinite ? Swift.max(-safeBound, Swift.min(safeBound, scaled)) : 0
+        var q = Int64(bounded.rounded()).magnitude
+        for _ in 0..<8 { h = (h ^ (q & 0xff)) &* 0x100000001b3; q >>= 8 }
+    }
+    if salt != 0 {
+        var q = salt
         for _ in 0..<8 { h = (h ^ (q & 0xff)) &* 0x100000001b3; q >>= 8 }
     }
     return h
+}
+
+/// A bounded-cost content digest for an image object: decodes the bitmap and FNV-1a's a fixed
+/// grid of sample pixels (not the whole buffer), so cost is O(1) regardless of image size — the
+/// same "no full-image work on the detection hot path" discipline as the drag-preview proxy.
+/// Two genuinely different images of identical pixel dimensions will, in practice, always differ
+/// at some sampled point; this is an identity aid, not a cryptographic guarantee. Returns 0 (a
+/// harmless "unknown" sentinel — callers already fold in pixel dimensions/type) if the bitmap
+/// can't be decoded, e.g. an unsupported color format.
+func poeImagePixelDigest(_ imageObj: OpaquePointer?, pixelWidth: Int, pixelHeight: Int) -> UInt64 {
+    guard pixelWidth > 0, pixelHeight > 0, let bitmap = poe_ImageGetBitmap(imageObj) else { return 0 }
+    defer { poe_BitmapDestroy(bitmap) }
+    guard let buffer = poe_BitmapGetBuffer(bitmap) else { return 0 }
+    let stride = Int(poe_BitmapGetStride(bitmap))
+    guard stride > 0 else { return 0 }
+    let ptr = buffer.assumingMemoryBound(to: UInt8.self)
+
+    let gridSize = 8   // 64 sample points — fixed, bounded cost regardless of image size
+    var samples: [Double] = []
+    samples.reserveCapacity(gridSize * gridSize)
+    for gy in 0..<gridSize {
+        let y = min(pixelHeight - 1, (gy * pixelHeight) / gridSize)
+        for gx in 0..<gridSize {
+            let x = min(pixelWidth - 1, (gx * pixelWidth) / gridSize)
+            let offset = y * stride + x * 4   // PDFium image bitmaps are 4 bytes/pixel (BGRA family)
+            guard offset >= 0, offset + 3 < stride * pixelHeight else { continue }
+            // Pack 4 bytes into one sample value so all channels contribute.
+            let packed = (Int(ptr[offset]) << 24) | (Int(ptr[offset + 1]) << 16)
+                | (Int(ptr[offset + 2]) << 8) | Int(ptr[offset + 3])
+            samples.append(Double(packed))
+        }
+    }
+    guard !samples.isEmpty else { return 0 }
+    return poeStructuralDigest(samples)
 }
 
 /// The MANDATORY Phase-0 color-preservation pass: touch every PATH object's fill+stroke color

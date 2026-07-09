@@ -149,4 +149,117 @@ final class ObjectDetectionTests: XCTestCase {
         XCTAssertTrue(decoded.objectEditStates.isEmpty)
         XCTAssertEqual(decoded.schemaVersion, 5)
     }
+
+    // Regression guard: poeStructuralDigest must never trap on hostile input (a malformed/
+    // adversarial content stream can legitimately carry NaN/infinite/huge path coordinates).
+    // Int64(Double) traps on exactly these inputs — this proves the clamp holds.
+    func testStructuralDigestNeverTrapsOnHostileCoordinates() {
+        let hostileInputs: [[Double]] = [
+            [.nan], [.infinity], [-.infinity],
+            [1e300], [-1e300], [Double.greatestFiniteMagnitude],
+            [0, .nan, 100], [.infinity, .infinity, .infinity]
+        ]
+        for values in hostileInputs {
+            let digest = poeStructuralDigest(values)
+            _ = digest   // reaching this line without a trap IS the assertion
+        }
+        // Two different hostile inputs still produce a value (not required to differ — the
+        // point is survival, not discrimination of pathological input).
+        XCTAssertNoThrow(poeStructuralDigest([.nan, .infinity, -1e300, 1e300]))
+    }
+
+    // Regression guard: two distinct same-size images must NOT collide onto the same identity.
+    // Before the fix, digestValues was [pixelWidth, pixelHeight] only.
+    func testDistinctSameSizeImagesGetDifferentStableKeys() {
+        let data = NSMutableData()
+        var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let ctx = CGContext(consumer: CGDataConsumer(data: data as CFMutableData)!, mediaBox: &mediaBox, nil)!
+        ctx.beginPDFPage(nil)
+        ctx.setFillColor(NSColor.white.cgColor); ctx.fill(mediaBox)
+        ctx.draw(makeSolidImage(24, 24, .systemRed), in: CGRect(x: 100, y: 600, width: 40, height: 40))
+        ctx.draw(makeSolidImage(24, 24, .systemBlue), in: CGRect(x: 300, y: 600, width: 40, height: 40))
+        ctx.endPDFPage(); ctx.closePDF()
+
+        let map = PDFObjectDetectionEngine.detect(pdfData: data as Data, pageIndex: 0, pageRefID: UUID())
+        let images = map.objects.filter { $0.objectType == .imageXObject }
+        XCTAssertEqual(images.count, 2, "expected two distinct image objects")
+        guard images.count == 2 else { return }
+        XCTAssertNotEqual(images[0].stableKey, images[1].stableKey,
+                          "two different images of identical pixel dimensions must not share an identity key")
+        XCTAssertNotEqual(images[0].imageMetadata?.pixelDigest, 0, "pixelDigest must be populated")
+        XCTAssertNotEqual(images[0].imageMetadata?.pixelDigest, images[1].imageMetadata?.pixelDigest)
+    }
+
+    private func makeSolidImage(_ w: Int, _ h: Int, _ color: NSColor) -> CGImage {
+        let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(color.cgColor); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        return ctx.makeImage()!
+    }
+
+    // Closes the Phase-0 testing gap flagged by review: the identity contract (§3.6) claims
+    // structuralDigest "survives the round-trip," but Phase 0 only proved this for an IMAGE via
+    // its own test-local digest. This proves it for a PATH using the PRODUCTION detection engine
+    // + production poe_* write-back primitives (poeTouchPathColorsForGenerateContent +
+    // GenerateContent + SaveAsCopy) — the exact chain Phase 2's write-back engine will reuse.
+    func testPathStructuralDigestSurvivesRealGenerateContentRoundTrip() throws {
+        let rectPDF = CGRect(x: 120, y: 400, width: 140, height: 80)
+        let data = NSMutableData()
+        var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let ctx = CGContext(consumer: CGDataConsumer(data: data as CFMutableData)!, mediaBox: &mediaBox, nil)!
+        ctx.beginPDFPage(nil)
+        ctx.setFillColor(NSColor.white.cgColor); ctx.fill(mediaBox)
+        ctx.setStrokeColor(CGColor(red: 0.1, green: 0.2, blue: 0.9, alpha: 1)); ctx.setLineWidth(1.5)
+        ctx.stroke(rectPDF)
+        ctx.endPDFPage(); ctx.closePDF()
+        let original = data as Data
+
+        let pageRefID = UUID()
+        let before = PDFObjectDetectionEngine.detect(pdfData: original, pageIndex: 0, pageRefID: pageRefID)
+        let beforeRect = try XCTUnwrap(before.objects.first { $0.objectType == .rectangle })
+
+        // Real production write-back chain: touch colors, GenerateContent, SaveAsCopy — no
+        // object mutated (proves ROUND-TRIP stability of an untouched object, mirroring what
+        // any OTHER object's edit-commit will do to this one's bytes as a side effect).
+        let regenerated: Data = try XCTUnwrap({
+            pdfiumLock.lock(); FPDF_InitLibrary()
+            defer { FPDF_DestroyLibrary(); pdfiumLock.unlock() }
+            return original.withUnsafeBytes { raw -> Data? in
+                guard let base = raw.baseAddress,
+                      let doc = FPDF_LoadMemDocument(base, Int32(original.count), nil) else { return nil }
+                defer { FPDF_CloseDocument(doc) }
+                guard let page = poe_LoadPage(doc, 0) else { return nil }
+                defer { poe_ClosePage(page) }
+                poeTouchPathColorsForGenerateContent(page)
+                guard poe_GenerateContent(page) != 0 else { return nil }
+                regenTestSaveBuffer = Data()
+                var fw = RegenTestFileWrite(version: 1, writeBlock: { _, bytes, size in
+                    if let bytes, size > 0 { regenTestSaveBuffer.append(bytes.assumingMemoryBound(to: UInt8.self), count: Int(size)) }
+                    return 1
+                })
+                guard regenTest_SaveAsCopy(doc, &fw, UInt(1 << 1)) != 0, !regenTestSaveBuffer.isEmpty else { return nil }
+                return regenTestSaveBuffer
+            }
+        }(), "regenerate round-trip produced no bytes")
+
+        let after = PDFObjectDetectionEngine.detect(pdfData: regenerated, pageIndex: 0, pageRefID: pageRefID)
+        let afterRect = try XCTUnwrap(after.objects.first { $0.objectType == .rectangle })
+        XCTAssertEqual(afterRect.stableKey.structuralDigest, beforeRect.stableKey.structuralDigest,
+                      "untouched path's structuralDigest must survive a real GenerateContent+SaveAsCopy round-trip")
+    }
 }
+
+// MARK: - Test-local SaveAsCopy plumbing for the round-trip test above.
+// FPDF_SaveAsCopy(FPDF_DOCUMENT, FPDF_FILEWRITE*, FPDF_DWORD) — exactly 3 args, no context
+// param (mirrors the proven pattern in Phase0PDFiumRoundTripSpikeTests.swift / PDFCompressionService.swift).
+// `flags` is FPDF_DWORD = `unsigned long` (8 bytes) — bound as UInt for ABI correctness.
+private struct RegenTestFileWrite {
+    var version: Int32
+    var writeBlock: (@convention(c) (UnsafeMutableRawPointer?, UnsafeRawPointer?, CUnsignedLong) -> Int32)?
+}
+@_silgen_name("FPDF_SaveAsCopy")
+private func regenTest_SaveAsCopy(_ document: OpaquePointer?, _ fileWrite: UnsafeMutablePointer<RegenTestFileWrite>?, _ flags: UInt) -> Int32
+// File-private, non-reentrant — safe because this test always runs its single SaveAsCopy call
+// synchronously inside the pdfiumLock-held critical section above (same discipline as the
+// Phase 0 spike's p0SaveBuffer / PDFCompressionService's fpdfCompressionSaveData).
+private var regenTestSaveBuffer = Data()
