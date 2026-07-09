@@ -462,13 +462,14 @@ Orifold is already useful today — but the paper isn't done folding. Here's wha
 **🛠️ On the bench now** — steadying what already ships
 
 - **Sturdier editing.** Text edits that are harder to surprise — rotated pages, deeper undo history, and files quietly touched in other apps between saves.
+- **Move the furniture** *(beta, engine only)*. Grab a stray line, resize a logo, delete a rogue stamp — editing real page objects, not sticky notes cosplaying as them. The engine that detects and moves/deletes real page objects already exists and is tested; the pick-and-drag interface on top of it is next. Nothing to try yet — the hard part's done.
 
 **🔭 Next up in the lab** — being explored, high on the radar
 
 | | The next fold | What you'd get |
 | :---: | --- | --- |
 | ✂️ | **Real redaction** | Secrets that actually *leave* the file — not a polite black rectangle you can drag right off. |
-| 🧩 | **Move the furniture** | Grab a stray line, resize a logo, delete a rogue stamp — editing real page objects, not sticky notes cosplaying as them. |
+| 🗂️ | **Fold the whole stack** | Compress, OCR, or watermark a whole folder in one pass — not open, save, repeat, fifty times over. |
 | 🆚 | **Side-by-side compare** | Two drafts, one screen. Spot the change without printing both and playing spot-the-difference. |
 | ⚡ | **Big docs, quick feet** | Three-hundred-page beasts that scroll like pamphlets. |
 | 🗣️ | **More languages** | Six today, more in night school — interface *and* OCR. |

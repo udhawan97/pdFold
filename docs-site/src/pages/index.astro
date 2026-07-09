@@ -33,7 +33,7 @@ import icLanguages from '../assets/icons/languages.svg?raw';
 // feature icons above (20×20, currentColor stroke, tinted by .glyph's
 // --act-accent). Static: no SMIL, no per-frame work.
 import icRedact from '../assets/icons/redact.svg?raw';
-import icMove from '../assets/icons/move.svg?raw';
+import icBatch from '../assets/icons/batch.svg?raw';
 import icCompare from '../assets/icons/compare.svg?raw';
 import icFast from '../assets/icons/fast.svg?raw';
 import icGlobe from '../assets/icons/globe.svg?raw';
@@ -502,7 +502,9 @@ const heroBadges = [
 						<h2>The crane keeps folding.</h2>
 						<p class="lede" style="margin-inline:auto">
 							Orifold is genuinely useful today — and nowhere near finished. A few folds are
-							already taking shape on the workbench. A friendly sneak peek, not a blood oath.
+							already taking shape on the workbench — object editing furthest along, its engine
+							built and tested, the drag-and-drop interface next. A friendly sneak peek, not a
+							blood oath.
 						</p>
 					</div>
 
@@ -514,9 +516,9 @@ const heroBadges = [
 								<p>Secrets that actually <em>leave</em> the file — not a polite black rectangle you can drag right off.</p>
 							</div>
 							<div class="of-card">
-								<span class="glyph" aria-hidden="true" set:html={icMove} />
-								<h3>Move the furniture</h3>
-								<p>Grab a stray line, resize a logo, delete a rogue stamp — editing real page objects, not sticky notes cosplaying as them.</p>
+								<span class="glyph" aria-hidden="true" set:html={icBatch} />
+								<h3>Fold the whole stack</h3>
+								<p>Compress, OCR, or watermark a whole folder in one pass — not open, save, repeat, fifty times over.</p>
 							</div>
 							<div class="of-card">
 								<span class="glyph" aria-hidden="true" set:html={icCompare} />
