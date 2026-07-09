@@ -38,6 +38,12 @@ final class UpdateLaunchCoordinator {
         }
 
         Task { await UpdateController.shared.maybeRunAutomaticCheck() }
+
+        // Housekeeping: prune stale downloaded artifacts and superseded rollback archives.
+        // Runs off the main actor and only ever touches updater-owned directories.
+        Task.detached(priority: .background) {
+            UpdateArtifactCleaner().clean()
+        }
     }
 
     func applicationWillTerminate() {

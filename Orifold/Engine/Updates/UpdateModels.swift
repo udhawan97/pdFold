@@ -8,6 +8,9 @@ struct AvailableUpdate: Equatable {
     var downloadPageURL: URL?
     var publishedAt: Date?
     var assetSizeBytes: Int?
+    /// Direct download URL of the versioned universal DMG asset, used by the in-app
+    /// downloader. Its SHA-256 sidecar is the same URL with `.sha256` appended.
+    var dmgDownloadURL: URL?
 }
 
 /// Why an update attempt could not complete, in a form the UI turns into calm copy plus

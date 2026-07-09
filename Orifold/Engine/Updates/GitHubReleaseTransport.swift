@@ -80,9 +80,12 @@ struct GitHubReleaseTransport: UpdateTransport {
         }
         guard latest > currentVersion else { return .upToDate }
 
-        // Prefer the DMG asset's size for the download chip; fall back to the zip.
-        let asset = release.assets.first { $0.name.hasSuffix(".dmg") }
-            ?? release.assets.first { $0.name.hasSuffix(".zip") }
+        // Prefer the versioned universal DMG (what the in-app downloader fetches and what
+        // carries a `.sha256` sidecar); fall back to the stable-name alias, then the zip
+        // for the size chip only.
+        let dmgAsset = release.assets.first { $0.name.hasSuffix("-macOS-universal.dmg") }
+            ?? release.assets.first { $0.name == "Orifold.dmg" }
+        let sizeAsset = dmgAsset ?? release.assets.first { $0.name.hasSuffix(".zip") }
 
         return .available(AvailableUpdate(
             version: latest.description,
@@ -90,7 +93,8 @@ struct GitHubReleaseTransport: UpdateTransport {
             releaseNotesURL: release.htmlURL,
             downloadPageURL: URL(string: "https://github.com/\(repository)/releases/latest"),
             publishedAt: release.publishedAt,
-            assetSizeBytes: asset?.size
+            assetSizeBytes: sizeAsset?.size,
+            dmgDownloadURL: dmgAsset?.browserDownloadURL
         ))
     }
 }
@@ -112,6 +116,12 @@ private struct GitHubRelease: Decodable {
     struct Asset: Decodable {
         let name: String
         let size: Int
+        let browserDownloadURL: URL?
+
+        private enum CodingKeys: String, CodingKey {
+            case name, size
+            case browserDownloadURL = "browser_download_url"
+        }
     }
 
     private enum CodingKeys: String, CodingKey {

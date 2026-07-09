@@ -41,7 +41,12 @@ final class UpdateController {
     /// each install; drives whether "Restore Previous Version…" is enabled.
     private(set) var rollbackManifest: RollbackManifest?
 
+    /// The verified, downloaded DMG awaiting the install hand-off. Set when a download
+    /// completes and its checksum verifies; consumed by `revealDownloadedUpdateForInstall`.
+    private(set) var downloadedUpdateURL: URL?
+
     private let transport: UpdateTransport
+    private let downloader: UpdateDownloading
     private let defaults: UserDefaults
     private let currentVersion: UpdateVersion
     private let archiver: RollbackArchiver
@@ -49,12 +54,14 @@ final class UpdateController {
 
     init(
         transport: UpdateTransport = GitHubReleaseTransport(),
+        downloader: UpdateDownloading = UpdateDownloader(),
         defaults: UserDefaults = .standard,
         currentVersion: UpdateVersion = .current(),
         archiver: RollbackArchiver = RollbackArchiver(),
         now: @escaping () -> Date = Date.init
     ) {
         self.transport = transport
+        self.downloader = downloader
         self.defaults = defaults
         self.currentVersion = currentVersion
         self.archiver = archiver
@@ -101,6 +108,63 @@ final class UpdateController {
     func shouldAutomaticallyCheck(at date: Date) -> Bool {
         guard let last = lastCheckAt else { return true }
         return date.timeIntervalSince(last) >= Self.automaticCheckInterval
+    }
+
+    /// Downloads the available update's verified DMG in the background, driving the
+    /// `.downloading` progress phase and ending at `.readyToInstall` (or `.failed`). No
+    /// bundle is touched — this only produces a verified local artifact for install.
+    func downloadUpdate() async {
+        guard case let .updateAvailable(update) = phase else { return }
+
+        // If this exact version was already downloaded and verified in a prior attempt
+        // (e.g. the user picked "Later" then came back), skip the network entirely and go
+        // straight to the install offer instead of re-fetching the same DMG.
+        if let existing = downloadedUpdateURL,
+           existing.lastPathComponent == "Orifold-\(update.version).dmg",
+           FileManager.default.fileExists(atPath: existing.path) {
+            phase = .readyToInstall(update)
+            return
+        }
+
+        phase = .downloading(update, fractionCompleted: 0)
+        do {
+            let url = try await downloader.download(update) { [weak self] fraction in
+                // The downloader reports progress off the main actor; hop back to update the
+                // observable phase. Guard on the *same version* still downloading so a
+                // straggler tick from a superseded download can't clobber a newer one.
+                Task { @MainActor in
+                    guard let self, case let .downloading(current, _) = self.phase, current == update else { return }
+                    self.phase = .downloading(update, fractionCompleted: fraction)
+                }
+            }
+            downloadedUpdateURL = url
+            phase = .readyToInstall(update)
+        } catch {
+            phase = .failed(Self.downloadFailure(from: error))
+        }
+    }
+
+    /// Open documents with unsaved changes that must be saved or closed before an install
+    /// proceeds. Empty when it's safe to install.
+    func documentsBlockingInstall() -> [UpdateInstallPreflight.DocumentState] {
+        UpdateInstallPreflight.blockingDocuments(UpdateInstallPreflight.openDocumentsSnapshot())
+    }
+
+    /// Hands the verified download to the OS installer UI (opens the DMG's
+    /// drag-to-Applications window). The caller must have cleared unsaved work first — a
+    /// sandboxed app can't swap its own bundle, so the user completes the install in Finder.
+    @discardableResult
+    func revealDownloadedUpdateForInstall() -> Bool {
+        guard let url = downloadedUpdateURL, FileManager.default.fileExists(atPath: url.path) else {
+            return false
+        }
+        NSWorkspace.shared.open(url)
+        return true
+    }
+
+    /// Postpones an install that's ready, keeping the verified download for later.
+    func installLater() {
+        if case .readyToInstall = phase { phase = .idle }
     }
 
     /// Dismisses the current available update until a newer version appears.
@@ -155,6 +219,17 @@ final class UpdateController {
             return UpdateFailure(kind: .network, detail: "HTTP \(code)")
         default:
             return UpdateFailure(kind: .network, detail: String(describing: error))
+        }
+    }
+
+    static func downloadFailure(from error: Error) -> UpdateFailure {
+        switch error {
+        case UpdateDownloader.DownloadError.checksumMismatch, UpdateDownloader.DownloadError.checksumUnavailable:
+            // A failed integrity check is a verification failure, surfaced distinctly so the
+            // UI can reassure the user their current version is untouched.
+            return UpdateFailure(kind: .verification, detail: String(describing: error))
+        default:
+            return UpdateFailure(kind: .download, detail: String(describing: error))
         }
     }
 

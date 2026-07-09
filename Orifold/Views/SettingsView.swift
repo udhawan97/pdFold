@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The app's native macOS Settings window (⌘,). Scoped to controls that already have a
 /// real, working implementation elsewhere in the app — language and appearance already
@@ -62,9 +63,10 @@ struct SettingsView: View {
                 }
                 .disabled(updateController.phase.isBusy)
 
-                // The animated spinner is the only motion here; Reduce Motion drops it and
-                // relies on the disabled button + "Checking…" text to convey progress.
-                if updateController.phase.isBusy && !reduceMotion {
+                // Indeterminate spinner only for the check (downloading shows its own
+                // determinate bar). Reduce Motion drops it and relies on the disabled
+                // button + "Checking…" text to convey progress.
+                if case .checking = updateController.phase, !reduceMotion {
                     ProgressView().controlSize(.small)
                 }
             }
@@ -89,6 +91,11 @@ struct SettingsView: View {
                 Text(L10n.format("settings.updates.status.available", update.version, locale: locale))
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: .dsMD) {
+                    if update.dmgDownloadURL != nil {
+                        Button(L10n.string("settings.updates.action.download", locale: locale)) {
+                            Task { await updateController.downloadUpdate() }
+                        }
+                    }
                     Button(L10n.string("settings.updates.action.releaseNotes", locale: locale)) {
                         updateController.openReleaseNotes()
                     }
@@ -99,9 +106,29 @@ struct SettingsView: View {
                     .buttonStyle(.link)
                 }
             }
-        case .failed:
-            statusText(L10n.string("settings.updates.status.failed", locale: locale))
-        case .idle, .downloading, .readyToInstall:
+        case let .downloading(update, fraction):
+            VStack(alignment: .leading, spacing: .dsXS) {
+                statusText(L10n.format("settings.updates.status.downloading", update.version, locale: locale))
+                ProgressView(value: fraction)
+                    .frame(maxWidth: .infinity)
+            }
+        case let .readyToInstall(update):
+            VStack(alignment: .leading, spacing: .dsXS) {
+                Text(L10n.format("settings.updates.status.readyToInstall", update.version, locale: locale))
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: .dsMD) {
+                    Button(L10n.string("settings.updates.action.install", locale: locale)) {
+                        attemptInstall()
+                    }
+                    Button(L10n.string("update.action.later", locale: locale)) {
+                        updateController.installLater()
+                    }
+                    .buttonStyle(.link)
+                }
+            }
+        case let .failed(failure):
+            statusText(failedMessage(for: failure))
+        case .idle:
             EmptyView()
         }
     }
@@ -111,5 +138,33 @@ struct SettingsView: View {
         Text(text)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func failedMessage(for failure: UpdateFailure) -> String {
+        switch failure.kind {
+        case .download, .verification:
+            return L10n.string("settings.updates.status.downloadFailed", locale: locale)
+        case .network, .parsing, .install:
+            return L10n.string("settings.updates.status.failed", locale: locale)
+        }
+    }
+
+    /// Install hand-off: never proceed while a document has unsaved changes. A sandboxed
+    /// app can't swap its own bundle, so we open the verified DMG's drag-to-Applications
+    /// window and the user finishes in Finder.
+    private func attemptInstall() {
+        let blocking = updateController.documentsBlockingInstall()
+        guard blocking.isEmpty else { presentUnsavedWorkAlert(blocking); return }
+        updateController.revealDownloadedUpdateForInstall()
+    }
+
+    private func presentUnsavedWorkAlert(_ documents: [UpdateInstallPreflight.DocumentState]) {
+        let names = documents.map(\.displayName).joined(separator: ", ")
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.string("update.install.unsavedTitle", locale: locale)
+        alert.informativeText = L10n.format("update.install.unsavedMessage", names, locale: locale)
+        alert.addButton(withTitle: L10n.string("common.ok", locale: locale))
+        alert.runModal()
     }
 }

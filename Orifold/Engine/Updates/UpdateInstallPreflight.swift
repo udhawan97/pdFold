@@ -29,8 +29,8 @@ enum UpdateInstallPreflight {
     /// Live snapshot of the app's open documents. Kept separate from the pure logic above
     /// so the decision stays testable.
     @MainActor
-    static func openDocumentsSnapshot(controller: NSDocumentController = .shared) -> [DocumentState] {
-        controller.documents.map {
+    static func openDocumentsSnapshot() -> [DocumentState] {
+        NSDocumentController.shared.documents.map {
             DocumentState(
                 displayName: $0.displayName ?? L10n.string("document.untitledWorkspace"),
                 hasUnsavedChanges: $0.isDocumentEdited
