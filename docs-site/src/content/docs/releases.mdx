@@ -9,6 +9,25 @@ import Callout from '../../components/Callout.astro';
 
 <Badge variant="new" />
 
+## v0.8.6 — Update yourself, without leaving Orifold
+
+*Released July 2026*
+
+<Callout variant="note" label="Beta">
+	Orifold is in beta, on the road to 1.0.
+</Callout>
+
+v0.8.5 taught Orifold to notice a new version; v0.8.6 lets it **fetch and verify** that version for you. No document-editing behavior changes this cycle.
+
+- **Download inside the app, with a progress bar** — when an update is available, Settings now offers **Download**. Orifold pulls the signed universal DMG straight into its own updater cache and shows real progress.
+- **Verified before it can install** — the download is checked against the release's published SHA-256 checksum. A truncated or tampered file is rejected and deleted, never installed — your current version stays untouched.
+- **Your open work is protected** — before installing, Orifold checks for unsaved documents and asks you to save them first, so nothing is lost.
+- **A calm hand-off to install** — because a sandboxed app can't replace its own running copy, Orifold opens the verified disk image's drag-to-Applications window to finish. Consent-first throughout: nothing downloads or installs unless you ask.
+- **Tidy by itself** — stale downloads and superseded rollback copies are pruned automatically, and only ever from Orifold's own updater cache — never your files.
+- **Polish** — the Settings update row no longer overflows the window, and every new state is Reduce-Motion aware.
+
+Full changelog: [`docs/release-v0.8.6.md`](https://github.com/udhawan97/Orifold/blob/main/docs/release-v0.8.6.md).
+
 ## v0.8.5 — Orifold can tell you when it's out of date
 
 *Released July 2026*

@@ -12,6 +12,14 @@ import Callout from '../../../components/Callout.astro';
 
 ## Update
 
+### From inside Orifold
+
+Choose **Check for Updates…** from the Orifold menu, or open **Settings → Updates**. If a newer version exists, click **Download** — Orifold fetches the signed disk image and checks it against the release's published SHA-256 checksum before it can install. When it's verified, click **Install Update…**; Orifold makes sure any open documents are saved first, then opens the disk image so you can drag the new version into Applications.
+
+Automatic checks are **off by default**. Turning them on lets Orifold look about once a day — only ever a version check. It never downloads or installs anything on its own, and a check never sends anything but a request for the latest version number.
+
+### From your Desktop
+
 Double-click **Orifold.command** on your Desktop. It checks the latest release before launching, and sweeps up any stray `Orifold.app` copies (for example, one dragged straight into `/Applications`) so only one install remains. That's the entire procedure.
 
 ### Homebrew

@@ -31,11 +31,11 @@
 <br>
 <br>
 
-<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Universal: Apple Silicon + Intel" src="https://img.shields.io/badge/universal-Apple%20Silicon%20%2B%20Intel-111111?style=for-the-badge">&nbsp;&nbsp;<img alt="Release v0.8.5" src="https://img.shields.io/badge/release-v0.8.5-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="Beta" src="https://img.shields.io/badge/status-beta-F59E0B?style=for-the-badge">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="6 languages" src="https://img.shields.io/badge/i18n-6%20languages-8B5CF6?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
+<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Universal: Apple Silicon + Intel" src="https://img.shields.io/badge/universal-Apple%20Silicon%20%2B%20Intel-111111?style=for-the-badge">&nbsp;&nbsp;<img alt="Release v0.8.6" src="https://img.shields.io/badge/release-v0.8.6-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="Beta" src="https://img.shields.io/badge/status-beta-F59E0B?style=for-the-badge">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="6 languages" src="https://img.shields.io/badge/i18n-6%20languages-8B5CF6?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
 
 <br>
 
-<sub>Orifold is in beta. <strong>v0.8.5</strong> adds <strong>in-app update checking</strong> — a native "Check for Updates…" in the app menu and a Settings toggle (automatic checks are off by default and never send anything but a version request). Ships as a universal build (Apple Silicon + Intel) in a drag-to-Applications <strong>DMG</strong> with published checksums. Built with Swift, SwiftUI, PDFKit, PDFium, qpdf, and Vision — see <a href="#-under-the-hood">Under the Hood</a>.</sub>
+<sub>Orifold is in beta. <strong>v0.8.6</strong> lets the in-app updater <strong>download and verify</strong> a new version for you — it fetches the signed DMG, checks its SHA-256 against the published checksum, protects any unsaved work, then hands off to the drag-to-Applications install. Consent-first: nothing downloads or installs without you asking. Ships as a universal build (Apple Silicon + Intel) in a drag-to-Applications <strong>DMG</strong> with published checksums. Built with Swift, SwiftUI, PDFKit, PDFium, qpdf, and Vision — see <a href="#-under-the-hood">Under the Hood</a>.</sub>
 
 <br>
 <br>
@@ -346,13 +346,13 @@ Install from the current source checkout without opening the app:
 ./scripts/install-mac.sh --no-open
 ```
 
-App metadata: `CFBundleShortVersionString` `0.8.5`, `CFBundleVersion` `12`.
+App metadata: `CFBundleShortVersionString` `0.8.6`, `CFBundleVersion` `13`.
 
 Build the universal DMG the release ships (after producing the zip above):
 
 ```zsh
 ORIFOLD_UNIVERSAL=1 ./scripts/install-mac.sh --package-only --package /tmp/Orifold.zip
-zsh scripts/make-dmg.sh --from-zip /tmp/Orifold.zip --version 0.8.5
+zsh scripts/make-dmg.sh --from-zip /tmp/Orifold.zip --version 0.8.6
 ```
 </details>
 

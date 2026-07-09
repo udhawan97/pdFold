@@ -550,20 +550,22 @@ const heroBadges = [
 
 			<hr class="crease-line" />
 
-			<!-- Updates — how new folds reach you (consent-first, check-only). Copy is
-			     grounded in the shipped v0.8.5 in-app update checker: menu "Check for
-			     Updates…", an off-by-default ~daily auto-check, and a single version-only
-			     network request. Orifold never downloads/installs/restarts on its own. -->
+			<!-- Updates — how new folds reach you (consent-first). Copy is grounded in the
+			     shipped v0.8.6 in-app updater: menu "Check for Updates…", an off-by-default
+			     ~daily version-only auto-check, and — only when the user asks — an in-app
+			     download that is SHA-256-verified against the published checksum, protects
+			     unsaved work, then hands off to the drag-to-Applications install. Orifold
+			     never downloads or installs on its own. -->
 			<section id="updates" class="fold" aria-labelledby="updates-title">
 				<div class="wrap">
 					<div class="act-head crease" style="text-align:center">
 						<p class="kicker" style="margin-inline:auto">Kept current · The quiet fold</p>
 						<h2 id="updates-title">It tells you.<br />You decide.</h2>
 						<p class="lede" style="margin-inline:auto">
-							Orifold watches for new versions and lets you know — then stops there. It never
-							downloads, installs, or restarts behind your back. The only thing it ever asks the
-							network is "is there a newer version?" Everything else stays exactly where it is:
-							on your Mac.
+							Orifold watches for new versions and lets you know — then waits for your say-so.
+							When you're ready it can download the next version and check it against the
+							published checksum, right inside the app. Nothing downloads or installs on its
+							own, and the only thing it ever asks the network is "is there a newer version?"
 						</p>
 					</div>
 
@@ -577,7 +579,7 @@ const heroBadges = [
 							<div class="of-card">
 								<span class="glyph" aria-hidden="true" set:html={icConsent} />
 								<h3>Never behind your back</h3>
-								<p>Automatic checks are <b>off by default</b>. Switch them on and Orifold glances about once a day — still only a check. Downloading and installing an update stay entirely in your hands.</p>
+								<p>Automatic checks are <b>off by default</b>, and even switched on they only ever <b>check</b> — about once a day. Downloading and installing happen solely when you choose, and any open work is saved first. Nothing is silent.</p>
 							</div>
 							<div class="of-card">
 								<span class="glyph" aria-hidden="true" set:html={icOnDevice} />
@@ -586,9 +588,10 @@ const heroBadges = [
 							</div>
 						</div>
 						<p class="lede update-when crease" style="margin-inline:auto; text-align:center">
-							When a new version is out, an update is one calm step — drag in the fresh copy, re-run
-							the installer, or <code>brew upgrade</code>. Every release brings real fixes and new
-							folds, written up in plain English.
+							When a new version is out, updating is one calm step — let Orifold download and
+							verify it for you, or drag in the fresh copy, re-run the installer, or
+							<code>brew upgrade</code>. Every release brings real fixes and new folds, written
+							up in plain English.
 						</p>
 						<p class="guides-row" style="margin-inline:auto">
 							<a href={`${base}/get-started/update-uninstall/`}>How updating works</a> · <a class="arrow-link" href={`${base}/releases/`}>See what's new<span class="arrow-ico-wrap"><Fragment set:html={icoChevron} /></span></a>
