@@ -642,12 +642,6 @@ html.js .pet.pet-arrived .bubble {
 	align-items: center;
 	gap: 0.6rem 1.2rem;
 }
-.landing-footer .marks img {
-	width: 24px;
-	height: 24px;
-	vertical-align: middle;
-	margin-left: 0.3rem;
-}
 .landing-footer .sig {
 	margin-top: 1rem;
 	color: var(--of-text-3);

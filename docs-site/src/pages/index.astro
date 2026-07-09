@@ -707,12 +707,16 @@ const heroBadges = [
 				<div class="wrap">
 					<div class="fortune-card crease">
 						<span class="ff-aura" aria-hidden="true"></span>
-						<span class="ff-marks" aria-hidden="true">
-							<span class="ff-ring ff-ring-a"></span>
-							<span class="ff-ring ff-ring-b"></span>
-							<span class="ff-marks-glow"></span>
-							<img class="ff-mark ff-mark-gami" src={`${base}/assets/gami-mark.svg`} width="30" height="30" alt="" />
-							<img class="ff-mark ff-mark-ori" src={`${base}/assets/ori-mark.svg`} width="30" height="30" alt="" />
+						<span class="ff-pets" aria-hidden="true">
+							<span class="ff-pets-glow"></span>
+							<span class="ff-pet ff-pet-gami" data-pet="gami">
+								<span class="guide-fig" set:html={gamiWag}></span>
+								<img class="guide-poster" src={`${base}/assets/gami-figure.svg`} width="96" height="96" alt="" />
+							</span>
+							<span class="ff-pet ff-pet-ori" data-pet="ori">
+								<span class="guide-fig" set:html={oriTwitch}></span>
+								<img class="guide-poster" src={`${base}/assets/ori-figure.svg`} width="96" height="96" alt="" />
+							</span>
 						</span>
 						<div class="ff-copy">
 							<span class="ff-eyebrow" id="fortune-eyebrow"><span class="ff-eyebrow-dot" aria-hidden="true"></span>Today's fold</span>
@@ -733,10 +737,6 @@ const heroBadges = [
 			<div class="wrap">
 				<p class="row">
 					<strong>Folded by hand. MIT licensed.</strong>
-					<span class="marks" aria-hidden="true">
-						<img src={`${base}/assets/gami-mark.svg`} width="24" height="24" alt="" />
-						<img src={`${base}/assets/ori-mark.svg`} width="24" height="24" alt="" />
-					</span>
 				</p>
 				<p class="row">
 					<a href={`${base}/get-started/what-is-orifold/`}>Docs</a>
@@ -836,9 +836,9 @@ const heroBadges = [
 						},
 						{ threshold: 0.4 }
 					);
-					document.querySelectorAll('.pet, .guide').forEach(function (p) { petIO.observe(p); });
+					document.querySelectorAll('.pet, .guide, .ff-pet').forEach(function (p) { petIO.observe(p); });
 				} else {
-					document.querySelectorAll('.pet, .guide').forEach(function (p) { p.classList.add('pet-arrived'); });
+					document.querySelectorAll('.pet, .guide, .ff-pet').forEach(function (p) { p.classList.add('pet-arrived'); });
 				}
 
 				// ── Gami→Ori handoff tint (with hysteresis) ──────────────────
