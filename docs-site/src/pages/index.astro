@@ -683,6 +683,50 @@ const heroBadges = [
 					</div>
 				</div>
 			</section>
+			<hr class="crease-line" />
+
+			<!-- Paper fortune spotlight: the page's closing delight. The footer's quiet
+			     one-liner, promoted to its own stage — a bordered paper card with the two
+			     paper-pet marks (Gami + Ori), an eyebrow, an aria-live fortune line, and a
+			     real, focusable Refold button. SSR renders a real first fortune (no-JS and
+			     pre-hydration visitors get a real line); the inline script shuffles on click
+			     and gently auto-refolds while the section is on screen. Every loop is finite:
+			     the ambient drift settles, and continuous life comes from JS-triggered
+			     one-shot bursts — all neutralized by the global reduced-motion rule. -->
+			<section id="fortune-fold" class="fold fortune-fold" aria-labelledby="fortune-eyebrow">
+				<div class="ff-decor" aria-hidden="true">
+					<span class="ff-glow ff-glow-a"></span>
+					<span class="ff-glow ff-glow-b"></span>
+					<span class="ff-sheen"></span>
+					<span class="ff-streak"></span>
+					<span class="ff-dot ff-dot-1"></span>
+					<span class="ff-dot ff-dot-2"></span>
+					<span class="ff-dot ff-dot-3"></span>
+					<span class="ff-dot ff-dot-4"></span>
+				</div>
+				<div class="wrap">
+					<div class="fortune-card crease">
+						<span class="ff-aura" aria-hidden="true"></span>
+						<span class="ff-marks" aria-hidden="true">
+							<span class="ff-ring ff-ring-a"></span>
+							<span class="ff-ring ff-ring-b"></span>
+							<span class="ff-marks-glow"></span>
+							<img class="ff-mark ff-mark-gami" src={`${base}/assets/gami-mark.svg`} width="30" height="30" alt="" />
+							<img class="ff-mark ff-mark-ori" src={`${base}/assets/ori-mark.svg`} width="30" height="30" alt="" />
+						</span>
+						<div class="ff-copy">
+							<span class="ff-eyebrow" id="fortune-eyebrow"><span class="ff-eyebrow-dot" aria-hidden="true"></span>Today's fold</span>
+							<p class="fortune-line" id="fortune-line" aria-live="polite">One sheet, folded with stubborn optimism.</p>
+						</div>
+						<button type="button" class="ff-refold" id="fortune-refold" aria-label="Refold — a new paper fortune">
+							<span class="fortune-ico" aria-hidden="true">
+								<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 3.8h2.2v2.2"/><path d="M16.4 5.9A6.6 6.6 0 1 0 17 10"/></svg>
+							</span>
+							<span>Refold</span>
+						</button>
+					</div>
+				</div>
+			</section>
 		</main>
 
 		<footer class="landing-footer">
@@ -706,20 +750,6 @@ const heroBadges = [
 					Since nothing you do in Orifold ever leaves your Mac, stars are the only telemetry we
 					get. ⭐
 				</p>
-				<!-- Paper fortune: one witty, on-brand line that changes on every refresh and
-				     shuffles on click/tap. SSR renders a real first line (so no-JS visitors still
-				     get a joke, just static); the inline script randomizes on load and on click,
-				     with a gentle fade gated on reduced motion. A real <button> + aria-live keeps
-				     it keyboard-operable and announced. -->
-				<div class="fortune">
-					<button type="button" class="fortune-btn" aria-label="Shuffle the paper fortune">
-						<span class="fortune-ico" aria-hidden="true">
-							<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 3.8h2.2v2.2"/><path d="M16.4 5.9A6.6 6.6 0 1 0 17 10"/></svg>
-						</span>
-						<span class="fortune-line" aria-live="polite">One sheet, folded with stubborn optimism.</span>
-						<span class="fortune-hint" aria-hidden="true">refold</span>
-					</button>
-				</div>
 			</div>
 		</footer>
 
@@ -1076,17 +1106,23 @@ const heroBadges = [
 		</script>
 
 		<script is:inline>
-			// ── paper fortune: a witty on-brand one-liner, fresh on every refresh ──
-			// Progressive: the SSR-rendered line is already a real joke, so no-JS and
-			// pre-hydration visitors see something real. On load we swap in a random
-			// line (so it changes every refresh); clicking/tapping (or Enter/Space on
-			// the button) shuffles to a different one, never repeating back-to-back.
-			// The swap is a paint-only opacity fade, skipped under reduced motion.
+			// ── paper fortune spotlight: a witty on-brand one-liner, promoted to its
+			// own closing stage. Progressive: the SSR line is already a real joke, so
+			// no-JS and pre-hydration visitors see something real. On load we swap in a
+			// random line; the Refold button (click / Enter / Space) shuffles to a
+			// different one, never repeating back-to-back; and while the section is on
+			// screen we gently auto-refold. Each refold toggles .is-refolded on the
+			// section to re-fire the finite one-shot materialize/fold/twinkle bursts
+			// (the global reduced-motion rule neutralizes all of them). We skip the
+			// auto-cycle entirely under reduced motion, when the tab is hidden, when the
+			// section is off screen, or while it holds focus — so it never interrupts a
+			// keyboard/screen-reader visitor mid-interaction or spams the aria-live line.
 			(function () {
-				var btn = document.querySelector('.fortune-btn');
-				if (!btn) return;
-				var line = btn.querySelector('.fortune-line');
-				if (!line) return;
+				var section = document.getElementById('fortune-fold');
+				if (!section) return;
+				var line = document.getElementById('fortune-line');
+				var refold = document.getElementById('fortune-refold');
+				if (!line || !refold) return;
 				var lines = [
 					'One sheet, folded with stubborn optimism.',
 					'The cloud was not consulted. It never is.',
@@ -1096,7 +1132,7 @@ const heroBadges = [
 					"Fold responsibly — cranes don't grow back.",
 					'No trackers, no cookies. We fold our own snacks.',
 					'PDFs are Pretty Difficult, Frankly. We disagree — politely.',
-					"This footer folded itself. It's quietly proud.",
+					"This card folded itself. It's quietly proud.",
 					'A crane a day keeps the file room away.',
 					'Made of one sheet, two paper pets, and zero telemetry.',
 				];
@@ -1110,21 +1146,32 @@ const heroBadges = [
 					last = i;
 					return i;
 				}
-				function show(animate) {
-					var next = lines[pick()];
+				function refoldTo(animate) {
+					line.textContent = lines[pick()];
 					if (animate && !reduce) {
-						line.classList.add('is-swapping');
-						setTimeout(function () {
-							line.textContent = next;
-							line.classList.remove('is-swapping');
-						}, 150);
-					} else {
-						line.textContent = next;
+						section.classList.remove('is-refolded');
+						void section.offsetWidth; // reflow so the one-shot bursts restart
+						section.classList.add('is-refolded');
 					}
 				}
 				// Fresh line on every load (no animation — it's the initial paint).
-				show(false);
-				btn.addEventListener('click', function () { show(true); });
+				refoldTo(false);
+				refold.addEventListener('click', function () { refoldTo(true); });
+
+				// Gentle auto-refold, but only while it can be seen and won't disturb anyone.
+				if (!reduce) {
+					var onScreen = false;
+					if ('IntersectionObserver' in window) {
+						new IntersectionObserver(function (entries) {
+							onScreen = entries[0].isIntersecting;
+						}, { threshold: 0.5 }).observe(section);
+					}
+					setInterval(function () {
+						if (document.hidden || !onScreen) return;
+						if (section.contains(document.activeElement)) return;
+						refoldTo(true);
+					}, 8500);
+				}
 			})();
 		</script>
 	</body>
