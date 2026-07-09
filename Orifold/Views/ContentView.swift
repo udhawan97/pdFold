@@ -1662,7 +1662,7 @@ private struct AnnotationToolPicker: View {
     // Keep the highest-frequency creation tools up front as distinct services,
     // then selection, text markup (+ eraser), and free-form page content.
     private let toolGroups: [[AnnotationTool]] = [
-        [.editText],
+        [.editText, .selectObject],
         [.signature, .stamp],
         [.none],
         [.comment, .commentRegion],

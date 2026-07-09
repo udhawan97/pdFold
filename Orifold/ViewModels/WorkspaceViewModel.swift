@@ -84,11 +84,13 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
     case strikeout = "strikethrough"
     case signature = "signature"
     case stamp     = "seal"
+    case selectObject = "selectObject"
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .selectObject: return L10n.string("annotationTool.selectObject.label")
         case .none:      return L10n.string("annotationTool.none.label")
         case .highlight: return L10n.string("annotationTool.highlight.label")
         case .note:      return L10n.string("annotationTool.note.label")
@@ -106,6 +108,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
 
     var iconName: String {
         switch self {
+        case .selectObject: return "hand.point.up.left"
         case .none:      return "cursorarrow"
         case .highlight: return "highlighter"
         case .note:      return "note.text"
@@ -123,6 +126,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
 
     var helpText: String {
         switch self {
+        case .selectObject: return L10n.string("annotationTool.selectObject.helpText")
         case .none:      return L10n.string("annotationTool.none.helpText")
         case .highlight: return L10n.string("annotationTool.highlight.helpText")
         case .note:      return L10n.string("annotationTool.note.helpText")
@@ -141,7 +145,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
     var isColorable: Bool {
         switch self {
         case .highlight, .note, .editText, .ink, .underline, .strikeout: return true
-        case .none, .comment, .commentRegion, .eraser, .signature, .stamp: return false
+        case .none, .comment, .commentRegion, .eraser, .signature, .stamp, .selectObject: return false
         }
     }
 
@@ -149,7 +153,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
 
     var isReaderModeAllowed: Bool {
         switch self {
-        case .editText, .signature:
+        case .editText, .signature, .selectObject:
             return false
         case .none, .highlight, .note, .comment, .commentRegion, .ink, .eraser, .underline, .strikeout, .stamp:
             return true

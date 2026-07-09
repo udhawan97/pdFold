@@ -378,9 +378,15 @@ struct PDFViewRepresentable: NSViewRepresentable {
 
         // Wire up delete key handler
         view.onDeleteKey = { [weak coordinator = context.coordinator] in
-            coordinator?.viewModel.deleteSelectedAnnotation()
-            coordinator?.refreshSignatureOverlay()
-            coordinator?.refreshDecorationOverlays()
+            guard let coordinator else { return }
+            if coordinator.viewModel.objectSelection != nil {
+                _ = coordinator.viewModel.deleteSelectedObject()
+                coordinator.refreshObjectOverlay()
+            } else {
+                coordinator.viewModel.deleteSelectedAnnotation()
+                coordinator.refreshSignatureOverlay()
+            }
+            coordinator.refreshDecorationOverlays()
         }
         view.onTabKey = { [weak coordinator = context.coordinator] moveBackward in
             guard let viewModel = coordinator?.viewModel,
@@ -421,6 +427,13 @@ struct PDFViewRepresentable: NSViewRepresentable {
         signatureOverlay.autoresizingMask = [.width, .height]
         signatureOverlay.isHidden = true
         view.addSubview(signatureOverlay)
+
+        let objectOverlay = context.coordinator.objectOverlay
+        objectOverlay.frame = view.bounds
+        objectOverlay.autoresizingMask = [.width, .height]
+        objectOverlay.isHidden = true
+        view.addSubview(objectOverlay)
+        context.coordinator.setupObjectOverlay()
 
         let markerOverlay = context.coordinator.commentMarkerOverlay
         markerOverlay.frame = view.bounds
@@ -502,6 +515,11 @@ struct PDFViewRepresentable: NSViewRepresentable {
         context.coordinator.inkOverlay.inkColor = viewModel.inkColor
         nsView.applyDocumentComfortSettings(viewModel.documentComfortSettings)
         context.coordinator.refreshSignatureOverlay()
+        // Leaving the Select tool clears any object selection; otherwise keep the overlay in sync.
+        if viewModel.currentTool != .selectObject {
+            viewModel.clearObjectSelection()
+        }
+        context.coordinator.refreshObjectOverlay()
         context.coordinator.refreshDecorationOverlays()
         context.coordinator.refreshCommentOverlays()
         context.coordinator.updateCanvasBannerInset(viewModel.canvasBannerInset)
@@ -519,6 +537,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
         weak var pdfView: OrifoldPDFView?
         let inkOverlay = InkOverlayView()
         let signatureOverlay = SignatureSelectionOverlayView()
+        let objectOverlay = SignatureSelectionOverlayView()   // reused for content-object selection
         let commentMarkerOverlay = CommentMarkerOverlayView()
         let commentRegionOverlay = CommentRegionOverlayView()
         private weak var inlineEditor: InlineTextEditorOverlay?
@@ -664,6 +683,8 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 }
             case .eraser:
                 viewModel.eraseMarkupAnnotation(at: pagePoint, on: page)
+            case .selectObject:
+                handleObjectSelectionClick(at: pagePoint, on: page, in: pdfView)
             case .none:
                 // Track clicked annotation for Delete-key deletion
                 if let stamp = viewModel.stampDecoration(at: pagePoint, on: page, in: pdfView.document) {
@@ -709,7 +730,64 @@ struct PDFViewRepresentable: NSViewRepresentable {
             if signatureOverlay.containsInteractivePoint(viewPoint) {
                 return false
             }
+            if objectOverlay.containsInteractivePoint(viewPoint) {
+                return false
+            }
             return inlineEditor?.containsInteractivePoint(viewPoint) != true
+        }
+
+        // MARK: Object selection (docs/OBJECT_EDITING_PLAN.md §5)
+
+        private func handleObjectSelectionClick(at pagePoint: CGPoint, on page: PDFPage, in pdfView: PDFView) {
+            guard let ref = viewModel.pageRef(for: page, in: pdfView.document) else { return }
+            // v1 punt: object editing is disabled on rotated pages (§6.5 / Appendix A decision 8).
+            if page.rotation != 0 {
+                viewModel.clearObjectSelection()
+                refreshObjectOverlay()
+                viewModel.showEditMessage(L10n.string("object.error.rotatedPageUnsupported"), isError: false)
+                return
+            }
+            if let hit = viewModel.objectHit(at: pagePoint, on: ref, scaleFactor: pdfView.scaleFactor) {
+                viewModel.selectObject(hit, on: ref)
+                if let tip = viewModel.objectSelectionTooltip() {
+                    viewModel.showEditMessage(tip, isError: false)
+                }
+            } else {
+                viewModel.clearObjectSelection()
+            }
+            refreshObjectOverlay()
+        }
+
+        func setupObjectOverlay() {
+            objectOverlay.onBoundsChanged = { [weak self] target, proposedBounds, oldBounds in
+                guard let self, target.isContentObject else { return proposedBounds }
+                // During the drag (oldBounds == nil) just let the outline track the cursor — the
+                // heavy structural regenerate runs only on mouse-up (oldBounds != nil).
+                guard let oldBounds else { return proposedBounds }
+                let applied = self.viewModel.commitObjectBoundsChange(from: oldBounds, to: proposedBounds.standardized)
+                self.refreshObjectOverlay()
+                self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
+                return applied
+            }
+            objectOverlay.onDelete = { [weak self] target in
+                guard let self, target.isContentObject else { return }
+                _ = self.viewModel.deleteSelectedObject()
+                self.refreshObjectOverlay()
+                self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
+            }
+        }
+
+        func refreshObjectOverlay() {
+            guard let pdfView else { return }
+            objectOverlay.pdfView = pdfView
+            if let selection = viewModel.objectSelection,
+               let ref = viewModel.workspacePageRef(selection.pageRefID),
+               let pageIndex = viewModel.combinedPageIndex(for: ref),
+               let page = pdfView.document?.page(at: pageIndex) {
+                objectOverlay.selectObject(pageRefID: selection.pageRefID, page: page, bounds: selection.object.boundsPdf)
+            } else {
+                objectOverlay.clearSelection()
+            }
         }
 
         private func editableTextSelection(at point: CGPoint, on page: PDFPage) -> PDFSelection? {
@@ -1072,6 +1150,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
 
         @objc func pdfViewGeometryChanged(_ notification: Notification) {
             refreshSignatureOverlay()
+            refreshObjectOverlay()
             refreshCommentOverlays()
         }
 
@@ -1664,10 +1743,15 @@ final class PageObjectSelectionTarget {
     weak var annotation: PDFAnnotation?
     weak var stampPage: PDFPage?
     var stampDecorationID: UUID?
+    // Content-object (vector/image) selection — docs/OBJECT_EDITING_PLAN.md §5.
+    var objectPageRefID: UUID?
+    weak var objectPage: PDFPage?
     private var storedBounds: CGRect
 
+    var isContentObject: Bool { objectPageRefID != nil }
+
     var page: PDFPage? {
-        annotation?.page ?? stampPage
+        annotation?.page ?? stampPage ?? objectPage
     }
 
     var bounds: CGRect {
@@ -1686,6 +1770,12 @@ final class PageObjectSelectionTarget {
     init(stampDecorationID: UUID, page: PDFPage, bounds: CGRect) {
         self.stampDecorationID = stampDecorationID
         self.stampPage = page
+        self.storedBounds = bounds
+    }
+
+    init(objectPageRefID: UUID, page: PDFPage, bounds: CGRect) {
+        self.objectPageRefID = objectPageRefID
+        self.objectPage = page
         self.storedBounds = bounds
     }
 }
@@ -1714,6 +1804,12 @@ final class SignatureSelectionOverlayView: NSView {
 
     func selectStamp(id: UUID, page: PDFPage, bounds: CGRect) {
         selectionTarget = PageObjectSelectionTarget(stampDecorationID: id, page: page, bounds: bounds)
+        isHidden = false
+        needsDisplay = true
+    }
+
+    func selectObject(pageRefID: UUID, page: PDFPage, bounds: CGRect) {
+        selectionTarget = PageObjectSelectionTarget(objectPageRefID: pageRefID, page: page, bounds: bounds)
         isHidden = false
         needsDisplay = true
     }
