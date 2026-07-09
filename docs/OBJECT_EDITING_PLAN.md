@@ -45,6 +45,27 @@ Two editing-hardening passes shipped after this plan was written (`docs/EDITING_
 
 ---
 
+## 0.2 Phase 0 results — GATE PASSED, with one mandatory new requirement (2026-07-09)
+
+The Phase-0 spike is **built, run, and GREEN** as a permanent test: `Tests/OrifoldTests/Phase0PDFiumRoundTripSpikeTests.swift` (two tests, ~0.07s, run under `pdfiumLock`). It declares the exact production PDFium symbols via `@_silgen_name` (the alias trick, test-local `p0_*` names) and proves on **real bytes** the full chain `enumerate → SetMatrix/RemoveObject → GenerateContent → SaveAsCopy → reopen`:
+
+- **R0** — object count stable across `GenerateContent` (5→5 on translate). ✔
+- **R1** — structural delete decrements the count (5→4), the object is absent from the re-enumerated graph, **and the region renders as background** (no ghost, verified with PDFium's own rasterizer). ✔
+- **R2** — the untouched **text layer survives** the whole-stream rebuild (`attributedString`, per the CI quirk). ✔
+- **R4** — translation-invariant `structuralDigest` (matrix a/b/c/d + bounds size) **re-matches** after the round-trip; a moved image still binds to its op. ✔
+- **R4b** — **`FPDFPageObj_AddMark` SURVIVES** `GenerateContent`+`SaveAsCopy`+reload → the §3.6/§8.5 marked-content identity **fast-path is available** (not just the digest fallback). ✔
+
+**⚠️ MANDATORY NEW REQUIREMENT — color preservation (the load-bearing finding).** `FPDFPage_GenerateContent` **drops the fill/stroke color of PARSED path objects** — they re-emit as **black**. This corrupts any page with colored fills or a filled background, **including Orifold's own CGContext/Quartz-generated pages** (a common case, since `PDFEditedPageRenderer` produces them). It is **not** a transparency-group artifact (byte-scan confirms no `/Transparency`) and it is independent of whether any object was removed. **Proven mitigation (mandatory in `PDFObjectEditEngine`):** immediately before `GenerateContent`, iterate every `FPDF_PAGEOBJ_PATH` on the page and "touch" its color — `FPDFPageObj_GetFillColor`→`SetFillColor` and `GetStrokeColor`→`SetStrokeColor` with the same values — forcing PDFium to re-emit the color operators. With the touch, the blue rect stays blue and the background stays white; without it, both go black. The spike's `editAndSave(preserveColors:)` is the exact recipe; `testColorTouchIsNecessary` is the regression guard.
+
+**Binding consequences for the rest of the plan:**
+- **§8.3 step 4 (`regenerateObjectEditedPage`)** and **§9 Lane A** MUST run the path-color touch pass across the whole page before `FPDFPage_GenerateContent`, on every structural write-back (transform/delete/style/reorder/duplicate). Treat it as a non-optional stage of the PDFium chain, exactly like holding `pdfiumLock`.
+- **§8.5 identity:** AddMark is confirmed durable → implement it as the primary fast-path (not "gated/maybe"), with `structuralDigest` as the proven fallback.
+- **§8.3/§9 validation gate:** the "per-page text unchanged" canary is **necessary but not sufficient** — add a **fill-appearance canary** (sample a few untouched filled-path centers; assert non-black-collapse) so a regression of the color-touch is caught before bytes are accepted. The spike's PDFium-rasterizer `sampleColor` is the reusable technique.
+- **Rasterization caveat:** in a headless test process **PDFKit renders `SaveAsCopy` output unreliably** (all-black); use **PDFium's own `FPDF_RenderPageBitmap`** for any pixel assertion on produced bytes (BGRx buffer, top-left origin). Text *extraction* via PDFKit `attributedString` is fine.
+- **GATE VERDICT: GO.** The "PDFium structural rewrite is Lane-A primary" architecture stands; no narrowing to annotations+images is required. Proceed to Phase 1.
+
+---
+
 ## 1. Current Architecture Audit
 
 Ground truth from reading the code. Every claim carries a `file:line`.
