@@ -28,13 +28,23 @@ struct GitHubReleaseTransport: UpdateTransport {
     }
 
     private var etagDefaultsKey: String { "orifoldUpdateLatestETag" }
+    /// The raw response body from the last 200, cached alongside its ETag. A 304 means
+    /// "the release GitHub would return is unchanged from this," NOT "you're up to date" —
+    /// those are different claims, and conflating them previously made every check after
+    /// the first permanently report `.upToDate` regardless of `currentVersion`. Re-running
+    /// the exact same decode+compare path against this cached body on a 304 keeps the two
+    /// response paths honest with each other instead of duplicating the comparison logic.
+    private var cachedBodyDefaultsKey: String { "orifoldUpdateLatestReleaseBody" }
 
     func checkForUpdate(currentVersion: UpdateVersion) async throws -> UpdateCheckOutcome {
+        let cachedBody = defaults.data(forKey: cachedBodyDefaultsKey)
         var request = URLRequest(url: latestReleaseURL)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("Orifold", forHTTPHeaderField: "User-Agent")
         // Conditional GET so unchanged releases don't count against the API rate limit.
-        if let etag = defaults.string(forKey: etagDefaultsKey) {
+        // Only sent when we also have the cached body a 304 would fall back to — otherwise
+        // a 304 would have nothing to compare against.
+        if let etag = defaults.string(forKey: etagDefaultsKey), cachedBody != nil {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }
 
@@ -43,21 +53,24 @@ struct GitHubReleaseTransport: UpdateTransport {
             throw UpdateTransportError.badResponse
         }
 
-        // 304 → nothing changed since the last check; the cached answer is "up to date"
-        // relative to whatever we last saw, so treat it as up to date.
-        if http.statusCode == 304 { return .upToDate }
-        guard (200...299).contains(http.statusCode) else {
+        let effectiveData: Data
+        if http.statusCode == 304, let cachedBody {
+            effectiveData = cachedBody
+        } else if (200...299).contains(http.statusCode) {
+            if let etag = http.value(forHTTPHeaderField: "ETag") {
+                defaults.set(etag, forKey: etagDefaultsKey)
+            }
+            defaults.set(data, forKey: cachedBodyDefaultsKey)
+            effectiveData = data
+        } else {
             throw UpdateTransportError.httpStatus(http.statusCode)
-        }
-        if let etag = http.value(forHTTPHeaderField: "ETag") {
-            defaults.set(etag, forKey: etagDefaultsKey)
         }
 
         let release: GitHubRelease
         do {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            release = try decoder.decode(GitHubRelease.self, from: data)
+            release = try decoder.decode(GitHubRelease.self, from: effectiveData)
         } catch {
             throw UpdateTransportError.decoding(String(describing: error))
         }
