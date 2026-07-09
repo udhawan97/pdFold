@@ -9,6 +9,22 @@ import Callout from '../../components/Callout.astro';
 
 <Badge variant="new" />
 
+## v0.8.8 — Move the furniture
+
+*Released July 2026*
+
+<Callout variant="note" label="Beta">
+	Orifold is in beta, on the road to 1.0.
+</Callout>
+
+v0.8.7 laid the engine; v0.8.8 puts it in your hands. A new **Select** tool lets you edit the real graphics on a page — not sticky notes floating over it, the actual objects in the PDF.
+
+- **Select, move, resize, delete** — pick the Select tool, click an image, logo, line, or shape, then drag to move, drag a handle to resize, or press Delete to remove it. Full undo/redo.
+- **Real edits, no ghosts** — changes are written into the file's actual content (a moved image really moves, a deleted shape is really gone, no leftover copy) and survive save, reopen, and export, opening correctly in other viewers.
+- **Honest about limits** — it tells you what it can and can't edit (scanned pages are one image; reused graphics edit one copy). Editing objects and text on the same document isn't combined yet, and rotated pages aren't editable yet — both are guarded so nothing is silently overwritten.
+
+Full changelog: [`docs/release-v0.8.8.md`](https://github.com/udhawan97/Orifold/blob/main/docs/release-v0.8.8.md). Learn the tool: [Move & edit objects](/Orifold/edit/edit-objects/).
+
 ## v0.8.7 — Engine groundwork for object editing
 
 *Released July 2026*

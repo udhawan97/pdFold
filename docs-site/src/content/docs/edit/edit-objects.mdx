@@ -1,39 +1,43 @@
 ---
 title: Move & edit objects
-description: Select, move, resize, and delete the real graphics on a PDF page — lines, shapes, images, and logos. In beta development.
+description: Select, move, resize, and delete the real graphics on a PDF page — images, logos, lines, and shapes. In beta.
 keywords: [edit objects, move object, resize image, delete shape, edit pdf graphics, move logo, object editing, edit pdf shapes]
 ---
 
 import Callout from '../../../components/Callout.astro';
 
-<Callout variant="note" label="In development · Beta">
-	Object editing is being built right now, in the open. The engine underneath it has shipped and is tested; the point-and-drag interface on top of it is next. **There is nothing to click yet** — this page describes where it's headed so you know what's coming. Follow along on the [roadmap](/Orifold/developers/roadmap/).
+<Callout variant="note" label="Beta">
+	Object editing is new in v0.8.8 and still growing. It works today on unrotated pages for images, logos, lines, and simple shapes. Duplicate, recolor, layering, multi-select, and rotated-page support are on the way. [Feedback](https://github.com/udhawan97/Orifold/issues) helps it mature.
 </Callout>
 
 <Callout variant="whentouse">
-	You want to grab a stray line, nudge or resize a logo, or delete a rogue stamp that's baked into the page itself — not a sticky note floating over it, but a real object in the PDF.
+	You want to grab a real graphic that's baked into the page — an image, a logo, a stray line, a shape — and move it, resize it, or delete it. Not a sticky note floating over the page, but the actual object in the PDF.
 </Callout>
 
-## What it will do
+## Steps
 
-Today, Orifold edits a page's **text** in place. Object editing extends that same "edit the real thing, not a copy floating over it" philosophy to a page's **graphics**:
+1. Pick the **Select** tool from the toolbar (next to Edit Text).
+2. Click a graphic on the page. If Orifold can edit it, a selection outline with handles appears.
+3. Then:
+   - **Move** — drag the object to a new spot.
+   - **Resize** — drag a corner or edge handle.
+   - **Delete** — press <kbd>Delete</kbd>, or click the red delete button on the selection.
+4. The page updates immediately. Use <kbd>⌘Z</kbd> / <kbd>⌘Y</kbd> to undo and redo.
 
-- **Select** a line, arrow, rectangle, ellipse, image, logo, table border, or stamp by clicking it.
-- **Move, resize, and rotate** it, with handles — the way you'd expect in a design tool.
-- **Delete** it cleanly — the object actually leaves the file, with no ghost left behind.
-- **Duplicate, align, and layer** (bring forward / send backward) supported objects.
-- **Restyle** vector shapes — stroke color, fill color, line width, dashes, opacity.
+Your edits are written into the file's **actual content** — a moved image really moves, a deleted shape is really gone, with no ghost left behind and no duplicate. They survive **save, reopen, and export**, and open correctly in other PDF viewers.
 
-Not every graphic on a page is a separate, editable object (some are flattened into a scan, some are drawn as one fused operation). Orifold will tell you clearly what it can and can't edit, and why, rather than silently doing nothing.
+## What Orifold can and can't edit
 
-## Where it is now
+Not every mark on a page is a separate, editable object — some are fused into a scan, some are drawn as one operation. Orifold tells you what it's selected, and what it can do with it, rather than silently doing nothing.
 
-<Callout variant="tip" label="Shipped: the hard part">
-	The riskiest question — *can Orifold move and delete real page objects, then save and reopen the file with no leftover artifacts, no lost text, and each object still identifiable?* — has been answered **yes**, proven on real PDF bytes and locked in as a permanent test (shipped in v0.8.7). A read-only detection pass that recognizes a page's lines, shapes, and images and classifies what's safely editable also shipped. Both run entirely on your Mac, like everything else in Orifold.
+- **Editable now:** images, logos, lines, rectangles, ellipses, and simple filled or stroked shapes.
+- **Detected but limited:** reused graphics (edits affect just the one copy), form fields (reposition/remove only), and gradients (shown for reference).
+- **Not separately editable:** scanned or flattened pages, where the whole thing is one image — move or replace the whole image, but the marks inside a scan can't be picked apart.
+
+<Callout variant="warning">
+	Two things you can't combine yet: **object editing and inline text editing on the same document**. If a document already has text edits, the Select tool will ask you to finish or undo them first (and vice versa) — this keeps either kind of edit from overwriting the other. **Rotated pages** are also not editable yet; the object stays selectable but can't be moved.
 </Callout>
-
-The remaining work is the on-canvas experience — selection handles, dragging, the contextual toolbar, undo/redo, and reliable save/reopen — layered onto that proven engine. It stays **local-first, free, and open-source**, like the rest of the app.
 
 <Callout variant="note">
-	Until this ships, you can already reposition and remove things you added yourself — [stamps, watermarks, and signatures](/Orifold/annotate/stamps/) — and [edit text in place](/Orifold/edit/edit-text/). Object editing is about the graphics that were *already baked into* the page when you opened it.
+	Object editing is for graphics that were **already in the page** when you opened it. Things *you* added — [stamps, watermarks, and signatures](/Orifold/annotate/stamps/) — are moved and removed with their own tools, and [page text](/Orifold/edit/edit-text/) is edited in place with Edit Text.
 </Callout>
