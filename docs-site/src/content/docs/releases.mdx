@@ -9,6 +9,22 @@ import Callout from '../../components/Callout.astro';
 
 <Badge variant="new" />
 
+## v0.8.7 — Engine groundwork for object editing
+
+*Released July 2026*
+
+<Callout variant="note" label="Beta">
+	Orifold is in beta, on the road to 1.0.
+</Callout>
+
+v0.8.7 is an under-the-hood release — nothing changes for you yet. It's the first two build-outs of a professional object-editing system (select, move, resize, delete, and restyle shapes, lines, and images inside a PDF), still in progress and not wired into the app yet.
+
+- **Proved the hardest risk first** — a permanent test confirms Orifold's PDF engine can move and delete page objects and reload the file with no ghost artifacts, no lost text, and a stable object identity across the save/reopen round trip, before any editing UI was built on top of it.
+- **Found and fixed a real bug along the way** — the underlying engine call was silently dropping color from redrawn shapes; a saved page could come back with the right geometry but the wrong colors. Fixed and covered by a regression test, ahead of any feature that would have exposed it.
+- **Built the object model and detection pass** — a new read-only pass over a page's lines, shapes, and images classifies what can safely be edited later and gives each object a stable identity that survives being saved and reopened.
+
+Full changelog: [`docs/release-v0.8.7.md`](https://github.com/udhawan97/Orifold/blob/main/docs/release-v0.8.7.md).
+
 ## v0.8.6 — Update yourself, without leaving Orifold
 
 *Released July 2026*
