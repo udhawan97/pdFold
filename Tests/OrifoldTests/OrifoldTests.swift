@@ -102,8 +102,9 @@ final class WorkspaceModelTests: XCTestCase {
         XCTAssertFalse(workspace.comments.first?.isResolved ?? true)
     }
 
-    func testNewWorkspaceDefaultsToSchemaVersionFive() {
-        XCTAssertEqual(Workspace().schemaVersion, 5)
+    func testNewWorkspaceDefaultsToSchemaVersionSix() {
+        // Bumped 5→6 when Workspace.objectEditStates was added (object editing, Phase 1).
+        XCTAssertEqual(Workspace().schemaVersion, 6)
     }
 
     func testRectBackedModelsRoundTripThroughCodable() throws {
