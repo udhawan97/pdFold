@@ -388,6 +388,12 @@ struct PDFViewRepresentable: NSViewRepresentable {
             }
             coordinator.refreshDecorationOverlays()
         }
+        view.onEscapeKey = { [weak coordinator = context.coordinator] in
+            guard let coordinator, coordinator.viewModel.objectSelection != nil else { return false }
+            coordinator.viewModel.clearObjectSelection()
+            coordinator.refreshObjectOverlay()
+            return true
+        }
         view.onTabKey = { [weak coordinator = context.coordinator] moveBackward in
             guard let viewModel = coordinator?.viewModel,
                   viewModel.hasFillableFormFields else {
@@ -750,7 +756,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
             if let hit = viewModel.objectHit(at: pagePoint, on: ref, scaleFactor: pdfView.scaleFactor) {
                 viewModel.selectObject(hit, on: ref)
                 if let tip = viewModel.objectSelectionTooltip() {
-                    viewModel.showEditMessage(tip, isError: false)
+                    viewModel.showEditMessage(tip, severity: .info)
                 }
             } else {
                 viewModel.clearObjectSelection()
@@ -1308,6 +1314,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
 final class OrifoldPDFView: PDFView {
     var onDeleteKey: (() -> Void)?
     var onTabKey: ((Bool) -> Bool)?
+    /// Returns true if it consumed the key (an object was selected and got deselected), matching
+    /// the onTabKey convention — lets Escape keep falling through to the default responder chain
+    /// when there's nothing for it to do here.
+    var onEscapeKey: (() -> Bool)?
     var onSelectionCommitted: (() -> Void)?
     var onCommentMenu: (() -> Void)?
     private let comfortOverlay = DocumentComfortOverlayView()
@@ -1346,6 +1356,9 @@ final class OrifoldPDFView: PDFView {
         // Delete (51) or Forward Delete (117)
         if event.keyCode == 51 || event.keyCode == 117, let block = onDeleteKey {
             block()
+        } else if event.keyCode == 53, onEscapeKey?() == true {
+            // Escape (53) deselecting an object
+            return
         } else if event.keyCode == 48,
                   onTabKey?(event.modifierFlags.contains(.shift)) == true {
             return
@@ -1793,6 +1806,12 @@ final class SignatureSelectionOverlayView: NSView {
     private let handleSize: CGFloat = 9
     private let deleteButtonSize: CGFloat = 18
     private let minimumViewSize = CGSize(width: 28, height: 18)
+    // Floor for the resulting size in PDF points, kept comfortably above commitObjectBoundsChange's
+    // own >1pt guard. Without this, minimumViewSize alone (fixed in view pixels) can convert to
+    // under 1pt at high zoom, so the commit guard silently no-ops — the handle looks stuck with no
+    // explanation. Scaling the view-space floor by the current zoom keeps the PDF-space result
+    // consistent at any zoom level.
+    private let minimumPdfSize = CGSize(width: 4, height: 4)
 
     override var isOpaque: Bool { false }
 
@@ -1993,18 +2012,22 @@ final class SignatureSelectionOverlayView: NSView {
         if handle.movesBottom { minY += delta.y }
         if handle.movesTop { maxY += delta.y }
 
-        if maxX - minX < minimumViewSize.width {
+        let scale = pdfView?.scaleFactor ?? 1
+        let minWidth = max(minimumViewSize.width, minimumPdfSize.width * scale)
+        let minHeight = max(minimumViewSize.height, minimumPdfSize.height * scale)
+
+        if maxX - minX < minWidth {
             if handle.movesLeft {
-                minX = maxX - minimumViewSize.width
+                minX = maxX - minWidth
             } else {
-                maxX = minX + minimumViewSize.width
+                maxX = minX + minWidth
             }
         }
-        if maxY - minY < minimumViewSize.height {
+        if maxY - minY < minHeight {
             if handle.movesBottom {
-                minY = maxY - minimumViewSize.height
+                minY = maxY - minHeight
             } else {
-                maxY = minY + minimumViewSize.height
+                maxY = minY + minHeight
             }
         }
 

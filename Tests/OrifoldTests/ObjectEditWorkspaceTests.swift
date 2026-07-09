@@ -207,4 +207,220 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         XCTAssertEqual(a.objects.map { $0.stableKey.structuralDigest }, b.objects.map { $0.stableKey.structuralDigest })
         XCTAssertFalse(a.objects.isEmpty)
     }
+
+    // Regression (UI-bug loop): boundsPdf is a POST-matrix AABB, not the object's local rect.
+    // commitObjectBoundsChange used to derive a scale from AABB deltas and compose it onto the
+    // object's existing (possibly rotated) transform, which shears any object whose own transform
+    // carries rotation/skew — even on an unrotated page. Resize must be suppressed for such objects
+    // (fall back to move-only); a plain move must still work.
+    func testResizeIsSuppressedForRotatedObjectTransform() throws {
+        let vm = try makeViewModel()
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let map = vm.objectMap(for: ref)
+        var image = try XCTUnwrap(map.objects.first { $0.objectType == .imageXObject })
+        image.transform = PDFTextTransform(image.transform.cgAffineTransform.concatenating(CGAffineTransform(rotationAngle: .pi / 4)))
+        vm.selectObject(image, on: ref)
+        let old = image.boundsPdf
+
+        let moved = old.offsetBy(dx: 20, dy: 10)
+        let appliedMove = vm.commitObjectBoundsChange(from: old, to: moved)
+        XCTAssertTrue(near(appliedMove, moved, tol: 3), "a rotated object should still be movable")
+
+        let biggerFromMoved = moved.insetBy(dx: -30, dy: -30)
+        let appliedResize = vm.commitObjectBoundsChange(from: moved, to: biggerFromMoved)
+        XCTAssertEqual(appliedResize.width, moved.width, accuracy: 2, "rotated object must not resize (would shear)")
+        XCTAssertEqual(appliedResize.height, moved.height, accuracy: 2, "rotated object must not resize (would shear)")
+    }
+
+    // Regression: rotating a DIFFERENT page must not disturb an active object selection, and
+    // rotating the selected object's OWN page must clear it (rotated-page editing is punted).
+    // Both the single-page and bulk-rotate paths must agree on this.
+    func testRotatingUnrelatedPagePreservesObjectSelection() throws {
+        let vm = try makeViewModel()
+        let ref1 = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        vm.duplicatePages([ref1])
+        XCTAssertEqual(vm.document.workspace.pageOrder.count, 2)
+        let ref2 = try XCTUnwrap(vm.document.workspace.pageOrder.last)
+        XCTAssertNotEqual(ref1.id, ref2.id)
+
+        let map = vm.objectMap(for: ref1)
+        let image = try XCTUnwrap(map.objects.first { $0.objectType == .imageXObject })
+        vm.selectObject(image, on: ref1)
+        XCTAssertNotNil(vm.objectSelection)
+
+        vm.rotatePage(ref2, by: 90)
+        XCTAssertNotNil(vm.objectSelection, "rotating an unrelated page cleared the selection")
+        XCTAssertEqual(vm.objectSelection?.pageRefID, ref1.id)
+
+        vm.rotatePage(ref1, by: 90)
+        XCTAssertNil(vm.objectSelection, "rotating the selected object's own page should clear it")
+    }
+
+    func testBulkRotatePagesInvalidatesSelectionOnlyForRotatedPages() throws {
+        let vm = try makeViewModel()
+        let ref1 = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        vm.duplicatePages([ref1])
+        let refs = vm.document.workspace.pageOrder
+        XCTAssertEqual(refs.count, 2)
+        let ref2 = refs[1]
+
+        let map = vm.objectMap(for: ref1)
+        let image = try XCTUnwrap(map.objects.first { $0.objectType == .imageXObject })
+        vm.selectObject(image, on: ref1)
+
+        vm.rotatePages([ref2], by: 90)
+        XCTAssertNotNil(vm.objectSelection, "bulk-rotating an unrelated page cleared the selection")
+
+        vm.rotatePages([ref1, ref2], by: 90)
+        XCTAssertNil(vm.objectSelection, "bulk-rotating the selected object's page must clear it")
+    }
+
+    // Regression (UI-bug loop, deeper root cause): OrderSnapshot — the undo mechanism shared by
+    // delete/duplicate/reorder/OCR/form-reset — didn't carry objectEditStates/objectBaseData, only
+    // pageEditStates. So deleting a page that had committed object edits, then undoing, restored
+    // the PDF bytes (which already had the edit baked in) but NOT the bookkeeping — leaving them
+    // desynced for the next edit. Deleting must purge the bookkeeping for the removed page, and
+    // undo must bring it back in lockstep with the restored bytes.
+    func testDeletePageWithObjectEditsPurgesAndUndoRestoresState() throws {
+        let vm = try makeViewModel()
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let member = ref.memberDocId
+        let map = vm.objectMap(for: ref)
+        let image = try XCTUnwrap(map.objects.first { $0.objectType == .imageXObject })
+
+        XCTAssertTrue(vm.applyObjectEdit([transformOp(image, ref: ref, member: member, dx: 40, dy: -10)]))
+        XCTAssertTrue(vm.hasObjectEdits)
+        let editedImageBounds = try XCTUnwrap(imageBounds(in: vm.document.memberPDFData[member]))
+
+        vm.deletePage(ref)
+        XCTAssertFalse(vm.hasObjectEdits, "deleting the only edited page must purge its object edit state")
+        XCTAssertTrue(vm.document.workspace.pageOrder.isEmpty)
+
+        vm.undoManager?.undo()
+        XCTAssertTrue(vm.hasObjectEdits, "undoing the delete must restore object-edit bookkeeping, not just bytes")
+        let restoredRef = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        XCTAssertEqual(restoredRef.id, ref.id)
+        XCTAssertTrue(near(try XCTUnwrap(imageBounds(in: vm.document.memberPDFData[restoredRef.memberDocId])), editedImageBounds, tol: 3),
+                      "undo restored bytes but the object-edit state is now desynced from them")
+    }
+
+    // Regression (Round 3 adversarial audit): regenerateObjectEditedMember rebuilds the WHOLE
+    // member from `objectBaseData` — a byte snapshot frozen once, at the member's first object
+    // edit. Reordering pages within that member afterward (sidebar drag) shifts every later
+    // page's live index but leaves the frozen snapshot's page order untouched; without a
+    // refreeze, the NEXT unrelated object edit anywhere in the member regenerates from the
+    // stale pre-reorder snapshot, silently reverting the reorder (and, in this single-page-base
+    // fixture, dropping the reordered-in page outright since it never existed in that snapshot).
+    func testReorderWithinMemberSurvivesALaterObjectEdit() throws {
+        let vm = try makeViewModel()
+        let ref1 = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let member = ref1.memberDocId
+
+        let map1 = vm.objectMap(for: ref1)
+        let image1 = try XCTUnwrap(map1.objects.first { $0.objectType == .imageXObject })
+        XCTAssertTrue(vm.applyObjectEdit([transformOp(image1, ref: ref1, member: member, dx: 40, dy: -10)]))
+
+        vm.duplicatePages([ref1])
+        XCTAssertEqual(vm.document.workspace.pageOrder.count, 2)
+        let ref2 = try XCTUnwrap(vm.document.workspace.pageOrder.last)
+        XCTAssertTrue(vm.movePage(ref2, toIndex: 0))
+        XCTAssertEqual(vm.document.workspace.pageOrder.map(\.id), [ref2.id, ref1.id])
+
+        let map2 = vm.objectMap(for: ref2)
+        let image2 = try XCTUnwrap(map2.objects.first { $0.objectType == .imageXObject })
+        XCTAssertTrue(vm.applyObjectEdit([transformOp(image2, ref: ref2, member: member, dx: 5, dy: 5)]),
+                     "a later object edit after a reorder must still succeed")
+
+        let regenerated = try XCTUnwrap(vm.document.memberPDFData[member])
+        XCTAssertEqual(PDFDocument(data: regenerated)?.pageCount, 2,
+                       "an unrelated object edit after a reorder dropped a page — regenerated from a stale pre-reorder base")
+        XCTAssertEqual(vm.document.workspace.pageOrder.map(\.id), [ref2.id, ref1.id],
+                       "an unrelated object edit reverted the reorder")
+    }
+
+    // Same root cause as the reorder case above, in the other direction: duplicating a page
+    // inserts one, shifting every later page's live index the same way deleting removes one.
+    func testDuplicateWithinMemberSurvivesALaterObjectEdit() throws {
+        let vm = try makeViewModel()
+        let ref1 = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let member = ref1.memberDocId
+
+        let map1 = vm.objectMap(for: ref1)
+        let image1 = try XCTUnwrap(map1.objects.first { $0.objectType == .imageXObject })
+        XCTAssertTrue(vm.applyObjectEdit([transformOp(image1, ref: ref1, member: member, dx: 40, dy: -10)]))
+
+        vm.duplicatePages([ref1])
+        XCTAssertEqual(vm.document.workspace.pageOrder.count, 2)
+        let ref2 = try XCTUnwrap(vm.document.workspace.pageOrder.last)
+
+        let map2 = vm.objectMap(for: ref2)
+        let image2 = try XCTUnwrap(map2.objects.first { $0.objectType == .imageXObject })
+        XCTAssertTrue(vm.applyObjectEdit([transformOp(image2, ref: ref2, member: member, dx: 5, dy: 5)]),
+                     "a later object edit on the duplicate must succeed")
+
+        let regenerated = try XCTUnwrap(vm.document.memberPDFData[member])
+        XCTAssertEqual(PDFDocument(data: regenerated)?.pageCount, 2,
+                       "an unrelated object edit after duplicating a page dropped a page — regenerated from a stale pre-duplicate base")
+    }
+
+    // Regression (Round 2 adversarial audit): setRotation recurses through its OWN undo/redo
+    // (not OrderSnapshot/restore()), so it has to carry the selection through by hand. Rotating
+    // the selected object's own page clears the selection (rotated-page editing is punted); undo
+    // must bring that selection back, not just revert the rotation.
+    func testUndoingRotationOfSelectedObjectsPageRestoresSelection() throws {
+        let vm = try makeViewModel()
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let map = vm.objectMap(for: ref)
+        let image = try XCTUnwrap(map.objects.first { $0.objectType == .imageXObject })
+        vm.selectObject(image, on: ref)
+        let selectedKey = try XCTUnwrap(vm.objectSelection?.object.stableKey)
+
+        vm.rotatePage(ref, by: 90)
+        XCTAssertNil(vm.objectSelection, "rotating the selected object's own page should clear it")
+
+        vm.undoManager?.undo()
+        XCTAssertEqual(vm.objectSelection?.object.stableKey, selectedKey,
+                       "undoing the rotation should bring the selection back, not just revert the rotation")
+
+        // And redo must clear it again, symmetrically.
+        vm.undoManager?.redo()
+        XCTAssertNil(vm.objectSelection, "redoing the rotation should re-clear the selection")
+    }
+
+    // Regression (Round 2 adversarial audit): restore() — the undo path shared by
+    // delete/duplicate/reorder/OCR — used to unconditionally clear objectSelection on every
+    // timeline jump. That's wrong when the selection has nothing to do with the operation being
+    // undone: selecting an object on page 1, then deleting an UNRELATED page 2 and undoing that
+    // delete, must leave page 1's selection exactly as it was.
+    func testUndoingUnrelatedPageDeletePreservesObjectSelection() throws {
+        let vm = try makeViewModel()
+        // `groupsByEvent` (the default) would coalesce the duplicate + delete below into one
+        // undo group since both run synchronously with no run-loop turn between them — isolate
+        // them explicitly so a single `undo()` reverts only the delete. (See OrifoldTests.swift's
+        // established pattern for this exact issue.)
+        let undoManager = try XCTUnwrap(vm.undoManager)
+        undoManager.groupsByEvent = false
+
+        let ref1 = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        undoManager.beginUndoGrouping()
+        vm.duplicatePages([ref1])
+        undoManager.endUndoGrouping()
+        XCTAssertEqual(vm.document.workspace.pageOrder.count, 2)
+        let ref2 = try XCTUnwrap(vm.document.workspace.pageOrder.last)
+
+        let map = vm.objectMap(for: ref1)
+        let image = try XCTUnwrap(map.objects.first { $0.objectType == .imageXObject })
+        vm.selectObject(image, on: ref1)
+        let selectedKey = try XCTUnwrap(vm.objectSelection?.object.stableKey)
+
+        undoManager.beginUndoGrouping()
+        vm.deletePage(ref2)
+        undoManager.endUndoGrouping()
+        XCTAssertEqual(vm.objectSelection?.object.stableKey, selectedKey, "deleting an unrelated page disturbed the selection")
+
+        undoManager.undo()
+        XCTAssertEqual(vm.document.workspace.pageOrder.count, 2, "undo didn't bring the deleted page back")
+        XCTAssertEqual(vm.objectSelection?.object.stableKey, selectedKey,
+                       "undoing an unrelated page delete must not clear an untouched selection")
+    }
 }

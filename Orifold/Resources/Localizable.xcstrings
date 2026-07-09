@@ -786,37 +786,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Select"
+            "value": "Edit Objects"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Seleccionar"
+            "value": "Editar objetos"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sélectionner"
+            "value": "Modifier les objets"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "चुनें"
+            "value": "ऑब्जेक्ट संपादित करें"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "選択"
+            "value": "オブジェクトを編集"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "选择"
+            "value": "编辑对象"
           }
         }
       }
@@ -44851,6 +44851,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "软件更新"
+          }
+        }
+      }
+    },
+    "appCommands.undo.withAction": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Undo %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deshacer %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuler %@"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ पूर्ववत करें"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@を取り消す"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销%@"
+          }
+        }
+      }
+    },
+    "appCommands.redo.withAction": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redo %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rehacer %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rétablir %@"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ फिर से करें"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@をやり直す"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重做%@"
           }
         }
       }

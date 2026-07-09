@@ -1319,6 +1319,17 @@ final class WorkspaceViewModel {
         /// "remembers" but the page/export doesn't show (or vice versa, ghost ink with no
         /// backing operation).
         var pageEditStates: [PageEditState]
+        /// Same rule as `pageEditStates`, for the object-editing lane: `objectBaseData` is the
+        /// frozen per-member base that `objectEditStates`' ops replay onto, so the two must move
+        /// together with `pdfData` or a later object edit re-derives bytes from a base that no
+        /// longer matches the restored ops.
+        var objectEditStates: [PageObjectEditState]
+        var objectBaseData: [UUID: Data]
+        /// Restoring this is what makes `restore()` a true timeline jump for the selection too:
+        /// whatever was selected at snapshot time comes back — nil if nothing was, or an
+        /// unrelated valid selection elsewhere in the document that had nothing to do with
+        /// whatever's being undone/redone. A blanket clear would drop that unrelated selection.
+        var objectSelection: ObjectSelectionState?
     }
 
     private struct InlineTextEditSnapshot {
@@ -1341,7 +1352,10 @@ final class WorkspaceViewModel {
             pageRotations: currentPageRotations(),
             pdfData: currentPDFData(),
             sourcePayloads: document.sourcePayloads,
-            pageEditStates: document.workspace.pageEditStates
+            pageEditStates: document.workspace.pageEditStates,
+            objectEditStates: document.workspace.objectEditStates,
+            objectBaseData: objectBaseData,
+            objectSelection: objectSelection
         )
     }
 
@@ -1366,12 +1380,16 @@ final class WorkspaceViewModel {
         document.memberPDFData = snapshot.pdfData
         document.sourcePayloads = snapshot.sourcePayloads
         document.workspace.pageEditStates = snapshot.pageEditStates
+        document.workspace.objectEditStates = snapshot.objectEditStates
+        objectBaseData = snapshot.objectBaseData
         loadedPDFs = snapshot.documents.compactMap { member in
             guard let data = snapshot.pdfData[member.id],
                   let pdf = PDFDocument(data: data) else { return nil }
             return (member, pdf)
         }
         textAnalysisCache.removeAll()
+        objectAnalysisCache.removeAll()
+        objectSelection = snapshot.objectSelection
         applyPageRotations(snapshot.pageRotations)
         rebuild()
     }
@@ -2215,6 +2233,10 @@ final class WorkspaceViewModel {
     }
 
     private func applyOCRResult(_ result: PDFOCRResult) {
+        if let sel = objectSelection, let ref = workspacePageRef(sel.pageRefID),
+           result.dataByMemberID[ref.memberDocId] != nil {
+            clearObjectSelection()
+        }
         for (memberID, data) in result.dataByMemberID {
             document.memberPDFData[memberID] = data
             // The OCR'd bytes are the member's new pristine base. Leaving the pre-OCR
@@ -2222,6 +2244,20 @@ final class WorkspaceViewModel {
             // reconcile) rebuilt from the pre-OCR scan — silently stripping the freshly
             // added text layer page by page as the user edited.
             originalMemberPDFData[memberID] = data
+            // Same rule for the object-editing lane: a member with a frozen object-edit
+            // base must re-freeze to the new OCR'd bytes, or the next object edit
+            // regenerates from the pre-OCR base and silently strips the text layer OCR
+            // just added for that whole member. The OCR'd bytes already reflect every
+            // committed op's effect (OCR runs on the live, already-edited document), so the
+            // ops themselves must be dropped too — replaying them again onto this new base
+            // would apply their effect a second time.
+            if objectBaseData[memberID] != nil {
+                objectBaseData[memberID] = data
+                if let member = document.workspace.documents.first(where: { $0.id == memberID }) {
+                    let pageRefIDs = Set(member.pageRefs)
+                    document.workspace.objectEditStates.removeAll { pageRefIDs.contains($0.pageRefID) }
+                }
+            }
         }
         loadedPDFs = document.workspace.documents.compactMap { member in
             guard let data = result.dataByMemberID[member.id] ?? document.memberPDFData[member.id],
@@ -2231,6 +2267,7 @@ final class WorkspaceViewModel {
             return (member, pdf)
         }
         textAnalysisCache.removeAll()
+        objectAnalysisCache.removeAll()
         rebuild()
     }
 
@@ -3016,8 +3053,16 @@ final class WorkspaceViewModel {
     func objectMap(for pageRef: PageRef) -> PageObjectMap {
         if let cached = objectAnalysisCache[pageRef.id] { return cached }
         guard let lookup = memberPDF(for: pageRef),
-              let localIdx = localIndex(ref: pageRef, memberIndex: lookup.documentIndex),
-              let data = document.memberPDFData[pageRef.memberDocId] else {
+              let localIdx = localIndex(ref: pageRef, memberIndex: lookup.documentIndex) else {
+            return PageObjectMap(pageRefID: pageRef.id, objects: [])
+        }
+        // `document.memberPDFData` is an on-demand export cache, not kept live-synced after
+        // every structural mutation (delete/duplicate/reorder don't touch it, only `loadedPDFs`
+        // does) — detecting against it right after one of those would read a stale page
+        // structure (wrong page count/order), silently finding nothing or the wrong object, or
+        // indexing out of bounds. `lookup.pdf` is the same live document the canvas renders, so
+        // serialize fresh from it; only fall back to the cache if that somehow fails.
+        guard let data = PDFSerializer.data(from: lookup.pdf) ?? document.memberPDFData[pageRef.memberDocId] else {
             return PageObjectMap(pageRefID: pageRef.id, objects: [])
         }
         let map = PDFObjectDetectionEngine.detect(pdfData: data, pageIndex: localIdx,
@@ -3256,7 +3301,15 @@ final class WorkspaceViewModel {
               oldBoundsPdf.width > 0.5, oldBoundsPdf.height > 0.5,
               proposedBoundsPdf.width > 1, proposedBoundsPdf.height > 1 else { return oldBoundsPdf }
         let object = sel.object
-        let canResize = object.editability.capabilities.canResize
+        // `oldBoundsPdf`/`newBoundsPdf` are AABBs (see boundsPdf's doc comment) — scaling from them
+        // is only correct when the object's own transform has no rotation/skew, i.e. its AABB equals
+        // its local rect. For a rotated/skewed object the AABB is larger than the local rect, so a
+        // naive AABB-fit scale composed onto the existing (rotated) matrix shears the object. Punt
+        // resize the same way rotated pages are punted; translate is always safe (AABB delta ==
+        // content delta for any affine transform).
+        let m = object.transform.cgAffineTransform
+        let isAxisAligned = abs(m.b) < 0.0001 && abs(m.c) < 0.0001
+        let canResize = object.editability.capabilities.canResize && isAxisAligned
         // If resize isn't permitted, keep the original size and only translate.
         let newBounds = canResize ? proposedBoundsPdf
             : CGRect(origin: proposedBoundsPdf.origin, size: oldBoundsPdf.size)
@@ -3337,6 +3390,28 @@ final class WorkspaceViewModel {
         }
         for refID in document.workspace.documents[memberIndex].pageRefs {
             textAnalysisCache.removeValue(forKey: refID)
+        }
+    }
+
+    /// Same problem as `rebasePristineToLiveBytes`, for the object-editing lane. `objectBaseData`
+    /// is frozen ONCE (at a member's first object edit) and every regenerate rebuilds the WHOLE
+    /// member from that frozen snapshot + replayed ops — it has no idea a page was since deleted,
+    /// duplicated, reordered, moved to another member, or rewritten by OCR. Left alone, the next
+    /// unrelated object edit anywhere in the member regenerates from the stale pre-change base and
+    /// silently reverts that structural change. Call this after any such mutation, once the member's
+    /// pages/bytes reflect the new structure: it re-freezes the base to the current live bytes (which
+    /// already have every past op's effect baked in) and drops the now-redundant ops, so nothing
+    /// gets replayed twice. A member with no frozen base yet is a no-op — nothing to keep in sync.
+    private func refreezeObjectBaseIfStale(memberID: UUID) {
+        guard objectBaseData[memberID] != nil,
+              let member = document.workspace.documents.first(where: { $0.id == memberID }),
+              let loaded = loadedPDFs.first(where: { $0.0.id == memberID }),
+              let liveBytes = PDFSerializer.data(from: loaded.1) else { return }
+        objectBaseData[memberID] = liveBytes
+        let pageRefIDs = Set(member.pageRefs)
+        document.workspace.objectEditStates.removeAll { pageRefIDs.contains($0.pageRefID) }
+        for refID in member.pageRefs {
+            objectAnalysisCache.removeValue(forKey: refID)
         }
     }
 
@@ -6900,14 +6975,24 @@ final class WorkspaceViewModel {
         guard before != normalizedRotation else { return }
         page.rotation = normalizedRotation
         // The object selection overlay draws in unrotated content space and object editing is
-        // punted on rotated pages — a rotation invalidates any active object selection.
-        clearObjectSelection()
+        // punted on rotated pages — a rotation invalidates an active selection ON THIS PAGE only;
+        // a selection on an unrelated page must survive rotating a different page. Captured (not
+        // just cleared) so undoing the rotation brings the selection back too — this function
+        // recurses through its own undo/redo rather than going through OrderSnapshot/restore(),
+        // so it has to carry the selection through by hand.
+        let clearedSelection = objectSelection?.pageRefID == ref.id ? objectSelection : nil
+        if clearedSelection != nil {
+            clearObjectSelection()
+        }
         objectAnalysisCache.removeValue(forKey: ref.id)
         rebuild()
         markWorkspaceModified()
         undoManager?.registerUndo(withTarget: self) { vm in
             guard vm.canPerformUndoMutation() else { return }
             vm.setRotation(for: ref, to: before, actionName: actionName)
+            if let clearedSelection {
+                vm.objectSelection = clearedSelection
+            }
         }
         undoManager?.setActionName(actionName)
     }
@@ -6924,17 +7009,26 @@ final class WorkspaceViewModel {
         document.workspace.pageOrder.removeAll { $0.id == ref.id }
         document.workspace.documents[lookup.documentIndex].pageRefs.removeAll { $0 == ref.id }
         document.workspace.pageEditStates.removeAll { $0.pageRefID == ref.id }
+        document.workspace.objectEditStates.removeAll { $0.pageRefID == ref.id }
         clearCommentAnchors(forRemovedPageRefIDs: [ref.id])
         removeSignaturePlacements(forRemovedPageRefIDs: [ref.id])
         removeDecorations(forRemovedPageRefIDs: [ref.id])
         textAnalysisCache.removeValue(forKey: ref.id)
+        objectAnalysisCache.removeValue(forKey: ref.id)
+        if objectSelection?.pageRefID == ref.id {
+            clearObjectSelection()
+        }
 
         // Drop empty member
         if document.workspace.documents[lookup.documentIndex].pageRefs.isEmpty {
             loadedPDFs.remove(at: lookup.loadedIndex)
             document.workspace.documents.remove(at: lookup.documentIndex)
+            objectBaseData.removeValue(forKey: ref.memberDocId)
         } else {
             loadedPDFs[lookup.loadedIndex].0 = document.workspace.documents[lookup.documentIndex]
+            // Deleting a page shifts every later page's local index within this member; a frozen
+            // object-edit base still has the old indices, so it must move to the post-delete bytes.
+            refreezeObjectBaseIfStale(memberID: ref.memberDocId)
         }
         rebuild()
 
@@ -6961,10 +7055,15 @@ final class WorkspaceViewModel {
             document.workspace.pageOrder.removeAll { $0.id == ref.id }
             document.workspace.documents[lookup.documentIndex].pageRefs.removeAll { $0 == ref.id }
             document.workspace.pageEditStates.removeAll { $0.pageRefID == ref.id }
+            document.workspace.objectEditStates.removeAll { $0.pageRefID == ref.id }
             clearCommentAnchors(forRemovedPageRefIDs: [ref.id])
             removeSignaturePlacements(forRemovedPageRefIDs: [ref.id])
             removeDecorations(forRemovedPageRefIDs: [ref.id])
             textAnalysisCache.removeValue(forKey: ref.id)
+            objectAnalysisCache.removeValue(forKey: ref.id)
+        }
+        if let sel = objectSelection, uniqueIDs.contains(sel.pageRefID) {
+            clearObjectSelection()
         }
         for index in document.workspace.documents.indices.reversed() where document.workspace.documents[index].pageRefs.isEmpty {
             let id = document.workspace.documents[index].id
@@ -6972,12 +7071,19 @@ final class WorkspaceViewModel {
             loadedPDFs.removeAll { $0.0.id == id }
             document.memberPDFData.removeValue(forKey: id)
             document.sourcePayloads.removeValue(forKey: id)
+            objectBaseData.removeValue(forKey: id)
         }
         for loadedIndex in loadedPDFs.indices {
             let memberID = loadedPDFs[loadedIndex].0.id
             if let updated = document.workspace.documents.first(where: { $0.id == memberID }) {
                 loadedPDFs[loadedIndex].0 = updated
             }
+        }
+        // Deleting pages shifts every later page's local index within a surviving member; a
+        // frozen object-edit base still has the old indices, so it must move to the post-delete
+        // bytes (members dropped entirely above already had their base removed).
+        for memberID in Set(orderedRefs.map(\.memberDocId)) {
+            refreezeObjectBaseIfStale(memberID: memberID)
         }
         rebuild()
         undoManager?.registerUndo(withTarget: self) { vm in
@@ -6999,6 +7105,12 @@ final class WorkspaceViewModel {
                   let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
                   let page = lookup.pdf.page(at: localIdx) else { continue }
             page.rotation = (page.rotation + degrees + 360) % 360
+            objectAnalysisCache.removeValue(forKey: ref.id)
+        }
+        // Same rule as the single-page path: a rotation invalidates a selection only if it's on
+        // one of the pages that actually rotated.
+        if let sel = objectSelection, uniqueIDs.contains(sel.pageRefID) {
+            clearObjectSelection()
         }
         rebuild()
         markWorkspaceModified()
@@ -7042,6 +7154,14 @@ final class WorkspaceViewModel {
                 }
                 document.workspace.pageEditStates.append(PageEditState(pageRefID: duplicate.id, operations: clonedOps))
             }
+        }
+        // Same index-shift problem as delete/reorder, in the other direction: inserting a page
+        // shifts every later page's local index within the member, which a frozen object-edit
+        // base doesn't know about. Refreezing (rather than cloning ops onto the duplicate, as
+        // pageEditStates does above) bakes the duplicate's already-visible copied edit into the
+        // new base directly, matching `rebasePristineToLiveBytes`'s established trade-off.
+        for memberID in Set(orderedRefs.map(\.memberDocId)) {
+            refreezeObjectBaseIfStale(memberID: memberID)
         }
         rebuild()
         markWorkspaceModified()
@@ -7113,6 +7233,11 @@ final class WorkspaceViewModel {
 
         // Rebuild flat pageOrder
         rebuildPageOrder()
+        // `objectBaseData` is a frozen whole-member byte snapshot; `localIndex(ref:memberIndex:)`
+        // always reflects the CURRENT page order. Reordering without refreezing would apply a
+        // later object edit's ops (indexed by the new order) against the old order baked into
+        // the frozen bytes — silently editing the wrong page.
+        refreezeObjectBaseIfStale(memberID: ref.memberDocId)
         rebuild()
 
         undoManager?.registerUndo(withTarget: self) { vm in
@@ -7182,6 +7307,11 @@ final class WorkspaceViewModel {
         // regenerating the wrong page's content entirely.
         rebasePristineToLiveBytes(memberID: targetRef.memberDocId)
         rebasePristineToLiveBytes(memberID: ref.memberDocId)
+        refreezeObjectBaseIfStale(memberID: targetRef.memberDocId)
+        refreezeObjectBaseIfStale(memberID: ref.memberDocId)
+        if objectSelection?.pageRefID == movedRef.id {
+            clearObjectSelection()
+        }
         selectedPageRefID = movedRef.id
         selectedPageRefIDs = [movedRef.id]
         rebuild()

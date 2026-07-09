@@ -9,6 +9,18 @@ import Callout from '../../components/Callout.astro';
 
 <Badge variant="new" />
 
+## v0.8.9 — Tightening the hinges
+
+*Released July 2026*
+
+<Callout variant="note" label="Beta">
+	Orifold is in beta, on the road to 1.0.
+</Callout>
+
+A bug-fix patch for the **Select** tool (object editing) that shipped in v0.8.8 — no new features. A three-round UI audit found and fixed 16 issues, the most important being a data-safety one: deleting, duplicating, or reordering pages after an object edit could silently corrupt or revert that edit, or misapply the next one to the wrong page. Fixed, along with selection getting lost or stuck (rotate/delete/undo interactions, <kbd>Esc</kbd> to deselect), a shearing bug when resizing rotated graphics, and a few toolbar/menu polish items.
+
+Full changelog: [`docs/release-v0.8.9.md`](https://github.com/udhawan97/Orifold/blob/main/docs/release-v0.8.9.md).
+
 ## v0.8.8 — Move the furniture
 
 *Released July 2026*

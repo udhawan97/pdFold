@@ -149,14 +149,28 @@ private struct UndoRedoCommandButtons: View {
 
     private var importInProgress: Bool { isImporting == true }
 
+    private var undoTitle: String {
+        guard let name = undoManager?.undoActionName, !name.isEmpty else {
+            return L10n.string("appCommands.undo.button", locale: locale)
+        }
+        return L10n.format("appCommands.undo.withAction", name, locale: locale)
+    }
+
+    private var redoTitle: String {
+        guard let name = undoManager?.redoActionName, !name.isEmpty else {
+            return L10n.string("appCommands.redo.button", locale: locale)
+        }
+        return L10n.format("appCommands.redo.withAction", name, locale: locale)
+    }
+
     var body: some View {
-        Button(L10n.string("appCommands.undo.button", locale: locale)) {
+        Button(undoTitle) {
             viewModel?.performUndoCommand()
         }
         .keyboardShortcut("z", modifiers: .command)
         .disabled(importInProgress || viewModel == nil || undoManager?.canUndo != true)
 
-        Button(L10n.string("appCommands.redo.button", locale: locale)) {
+        Button(redoTitle) {
             viewModel?.performRedoCommand()
         }
         .keyboardShortcut("y", modifiers: .command)
