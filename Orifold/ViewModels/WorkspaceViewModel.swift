@@ -3131,6 +3131,130 @@ final class WorkspaceViewModel {
         }
     }
 
+    // MARK: - Object selection (canvas UI, docs/OBJECT_EDITING_PLAN.md §5)
+
+    struct ObjectSelectionState: Equatable {
+        var pageRefID: UUID
+        var object: DetectedObject
+        var bounds: CGRect { object.boundsPdf }
+    }
+
+    /// The currently-selected content object (mutually exclusive with annotation/stamp lanes).
+    var objectSelection: ObjectSelectionState?
+
+    /// Hit-test a page-space point against the page's detected objects. Returns the best
+    /// selectable object (frontmost, smallest, high/medium confidence, not background/read-only),
+    /// or nil. `scaleFactor` is the PDFView zoom, so slop and min-target feel constant on screen.
+    func objectHit(at pagePoint: CGPoint, on pageRef: PageRef, scaleFactor: CGFloat) -> DetectedObject? {
+        let map = objectMap(for: pageRef)
+        let scale = max(scaleFactor, 0.01)
+        let slop: CGFloat = 6 / scale
+        let minTarget: CGFloat = 12 / scale
+
+        struct Hit { let object: DetectedObject; let area: CGFloat }
+        var hits: [Hit] = []
+        for object in map.objects {
+            guard object.confidence != .low, !object.isBackgroundLike,
+                  !object.editability.capabilities.isReadOnly else { continue }
+            var rect = object.boundsPdf.standardized
+            if rect.width < minTarget { rect = rect.insetBy(dx: -(minTarget - rect.width) / 2, dy: 0) }
+            if rect.height < minTarget { rect = rect.insetBy(dx: 0, dy: -(minTarget - rect.height) / 2) }
+            if rect.insetBy(dx: -slop, dy: -slop).contains(pagePoint) {
+                hits.append(Hit(object: object, area: object.boundsPdf.width * object.boundsPdf.height))
+            }
+        }
+        // Frontmost first (higher zOrder), then smaller area, then higher confidence.
+        return hits.sorted { a, b in
+            if a.object.zOrder != b.object.zOrder { return a.object.zOrder > b.object.zOrder }
+            if a.area != b.area { return a.area < b.area }
+            return a.object.confidence.rank > b.object.confidence.rank
+        }.first?.object
+    }
+
+    func selectObject(_ object: DetectedObject, on pageRef: PageRef) {
+        objectSelection = ObjectSelectionState(pageRefID: pageRef.id, object: object)
+        selectedAnnotation = nil
+        selectedStampDecorationID = nil
+    }
+
+    func clearObjectSelection() {
+        guard objectSelection != nil else { return }
+        objectSelection = nil
+    }
+
+    /// The localized "%@ · %@" tooltip for the current selection (type · editability).
+    func objectSelectionTooltip() -> String? {
+        guard let object = objectSelection?.object else { return nil }
+        let type: String
+        switch object.objectType {
+        case .imageXObject, .flattenedRaster: type = L10n.string("object.type.image")
+        case .line: type = L10n.string("object.type.line")
+        case .formWidget: type = L10n.string("object.type.formField")
+        case .formXObject, .tableGrid: type = L10n.string("object.type.group")
+        case .shading: type = L10n.string("object.type.shading")
+        default: type = L10n.string("object.type.vectorShape")
+        }
+        let state = object.editability.capabilities.isReadOnly
+            ? L10n.string("object.editability.visualOnly")
+            : L10n.string("object.editability.editable")
+        return L10n.format("object.tooltip.format", type, state)
+    }
+
+    /// Commit a move/resize from the overlay's old→new page-space bounds by composing the
+    /// old-rect→new-rect affine onto the object's matrix. Returns the applied bounds.
+    @discardableResult
+    func commitObjectBoundsChange(from oldBoundsPdf: CGRect, to proposedBoundsPdf: CGRect) -> CGRect {
+        guard let sel = objectSelection, sel.object.editability.capabilities.canMove,
+              oldBoundsPdf.width > 0.5, oldBoundsPdf.height > 0.5,
+              proposedBoundsPdf.width > 1, proposedBoundsPdf.height > 1 else { return oldBoundsPdf }
+        let object = sel.object
+        let canResize = object.editability.capabilities.canResize
+        // If resize isn't permitted, keep the original size and only translate.
+        let newBounds = canResize ? proposedBoundsPdf
+            : CGRect(origin: proposedBoundsPdf.origin, size: oldBoundsPdf.size)
+
+        let sx = newBounds.width / oldBoundsPdf.width
+        let sy = newBounds.height / oldBoundsPdf.height
+        let t = CGAffineTransform(a: sx, b: 0, c: 0, d: sy,
+                                  tx: newBounds.minX - oldBoundsPdf.minX * sx,
+                                  ty: newBounds.minY - oldBoundsPdf.minY * sy)
+        let newMatrix = PDFTextTransform(object.transform.cgAffineTransform.concatenating(t))
+        let ref = workspacePageRef(sel.pageRefID)
+        let op = ObjectEditOperation(
+            type: .objectTransform, documentID: ref?.memberDocId ?? UUID(), pageRefID: sel.pageRefID,
+            sourceObjectKey: object.stableKey, objectType: object.objectType, editability: object.editability,
+            originalBoundsPdf: object.boundsPdf, newBoundsPdf: newBounds,
+            originalTransform: object.transform, newTransform: newMatrix, pageRotation: Int(object.pageRotation),
+            originalZIndex: object.zOrder, newZIndex: object.zOrder, replacementStrategy: .pdfiumStructural)
+
+        guard applyObjectEdit([op]) else { return oldBoundsPdf }
+        // Keep the selection in sync so a subsequent drag composes from the new state.
+        var updated = object
+        updated.boundsPdf = newBounds
+        updated.transform = newMatrix
+        objectSelection = ObjectSelectionState(pageRefID: sel.pageRefID, object: updated)
+        undoManager?.setActionName(L10n.string(canResize && sx != 1 ? "undo.resizeObject" : "undo.moveObject"))
+        return newBounds
+    }
+
+    /// Structurally delete the selected object. Returns true on success.
+    @discardableResult
+    func deleteSelectedObject() -> Bool {
+        guard let sel = objectSelection, sel.object.editability.capabilities.canDeleteStructurally else { return false }
+        let object = sel.object
+        let ref = workspacePageRef(sel.pageRefID)
+        let op = ObjectEditOperation(
+            type: .objectDelete, documentID: ref?.memberDocId ?? UUID(), pageRefID: sel.pageRefID,
+            sourceObjectKey: object.stableKey, objectType: object.objectType, editability: object.editability,
+            originalBoundsPdf: object.boundsPdf, newBoundsPdf: object.boundsPdf,
+            originalTransform: object.transform, newTransform: object.transform, pageRotation: Int(object.pageRotation),
+            originalZIndex: object.zOrder, newZIndex: object.zOrder, replacementStrategy: .pdfiumStructural)
+        guard applyObjectEdit([op]) else { return false }
+        objectSelection = nil
+        undoManager?.setActionName(L10n.string("undo.deleteObject"))
+        return true
+    }
+
     // MARK: - Committed edit ↔ page byte reconciliation
 
     /// Pristine (pre-edit) bytes for every member that currently has committed inline

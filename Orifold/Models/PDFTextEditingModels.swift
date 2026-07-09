@@ -58,6 +58,14 @@ struct PDFTextTransform: Codable, Equatable {
     var cgAffineTransform: CGAffineTransform {
         CGAffineTransform(a: a, b: b, c: c, d: d, tx: e, ty: f)
     }
+
+    init(a: CGFloat, b: CGFloat, c: CGFloat, d: CGFloat, e: CGFloat, f: CGFloat) {
+        self.a = a; self.b = b; self.c = c; self.d = d; self.e = e; self.f = f
+    }
+
+    init(_ t: CGAffineTransform) {
+        self.init(a: t.a, b: t.b, c: t.c, d: t.d, e: t.tx, f: t.ty)
+    }
 }
 
 struct PDFTextRun: Codable, Identifiable, Equatable {

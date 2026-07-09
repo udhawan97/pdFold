@@ -136,6 +136,40 @@ final class ObjectEditWorkspaceTests: XCTestCase {
                        "deleted rect reappeared in exported file (ghost)")
     }
 
+    // The canvas-facing API: hit-test → select → move → delete.
+    func testHitTestSelectMoveDeleteAPI() throws {
+        let vm = try makeViewModel()
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let member = ref.memberDocId
+
+        // Hit-test the center of the image → selects the image (frontmost, small).
+        let hit = try XCTUnwrap(vm.objectHit(at: CGPoint(x: imagePDF.midX, y: imagePDF.midY), on: ref, scaleFactor: 1),
+                                "hit-test found nothing at the image")
+        XCTAssertEqual(hit.objectType, .imageXObject)
+        vm.selectObject(hit, on: ref)
+        XCTAssertEqual(vm.objectSelection?.object.stableKey, hit.stableKey)
+        XCTAssertNotNil(vm.objectSelectionTooltip())
+
+        // Move it via the overlay-style bounds change (old → new page bounds).
+        let old = hit.boundsPdf
+        let new = old.offsetBy(dx: 50, dy: -20)
+        let applied = vm.commitObjectBoundsChange(from: old, to: new)
+        XCTAssertTrue(near(applied, new, tol: 2), "commit returned \(applied)")
+        XCTAssertTrue(near(try XCTUnwrap(imageBounds(in: vm.document.memberPDFData[member])), imagePDF.offsetBy(dx: 50, dy: -20), tol: 3),
+                      "image not moved in member bytes")
+        XCTAssertNotNil(vm.objectSelection, "selection lost after move")
+
+        // A blank click clears selection.
+        XCTAssertNil(vm.objectHit(at: CGPoint(x: 500, y: 40), on: ref, scaleFactor: 1))
+
+        // Select the deletable rect and delete it structurally.
+        let rectHit = try XCTUnwrap(vm.objectHit(at: CGPoint(x: deleteRect.midX, y: deleteRect.midY), on: ref, scaleFactor: 1))
+        vm.selectObject(rectHit, on: ref)
+        XCTAssertTrue(vm.deleteSelectedObject())
+        XCTAssertNil(vm.objectSelection, "selection should clear after delete")
+        XCTAssertFalse(rectPresent(in: vm.document.memberPDFData[member]), "rect not deleted")
+    }
+
     // objectMap caches per pageRef and returns the same identities on repeat calls.
     func testObjectMapIsCachedAndStable() throws {
         let vm = try makeViewModel()
