@@ -68,10 +68,32 @@ struct PDFObjectDetectionEngine {
         }
     }
 
-    // MARK: - Per-object build
+    // MARK: - Per-object inspection (shared with PDFObjectEditEngine's resolver)
 
-    private static func build(obj: OpaquePointer?, zOrder: Int, type: Int32, pageRefID: UUID,
-                              pageRotation: CGFloat, pageArea: Double, allowsEditing: Bool) -> DetectedObject? {
+    /// Everything read from a single live PDFium page object EXCEPT the per-detection-pass
+    /// wrapping (pageRefID / zOrder / editability / stableKey). Shared so the write-back engine
+    /// resolves an op's target by computing the IDENTICAL `structuralDigest` this produces.
+    struct InspectedObject {
+        var type: Int32
+        var objectType: PDFObjectType
+        var confidence: PDFTextEditConfidence
+        var bounds: CGRect
+        var transform: PDFTextTransform
+        var clip: PDFObjectClipInfo
+        var style: PDFObjectStyle
+        var pathData: PDFPathData?
+        var imageMeta: PDFObjectImageMetadata?
+        var formName: String?
+        var childCount: Int
+        var isBackgroundLike: Bool
+        var structuralDigest: UInt64
+        var boundsHint: [Int]
+    }
+
+    /// Read + classify + digest a single live object handle. Returns nil for a degenerate object
+    /// (non-finite bounds). MUST stay the single source of truth for `structuralDigest`.
+    static func inspect(obj: OpaquePointer?, pageArea: Double) -> InspectedObject? {
+        let type = poe_GetType(obj)
         var l: Float = 0, b: Float = 0, r: Float = 0, t: Float = 0
         guard poe_GetBounds(obj, &l, &b, &r, &t) != 0,
               l.isFinite, b.isFinite, r.isFinite, t.isFinite else { return nil }
@@ -86,7 +108,7 @@ struct PDFObjectDetectionEngine {
         var clip = PDFObjectClipInfo()
         if poe_GetClipPath(obj) != nil { clip.hasClip = true }
 
-        let areaFraction = Double(bounds.width * bounds.height) / pageArea
+        let areaFraction = Double(bounds.width * bounds.height) / max(pageArea, 1)
         let isBackgroundLike = areaFraction >= backgroundAreaFractionThreshold
 
         var style = PDFObjectStyle()
@@ -146,26 +168,41 @@ struct PDFObjectDetectionEngine {
         }
 
         let digest = poeStructuralDigest(digestValues + [Double(objectType.hashDiscriminator)], salt: digestSalt)
+        let boundsHint = [Int(round(bounds.minX)), Int(round(bounds.minY)),
+                          Int(round(bounds.width)), Int(round(bounds.height))]
+
+        return InspectedObject(
+            type: type, objectType: objectType, confidence: confidence, bounds: bounds,
+            transform: transform, clip: clip, style: style, pathData: pathData, imageMeta: imageMeta,
+            formName: formName, childCount: childCount, isBackgroundLike: isBackgroundLike,
+            structuralDigest: digest, boundsHint: boundsHint)
+    }
+
+    // MARK: - Per-object build (detection-pass wrapping over `inspect`)
+
+    private static func build(obj: OpaquePointer?, zOrder: Int, type: Int32, pageRefID: UUID,
+                              pageRotation: CGFloat, pageArea: Double, allowsEditing: Bool) -> DetectedObject? {
+        guard let o = inspect(obj: obj, pageArea: pageArea) else { return nil }
+
         let stableKey = PDFObjectStableKey(
             pageRefID: pageRefID,
-            structuralDigest: digest,
-            quantizedBoundsHint: [Int(round(bounds.minX)), Int(round(bounds.minY)),
-                                  Int(round(bounds.width)), Int(round(bounds.height))],
+            structuralDigest: o.structuralDigest,
+            quantizedBoundsHint: o.boundsHint,
             zOrderHint: zOrder,
-            typeHint: objectType.rawValue,
-            sourceXObjectName: formName)
+            typeHint: o.objectType.rawValue,
+            sourceXObjectName: o.formName)
 
-        let editability = classifyEditability(objectType: objectType, confidence: confidence,
-                                              clip: clip, isBackgroundLike: isBackgroundLike,
+        let editability = classifyEditability(objectType: o.objectType, confidence: o.confidence,
+                                              clip: o.clip, isBackgroundLike: o.isBackgroundLike,
                                               allowsEditing: allowsEditing)
 
         return DetectedObject(
-            stableKey: stableKey, pageRefID: pageRefID, objectType: objectType,
-            sourceType: .pdfiumPageObject, confidence: confidence, editability: editability,
-            boundsPdf: bounds, transform: transform, pageRotation: pageRotation, zOrder: zOrder,
-            style: style, pathData: pathData, imageMetadata: imageMeta, clipInfo: clip,
-            groupSource: objectType == .formXObject && childCount > 0 ? .formXObject(name: formName ?? "") : .none,
-            formXObjectName: formName, isBackgroundLike: isBackgroundLike)
+            stableKey: stableKey, pageRefID: pageRefID, objectType: o.objectType,
+            sourceType: .pdfiumPageObject, confidence: o.confidence, editability: editability,
+            boundsPdf: o.bounds, transform: o.transform, pageRotation: pageRotation, zOrder: zOrder,
+            style: o.style, pathData: o.pathData, imageMetadata: o.imageMeta, clipInfo: o.clip,
+            groupSource: o.objectType == .formXObject && o.childCount > 0 ? .formXObject(name: o.formName ?? "") : .none,
+            formXObjectName: o.formName, isBackgroundLike: o.isBackgroundLike)
     }
 
     // MARK: - Path extraction & classification
