@@ -1,21 +1,44 @@
 ---
 /**
- * Orifold landing — "One sheet, folded into flight."
- * A washi-paper page in five quiet acts around the fold: the hero (the crane,
- * folding), calm-by-architecture (the promise), one-workspace/every-fold
- * (surfaces), see-it-on-your-desktop (real product shots), and a deep-sumi act
- * for privacy + the two paper companions, then the download close.
+ * Orifold landing — "Fold chaos into one clean PDF."
+ * The full original story — hero, gather 一, shape 二 (+ feature cards),
+ * seal 三, keep 四, ma 間, horizon, updates, the final fold, and the paper
+ * fortune, with Gami and Ori talking throughout — reset on an ukiyo-e system:
+ * indigo-on-cream paper, Shippori Mincho display, the app icon's own
+ * indigo→ice gradient as the identity, and red reserved for the tancho crown.
  *
- * Fixed brand scheme (washi light + one sumi band), Shippori-Mincho display,
- * one vermilion (朱) accent, faint origami kanji throughout. Motion is
- * transform/opacity only and settles fully under prefers-reduced-motion.
- * Inspired by the calm of a well-made print page — origami, not a copy.
+ * Light (paper) is the default — origami starts on paper — with a full
+ * ink-night dark theme on the shared `starlight-theme` key. All motion is
+ * transform/opacity and settles fully under prefers-reduced-motion.
  */
 import '../styles/landing-washi.css';
 import site from '../data/site.json';
 import stats from '../data/stats.json';
 import { getRelease } from '../lib/release';
+
 import craneFold from '../assets/orifold-crane-fold.svg?raw';
+import gamiWag from '../assets/pets/gami-wag.svg?raw';
+import oriTwitch from '../assets/pets/ori-twitch.svg?raw';
+
+import icOcr from '../assets/icons/ocr.svg?raw';
+import icCompress from '../assets/icons/compress.svg?raw';
+import icForms from '../assets/icons/forms.svg?raw';
+import icStamps from '../assets/icons/stamps.svg?raw';
+import icReader from '../assets/icons/reader.svg?raw';
+import icLanguages from '../assets/icons/languages.svg?raw';
+
+// Roadmap ("Horizon") glyphs — same line-art grammar as the feature icons.
+import icRedact from '../assets/icons/redact.svg?raw';
+import icBatch from '../assets/icons/batch.svg?raw';
+import icCompare from '../assets/icons/compare.svg?raw';
+import icFast from '../assets/icons/fast.svg?raw';
+import icGlobe from '../assets/icons/globe.svg?raw';
+import icUnlock from '../assets/icons/unlock.svg?raw';
+
+// "How updates work" glyphs.
+import icNotify from '../assets/icons/notify.svg?raw';
+import icConsent from '../assets/icons/consent.svg?raw';
+import icOnDevice from '../assets/icons/on-device.svg?raw';
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const rel = await getRelease();
@@ -23,39 +46,71 @@ const rel = await getRelease();
 const downloadHref = rel.dmgMissing ? rel.zipUrl : rel.dmgUrl;
 const assetKind = rel.dmgMissing ? '.zip' : '.dmg';
 const sizePart = rel.dmgSize ? ` · ${rel.dmgSize}` : '';
-const subLabel = `macOS ${site.minMacOS}+ · ${site.arch}${sizePart}`;
+const subLabel = `macOS ${site.minMacOS}+ · v${rel.version}${sizePart}`;
+const releasedDate = rel.publishedAt
+	? new Date(rel.publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+	: null;
 
-const cap = (name: string, dir: 'screenshots' | 'gifs' | 'landing' = 'screenshots') => `${base}/assets/${dir}/${name}`;
+const cap = (name: string, dir: 'screenshots' | 'gifs' | 'landing' = 'screenshots') =>
+	`${base}/assets/${dir}/${name}`;
 
-// The workspace, six surfaces — each with a faint origami kanji watermark.
-const surfaces = [
-	{ kanji: '束', name: 'Assemble', body: 'Drag up to fifty PDFs, Word files, images, and scans into one calm stack — broken PDFs repaired on the way in.', href: 'import/combine/' },
-	{ kanji: '直', name: 'Edit', beta: true, body: 'Fix the real glyphs and page objects, not a sticky note over a picture. Move, restyle, and delete what is actually there.', href: 'edit/edit-objects/' },
-	{ kanji: '印', name: 'Sign', body: 'A drawn mark is a picture; a PAdES digital signature is math — a tamper-evident seal over the exact bytes you signed.', href: 'fill-sign/signatures/' },
-	{ kanji: '読', name: 'Search', body: 'On-device Vision OCR makes a scan searchable, so ⌘F finally finds the thing your printer emailed you.', href: 'edit/ocr/' },
-	{ kanji: '守', name: 'Protect', body: 'Real AES-256 encryption, plus a sanitize pass that strips auto-run actions, embedded scripts, and hidden metadata.', href: 'export/protect/' },
-	{ kanji: '語', name: 'Speak', body: 'The whole workspace — menus to tooltips — in English, Spanish, French, Hindi, Simplified Chinese, and Japanese.', href: 'settings/language/' },
+// The six everyday folds — each card carries a faint origami kanji watermark.
+const cards = [
+	{ t: 'On-device OCR', k: '読', p: 'Vision makes a scan searchable — ⌘F finds the thing your printer emailed you.', href: 'edit/ocr/', icon: icOcr },
+	{ t: 'Compress', k: '縮', p: 'Repack oversized images losslessly so attachments stop bouncing off size limits.', href: 'export/compress/', icon: icCompress },
+	{ t: 'Fill & flatten forms', k: '記', p: 'Detect fields, type answers, lock them — no third-party e-sign service.', href: 'fill-sign/forms/', icon: icForms },
+	{ t: 'Stamps & Bates', k: '判', p: 'Numbered, stamped, and ready for the file room.', href: 'annotate/stamps/', icon: icStamps },
+	{ t: 'Reader mode', k: '静', p: 'The toolbar folds away. The page stays.', href: 'reading/reader-mode/', icon: icReader },
+	{ t: 'Six languages', k: '語', p: 'The whole workspace — menus to tooltips — in six languages.', href: 'settings/language/', icon: icLanguages },
 ];
 
-// Calm-by-architecture — three notes, three kanji.
-const notes = [
-	{ kanji: '家', n: '01', t: 'On your Mac, only', p: 'Import, OCR, compression, encryption, signing, and export never touch a network. There is no server to send anything to.' },
-	{ kanji: '実', n: '02', t: 'Real, not a picture', p: 'Orifold edits the actual page geometry and produces standards-based signatures — not annotations floating over a flat image.' },
-	{ kanji: '開', n: '03', t: 'Free & open source', p: 'No account, no upload, no subscription. Apache-2.0 licensed and built in the open, one honest fold at a time.' },
-];
+const icoBook =
+	'<svg class="btn-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5.4C8.6 4.1 6.2 3.9 4 4.4v10.8c2.2-.5 4.6-.3 6 1 1.4-1.3 3.8-1.5 6-1V4.4c-2.2-.5-4.6-.3-6 1Zm0 0v11.8"/></svg>';
+const icoChevron =
+	'<svg class="arrow-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5"/></svg>';
+const icoClipboard =
+	'<svg class="btn-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.5 3.5h5a1 1 0 0 1 1 1V5h1.5a1 1 0 0 1 1 1v9.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1H6.5V4.5a1 1 0 0 1 1-1Z"/><path d="M7.5 4.5v-1a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1"/></svg>';
+// Theme-toggle glyphs. The toggle shows the icon of the theme it will switch TO
+// (moon while in light, sun while in dark); CSS swaps them on [data-theme].
+const icoSun =
+	'<svg class="ico-sun" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="3.4"/><path d="M10 2.2v2.1M10 15.7v2.1M2.2 10h2.1M15.7 10h2.1M4.5 4.5l1.5 1.5M14 14l1.5 1.5M15.5 4.5 14 6M6 14l-1.5 1.5"/></svg>';
+const icoMoon =
+	'<svg class="ico-moon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.2 11.8A6.5 6.5 0 0 1 8.2 3.8a6.5 6.5 0 1 0 8 8Z"/></svg>';
+const icoNoteClose =
+	'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
 
-const numbers = [
-	{ b: '0', s: 'Times your files are uploaded. The cloud is never consulted.', accent: true },
-	{ b: 'AES-256', s: 'Real encryption — not a "protected" flag a reader can ignore.' },
-	{ b: String(stats.tests ?? '700+'), s: 'Tests gate every release before it ships.' },
-	{ b: '6', s: 'Languages, everything on-device.' },
-	{ b: '50', s: 'Files can fold into one workspace at a time.' },
-	{ b: '$0', s: 'Forever. Apache-2.0, free and open source.' },
-];
+// Apple logo — leads the primary "Download for Mac" CTA. Solid fill:currentColor
+// so it inherits the button's ink in both themes.
+const icoApple =
+	'<svg class="btn-ico btn-ico-apple" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11.182.008C11.148-.03 9.923.023 8.857 1.18c-1.066 1.156-.902 2.482-.878 2.516.024.034 1.52.087 2.475-1.258.955-1.345.762-2.391.728-2.43zm3.314 11.733c-.048-.096-2.325-1.234-2.113-3.422.212-2.189 1.675-2.789 1.698-2.854.023-.065-.597-.79-1.254-1.157a3.7 3.7 0 0 0-1.563-.434c-.108-.003-.483-.095-1.254.116-.508.139-1.653.589-1.968.607-.316.018-1.256-.522-2.267-.665-.647-.125-1.333.131-1.824.328-.49.196-1.422.754-2.074 2.237-.652 1.482-.311 3.83-.067 4.56s.625 1.924 1.273 2.796c.576.984 1.34 1.667 1.659 1.899.319.232 1.219.386 1.843.067.502-.308 1.408-.485 1.766-.472.357.013 1.061.154 1.782.539.571.197 1.111.115 1.652-.105.541-.221 1.324-1.059 2.238-2.758.347-.79.505-1.217.473-1.282z"/></svg>';
+// Icon-style meta badges — small stroke glyphs tinted by .badge-ico.
+const badgeIco = {
+	// version — a luggage/price tag
+	tag: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.3 3.3h5.3l7.9 7.9-5.3 5.3-7.9-7.9V3.3Z"/><circle cx="6.5" cy="6.5" r="1"/></svg>',
+	// released date — calendar
+	calendar: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.3" y="4.6" width="13.4" height="12.1" rx="2.2"/><path d="M3.3 8.2h13.4M6.8 2.8v3M13.2 2.8v3"/></svg>',
+	// architecture — a silicon chip
+	chip: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.6" y="5.6" width="8.8" height="8.8" rx="1.8"/><rect x="8.2" y="8.2" width="3.6" height="3.6" rx="0.8"/><path d="M8 2.6v2.4M12 2.6v2.4M8 15v2.4M12 15v2.4M2.6 8h2.4M2.6 12h2.4M15 8h2.4M15 12h2.4"/></svg>',
+	// licence — a checkmark seal
+	license: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2.4l1.9 1.25 2.28-.13.72 2.17 1.9 1.27-.62 2.2.62 2.2-1.9 1.27-.72 2.17-2.28-.13L10 17.6l-1.9-1.25-2.28.13-.72-2.17-1.9-1.27.62-2.2-.62-2.2 1.9-1.27.72-2.17 2.28.13L10 2.4Z"/><path d="M7.4 10l1.8 1.8 3.4-3.8"/></svg>',
+	// beta — a sparkle
+	beta: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2.8l1.7 4.4 4.5 1.4-4.5 1.4L10 14.6l-1.7-4.6L3.8 8.6l4.5-1.4L10 2.8Z"/></svg>',
+	// download kind (.dmg) — a package box
+	package: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2.6 16.6 6.2v7.6L10 17.4 3.4 13.8V6.2L10 2.6Z"/><path d="M3.6 6.3 10 9.9l6.4-3.6M10 9.9v7.4"/></svg>',
+	// file size — a hard drive
+	drive: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.2" y="6.4" width="13.6" height="7.2" rx="2.2"/><path d="M6 10h3.4"/><circle cx="13.2" cy="10" r="1"/></svg>',
+	// macOS requirement — the Apple mark reused at badge size
+	apple: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11.182.008C11.148-.03 9.923.023 8.857 1.18c-1.066 1.156-.902 2.482-.878 2.516.024.034 1.52.087 2.475-1.258.955-1.345.762-2.391.728-2.43zm3.314 11.733c-.048-.096-2.325-1.234-2.113-3.422.212-2.189 1.675-2.789 1.698-2.854.023-.065-.597-.79-1.254-1.157a3.7 3.7 0 0 0-1.563-.434c-.108-.003-.483-.095-1.254.116-.508.139-1.653.589-1.968.607-.316.018-1.256-.522-2.267-.665-.647-.125-1.333.131-1.824.328-.49.196-1.422.754-2.074 2.237-.652 1.482-.311 3.83-.067 4.56s.625 1.924 1.273 2.796c.576.984 1.34 1.667 1.659 1.899.319.232 1.219.386 1.843.067.502-.308 1.408-.485 1.766-.472.357.013 1.061.154 1.782.539.571.197 1.111.115 1.652-.105.541-.221 1.324-1.059 2.238-2.758.347-.79.505-1.217.473-1.282z"/></svg>',
+};
 
-// ── inline glyphs ─────────────────────────────────────────────
-const icoApple = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11.182.008C11.148-.03 9.923.023 8.857 1.18c-1.066 1.156-.902 2.482-.878 2.516.024.034 1.52.087 2.475-1.258.955-1.345.762-2.391.728-2.43zm3.314 11.733c-.048-.096-2.325-1.234-2.113-3.422.212-2.189 1.675-2.789 1.698-2.854.023-.065-.597-.79-1.254-1.157a3.7 3.7 0 0 0-1.563-.434c-.108-.003-.483-.095-1.254.116-.508.139-1.653.589-1.968.607-.316.018-1.256-.522-2.267-.665-.647-.125-1.333.131-1.824.328-.49.196-1.422.754-2.074 2.237-.652 1.482-.311 3.83-.067 4.56s.625 1.924 1.273 2.796c.576.984 1.34 1.667 1.659 1.899.319.232 1.219.386 1.843.067.502-.308 1.408-.485 1.766-.472.357.013 1.061.154 1.782.539.571.197 1.111.115 1.652-.105.541-.221 1.324-1.059 2.238-2.758.347-.79.505-1.217.473-1.282z"/></svg>';
-const icoBook = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:1.05rem;height:1.05rem"><path d="M10 5.4C8.6 4.1 6.2 3.9 4 4.4v10.8c2.2-.5 4.6-.3 6 1 1.4-1.3 3.8-1.5 6-1V4.4c-2.2-.5-4.6-.3-6 1Zm0 0v11.8"/></svg>';
+// The hero's release facts as icon badges.
+const heroBadges = [
+	{ icon: badgeIco.tag, label: `v${rel.version}` },
+	...(releasedDate ? [{ icon: badgeIco.calendar, label: releasedDate }] : []),
+	{ icon: badgeIco.chip, label: site.arch },
+	{ icon: badgeIco.license, label: 'Free & Apache 2.0' },
+	{ icon: badgeIco.beta, label: 'Beta' },
+];
 ---
 
 <!doctype html>
@@ -64,14 +119,17 @@ const icoBook = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stro
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="icon" type="image/svg+xml" href={`${base}/favicon.svg`} />
-		<meta name="theme-color" content="#f4f1e8" />
-		<title>Orifold — One sheet, folded into flight</title>
+		<meta name="theme-color" content="#f6f3ea" />
+		<title>Orifold — Fold chaos into one clean PDF</title>
 		<meta
 			name="description"
-			content="A calm, local-first PDF workspace for macOS. Drop in up to 50 messy files — merge, edit, OCR, sign, and protect them — and fold the pile into one clean document. Nothing leaves your Mac."
+			content="A free, open-source PDF workspace for macOS. Drop in up to 50 messy files — edit, sign, and export one polished document. Nothing ever leaves your Mac."
 		/>
-		<meta property="og:title" content="Orifold — One sheet, folded into flight" />
-		<meta property="og:description" content="A calm, local-first PDF workspace for macOS. Free, open source, and entirely on-device." />
+		<meta property="og:title" content="Orifold — Fold chaos into one clean PDF" />
+		<meta
+			property="og:description"
+			content="A calm, local-first PDF workspace for macOS. Free, open source, and entirely on-device."
+		/>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
@@ -79,14 +137,29 @@ const icoBook = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stro
 			href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap"
 		/>
 		<script is:inline>
-			// Pre-paint: mark JS present (so the animated fold shows instead of the static
-			// poster), gate reduced-motion, and detect non-Mac so the CTA never flashes.
+			// First in <head>, pre-paint: set html.js + theme + the synchronous UA gate,
+			// so no reveal-state flash and no CTA flash-and-shift on non-Mac devices.
 			(function () {
 				var d = document.documentElement;
 				d.classList.add('js');
 				try {
-					if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) d.classList.add('no-motion');
-				} catch (e) {}
+					// Orifold's metaphor is paper/origami, so the site opens "on paper":
+					// LIGHT by default on a first visit, deliberately NOT following the OS
+					// color scheme. Only an explicit prior choice of 'dark' departs from
+					// light; the shared 'starlight-theme' key keeps the landing page and the
+					// Starlight docs in lockstep. data-theme is always resolved here (never
+					// left unset) so the first paint is already the correct theme — no flash.
+					var t = localStorage.getItem('starlight-theme');
+					d.dataset.theme = t === 'dark' ? 'dark' : 'light';
+					// The first-visit theme note shows only until the visitor makes a choice
+					// (toggles a theme) or dismisses it — resolved pre-paint so returning
+					// visitors never get a flash of the note.
+					var chosen = t === 'light' || t === 'dark';
+					var dismissed = localStorage.getItem('orifold-theme-note') === 'dismissed';
+					if (!chosen && !dismissed) d.classList.add('theme-unchosen');
+				} catch (e) {
+					d.dataset.theme = 'light';
+				}
 				try {
 					var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
 					var isMac = /mac/i.test(p) && !(navigator.maxTouchPoints > 1);
@@ -94,309 +167,983 @@ const icoBook = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stro
 				} catch (e) {}
 			})();
 		</script>
+		<style is:global>
+			/* No-JS + reduced-motion pet safety (WCAG 2.2.2): the inlined SMIL pets (act pets
+			   AND the #ma guides) loop forever (begin="0s" repeatCount="indefinite") and only
+			   JS can pause them. html.js is set synchronously pre-paint above, so gate on it:
+			   JS present shows the (JS-gated, on-screen-only) animated figure; JS absent OR
+			   reduced motion shows only a static poster and hides the SMIL — no perpetual motion. */
+			.pet-anim, .guide-fig { display: none; }
+			.pet-poster, .guide-poster { display: block; }
+			html.js .pet-anim, html.js .guide-fig { display: block; }
+			html.js .pet-poster, html.js .guide-poster { display: none; }
+		</style>
+		<style is:global>
+			@media (prefers-reduced-motion: reduce) {
+				html.js .pet-anim, html.js .guide-fig { display: none; }
+				html.js .pet-poster, html.js .guide-poster { display: block; }
+			}
+		</style>
 	</head>
-	<body data-repo-url={site.repoUrl}>
-		<a class="skip-link" href="#promise">Skip to content</a>
+	<body
+		class="landing"
+		data-guide="gami"
+		data-repo={site.repo}
+		data-repo-url={site.repoUrl}
+		data-dmg-asset={site.dmgAsset}
+	>
+		<a class="skip-link" href="#gather">Skip to content</a>
 		<div class="route-progress" aria-hidden="true"></div>
 
-		<header class="topbar">
-			<a class="brandline" href={`${base}/`} aria-label="Orifold home">
+		<!-- Nav -->
+		<nav class="nav" aria-label="Primary">
+			<a class="brand" href={`${base}/`}>
 				<img src={`${base}/assets/orifold-app-icon-32.png`} alt="" width="30" height="30" />
-				<span class="brandword">ORIFOLD</span>
+				<span>ORIFOLD</span>
 			</a>
-			<nav aria-label="Primary">
-				<a class="only-wide" href="#surfaces">Features</a>
+			<div class="links">
+				<a class="only-wide" href="#features">Features</a>
+				<a class="only-wide" href="#final-fold">Download</a>
 				<a href={`${base}/get-started/what-is-orifold/`}>Docs</a>
 				<a href={site.repoUrl}>GitHub</a>
-				<a class="nav-dl" href={downloadHref}>Download</a>
-			</nav>
-		</header>
+				<button
+					type="button"
+					class="theme-toggle"
+					aria-label="Switch to dark mode"
+					aria-pressed="false"
+					title="Switch to dark mode"
+				>
+					<Fragment set:html={icoSun} />
+					<Fragment set:html={icoMoon} />
+				</button>
+			</div>
+		</nav>
 
 		<main>
-			<!-- Act I · the fold -->
-			<section class="hero">
-				<div class="hero-copy">
-					<p class="eyebrow" data-load="1">PDF workspace <span class="en">·</span> macOS</p>
-					<h1 aria-label="One sheet, folded into flight.">
-						<span class="hl" data-load="2"><span>One sheet, folded</span></span>
-						<span class="hl" data-load="3"><span>into <em>flight</em>.</span></span>
-					</h1>
-					<p class="lede" data-load="4">
-						A calm, local-first PDF workspace for macOS. Drop in up to fifty messy files —
-						merge, edit, OCR, sign, and protect them — and fold the pile into{' '}
-						<strong>one clean document</strong>. Nothing leaves your Mac.
-					</p>
-					<div class="actions" data-load="5">
-						<a class="primary" id="cta-hero" href={downloadHref}>
-							<span class="p-main"><Fragment set:html={icoApple} /><span class="mac-only">Download for Mac</span><span class="not-mac-only" hidden>View on GitHub</span></span>
-							<span class="p-sub">{subLabel}</span>
-						</a>
-						<a class="ghost" href={`${base}/get-started/what-is-orifold/`}><Fragment set:html={icoBook} />Read the docs</a>
-					</div>
-					<p class="hero-meta" data-load="6">
-						<span class="m">v{rel.version}</span>
-						<span class="m">Universal · Apple Silicon + Intel</span>
-						<span class="m">Apache-2.0</span>
-						<span class="m">Beta</span>
-					</p>
-					<p class="inoc mac-only">
-						Not notarized yet — first launch takes one calm step. <a href="#take-flight">Here's how →</a>
-					</p>
-				</div>
-
-				<figure class="hero-panel" data-load="3" aria-label="Orifold app mark">
-					<figcaption class="cap"><b>折</b> · ONE SHEET, FOLDED</figcaption>
-					<div class="crane-art" id="hero-crane">
-						<div class="crane-anim" set:html={craneFold}></div>
-						<img class="crane-poster" src={`${base}/assets/orifold-app-icon-512.png`} width="512" height="512" alt="" aria-hidden="true" />
-					</div>
-					<div class="panel-word">ORIFOLD</div>
-				</figure>
-
-				<div class="kanji-rail mincho" aria-hidden="true">折　鶴　間　朱</div>
-				<a class="scroll-cue" href="#promise" aria-label="Scroll to content"><span></span></a>
-			</section>
-
-			<!-- Act II · the promise -->
-			<section class="promise" id="promise" aria-labelledby="promise-title">
-				<div class="shead" data-reveal>
-					<p class="eyebrow">The idea</p>
-					<h2 id="promise-title">Calm by architecture.<br />Not by accident.</h2>
-				</div>
-				<div class="notes">
-					{notes.map((note, i) => (
-						<article class="note" data-reveal style={`--d:${i}`}>
-							<div class="kanji mincho" aria-hidden="true">{note.kanji}</div>
-							<h3><span class="nnum">{note.n}</span>{note.t}</h3>
-							<p>{note.p}</p>
-						</article>
-					))}
-				</div>
-			</section>
-
-			<!-- Act III · the workspace, six surfaces -->
-			<section class="surfaces" id="surfaces" aria-labelledby="surfaces-title">
-				<div class="shead" data-reveal>
-					<p class="eyebrow">The workspace</p>
-					<h2 id="surfaces-title">One workspace. Every fold.</h2>
-					<p class="shead-sub">Twelve tools that used to mean five apps and a print-sign-scan loop — merge, edit, sign, search, protect — in one calm, native window.</p>
-				</div>
-				<div class="tiles">
-					{surfaces.map((s, i) => (
-						<a class="tile" href={`${base}/${s.href}`} data-reveal style={`--d:${i}`}>
-							<div class="tile-kanji mincho" aria-hidden="true">{s.kanji}</div>
-							<span class="tile-dot" aria-hidden="true" />
-							<h3><span class="nnum">0{i + 1}</span>{s.name}{s.beta && <span class="beta">beta</span>}</h3>
-							<p>{s.body}</p>
-						</a>
-					))}
-				</div>
-				<p class="guides-row" data-reveal>
-					More folds: <a href={`${base}/annotate/stamps/`}>Stamps &amp; Bates</a> · <a href={`${base}/export/compress/`}>Compress</a> · <a href={`${base}/fill-sign/forms/`}>Forms</a> · <a href={`${base}/reading/reader-mode/`}>Reader mode</a>.
-				</p>
-			</section>
-
-			<!-- Act IV · see it on your desktop (real captures) -->
-			<section class="showcase" aria-labelledby="showcase-title">
-				<div class="shead" data-reveal>
-					<p class="eyebrow">Not a render</p>
-					<h2 id="showcase-title">See it on your desktop.</h2>
-					<p class="shead-sub">Real captures of Orifold {`v${rel.version}`} — a native Mac window, not a mockup.</p>
-				</div>
-				<figure class="shot" data-reveal>
-					<div class="frame wide">
-						<img src={cap('the-orifold-window-annotated.png')} width="1600" height="1000" loading="lazy" decoding="async" alt="The Orifold workspace: a document sidebar, a PDF open on the canvas, a floating markup toolbar, and the paper companion in the corner." />
-					</div>
-					<figcaption><b>The workspace.</b> Sidebar, canvas, markup toolbar, and your paper companion — all on your Mac.</figcaption>
-				</figure>
-				<div class="shot-grid">
-					<figure class="shot" data-reveal style="--d:0">
-						<div class="frame">
-							<img src={cap('edit-text-workflow.png')} width="1600" height="1000" loading="lazy" decoding="async" alt="Orifold editing real PDF text in place, with a floating format toolbar." />
+			<!-- Hero -->
+			<section id="sheet" class="fold">
+				<div class="wrap">
+					<div class="hero-grid">
+						<div class="hero-copy">
+							<p class="eyebrow" data-load="1">Orifold — free, open source, for macOS</p>
+							<h1 aria-label="Fold chaos into one clean PDF.">
+								<span class="hl" data-load="2"><span>Fold chaos into</span></span>
+								<span class="hl" data-load="3"><span><em>one clean PDF</em>.</span></span>
+							</h1>
+							<p class="sub" data-load="4">
+								A calm PDF workspace for macOS. Drop in up to fifty messy files — merge, edit,
+								sign, and protect them — and fold the pile into one polished document. Nothing
+								ever leaves your Mac.
+							</p>
+							<div class="btn-row" data-load="5">
+								<a class="btn btn-primary" id="cta-hero" href={downloadHref}>
+									<span class="btn-face"><Fragment set:html={icoApple} /><span class="btn-main">Download for Mac</span></span>
+									<span class="btn-sub">{subLabel}</span>
+								</a>
+								<a class="btn btn-ghost" href={`${base}/get-started/what-is-orifold/`}>
+									<Fragment set:html={icoBook} /><span>Read the docs</span>
+								</a>
+							</div>
+							<script is:inline>
+								// Synchronous, still mid-parse: the hero CTA above already exists but the
+								// page has not painted. Swap it now so non-Mac visitors never see the Mac
+								// copy flash to "View on GitHub" (the .not-mac gate ran pre-paint in <head>).
+								(function () {
+									if (!document.documentElement.classList.contains('not-mac')) return;
+									var a = document.getElementById('cta-hero');
+									if (!a) return;
+									a.setAttribute('href', (document.body && document.body.dataset.repoUrl) || a.href);
+									var main = a.querySelector('.btn-main');
+									var sub = a.querySelector('.btn-sub');
+									if (main) main.textContent = 'View on GitHub';
+									if (sub) sub.textContent = 'Orifold is a Mac app';
+								})();
+							</script>
+							<p class="meta-row tabnum" data-load="6" aria-label="Release details">
+								{heroBadges.map((b) => (
+									<span class="badge"><span class="badge-ico" set:html={b.icon} />{b.label}</span>
+								))}
+							</p>
+							<p class="inoc" data-load="7">
+								Not notarized yet — first launch takes one calm extra step. <a class="arrow-link" href="#final-fold">Here's how<span class="arrow-ico-wrap"><Fragment set:html={icoChevron} /></span></a>
+							</p>
+							<!-- First-visit theme note. Hidden by default; the pre-paint script in
+							     <head> reveals it (html.theme-unchosen) only for visitors who have
+							     not yet picked a theme or dismissed it. -->
+							<p class="theme-note" role="note">
+								<span
+									>Origami starts on paper, so we start in light mode. Prefer saving your retinas?
+									Dark mode is up top.</span
+								>
+								<button type="button" class="theme-note-dismiss" aria-label="Dismiss this note">
+									<Fragment set:html={icoNoteClose} />
+								</button>
+							</p>
 						</div>
-						<figcaption><b>Edit the page itself.</b> Real glyphs, not a note stuck on top.</figcaption>
-					</figure>
-					<figure class="shot" data-reveal style="--d:1">
+						<figure class="hero-crane" id="hero-crane" aria-label="The Orifold mark — one sheet folding into a crane">
+							<figcaption class="cap"><b>折</b> · One sheet, folded</figcaption>
+							<div class="crane-art" set:html={craneFold}></div>
+							<span class="crane-sheen" aria-hidden="true"></span>
+							<div class="panel-word">ORIFOLD</div>
+						</figure>
+					</div>
+					<div class="kanji-rail mincho" aria-hidden="true">折　鶴　間　朱</div>
+					<a class="scroll-cue" href="#gather" aria-label="Scroll to content"><span></span></a>
+				</div>
+			</section>
+
+			<!-- The window — one real product frame before the story starts -->
+			<section class="window-peek" aria-label="The Orifold workspace">
+				<div class="wrap">
+					<figure class="shot" data-reveal>
 						<div class="frame">
-							<img src={cap('night-mode-comparison.png')} width="1600" height="1000" loading="lazy" decoding="async" alt="Orifold's Night Mode shown beside the default view, dimming a document for comfortable reading." />
+							<img src={cap('the-orifold-window-annotated.png')} width="1600" height="1000" loading="lazy" decoding="async" alt="The Orifold workspace: a document sidebar on the left, a PDF open on the canvas, a floating markup toolbar across the top, and the paper companion resting in the corner." />
 						</div>
-						<figcaption><b>Read, day or night.</b> Reader Mode and warm Night Mode presets.</figcaption>
+						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. Sidebar, canvas, markup toolbar — and a paper companion keeping an eye on things.</figcaption>
 					</figure>
 				</div>
 			</section>
 
-			<!-- Act V · deep sumi — privacy + the paper companions -->
-			<section class="sumi" aria-labelledby="privacy-title">
-				<div class="sumi-inner">
-					<div class="shead" data-reveal>
-						<p class="eyebrow">Privacy, by architecture</p>
-						<h2 id="privacy-title">Nothing leaves your Mac.</h2>
-						<p class="shead-sub">
-							Local-first is not a setting here — it's the architecture. The app runs in the macOS
-							sandbox with access only to the files you choose. The one network request it can make
-							is an opt-in, off-by-default check for a newer version — never anything about you or
-							your documents. <a href={`${base}/settings/privacy/`}>Read the privacy model →</a>
+			<hr class="crease-line" />
+
+			<!-- Gather -->
+			<section id="gather" class="fold act">
+				<div class="wrap">
+					<div class="act-head" data-num="一" data-reveal>
+						<p class="kicker"><span class="k-num" aria-hidden="true">一</span>First fold · Gather</p>
+						<h2>Fifty messy files. One quiet stack.</h2>
+						<p class="lede">
+							A "simple PDF task" is rarely one file. It's six PDFs, two screenshots, a Word
+							document, a scan, and one determined file named <code>final_final_revised_ACTUAL.pdf</code>.
+							Drag the whole pile in — Orifold repairs broken files on the way and stacks them into
+							one workspace.
 						</p>
 					</div>
-					<div class="numbers" data-reveal>
-						{numbers.map((num) => (
-							<div class={`num${num.accent ? ' accent' : ''}`}>
-								<b set:html={num.b} />
-								<span>{num.s}</span>
-							</div>
-						))}
+					<figure class="shot act-figure" data-reveal>
+						<div class="frame">
+							<img src={cap('import-files-overview.png')} width="1600" height="1013" loading="lazy" decoding="async" alt="Orifold's import screen, mid drag-and-drop, with a file about to drop into the 'Release to import files' zone and Gami greeting in the corner." />
+						</div>
+						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. Drag anything in; broken PDFs are repaired on the way.</figcaption>
+					</figure>
+
+					<div class="pet" data-pet="gami">
+						<span class="fig pet-arrive-target">
+							<span class="pet-anim" set:html={gamiWag} aria-hidden="true"></span>
+							<img class="pet-poster" src={`${base}/assets/gami-figure.svg`} width="128" height="128" alt="" aria-hidden="true" />
+						</span>
+						<p class="bubble">Bring the whole messy pile. I'll keep it straight.</p>
+					</div>
+				</div>
+			</section>
+
+			<hr class="crease-line" />
+
+			<!-- Shape -->
+			<section id="shape" class="fold act">
+				<div class="wrap">
+					<div class="act-head" data-num="二" data-reveal>
+						<p class="kicker"><span class="k-num" aria-hidden="true">二</span>Second fold · Shape</p>
+						<h2>Edit the page itself.</h2>
+						<p class="lede">
+							Click the text and fix the typo. Orifold edits the real glyph geometry — not a
+							sticky note floating over a picture of the page. Then protect with AES-256,
+							compress, or sanitize, and export one clean file.
+						</p>
+						<a class="whatsnew-pill" href={`${base}/edit/edit-objects/`} aria-label="New: object editing, now in beta — learn more">
+							<span class="whatsnew-tag">New</span>
+							<span class="whatsnew-text">Object editing<span class="whatsnew-sub"> · in beta</span></span>
+							<span class="whatsnew-arrow" aria-hidden="true"><Fragment set:html={icoChevron} /></span>
+						</a>
+						<p class="fine-print beta-note">
+							<span class="beta-tag">Beta</span>
+							Editing is solid on everyday text, and still learning how weird a PDF can get.
+							Spot something off? <a href={`${site.repoUrl}/issues`}>Send feedback</a>.
+						</p>
+					</div>
+					<figure class="shot act-figure" data-reveal>
+						<div class="frame">
+							<img src={cap('shape-edit-tight.png', 'landing')} width="1470" height="180" loading="lazy" decoding="async" alt="A floating text-formatting toolbar — font, size, style, alignment, color, Match/Copy/Paste/Reset — hovering directly over a real PDF page mid-edit." />
+						</div>
+						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. The format toolbar appears right where you click.</figcaption>
+					</figure>
+
+					<div id="features" class="feature-band">
+						<div class="card-grid">
+							{cards.map((c, i) => (
+								<a class="of-card" href={`${base}/${c.href}`} data-reveal style={`--d:${i}`}>
+									<span class="card-kanji" aria-hidden="true">{c.k}</span>
+									<span class="glyph" aria-hidden="true" set:html={c.icon} />
+									<h3><span class="nnum">0{i + 1}</span>{c.t}</h3>
+									<p>{c.p}</p>
+								</a>
+							))}
+						</div>
+						<p class="guides-row" data-reveal>
+							More jobs: <a href={`${base}/import/combine/`}>Combine</a> · <a href={`${base}/annotate/stamps/`}>Stamps &amp; Bates</a> · <a href={`${base}/export/protect/`}>Protect</a> · <a class="arrow-link" href={`${base}/fill-sign/signatures/`}>Sign<span class="arrow-ico-wrap"><Fragment set:html={icoChevron} /></span></a>
+						</p>
 					</div>
 
-					<div class="companions" aria-labelledby="companions-title">
-						<div class="shead" data-reveal style="margin-bottom:0">
-							<p class="eyebrow">Folded to keep you company</p>
-							<h2 id="companions-title">Two paper companions.</h2>
-						</div>
-						<div class="comp-grid">
-							<div class="comp" data-reveal style="--d:0">
-								<span class="fig"><img src={`${base}/assets/gami-figure.svg`} width="68" height="68" alt="Gami, the origami dog" /></span>
-								<div>
-									<h3>Gami<span class="s">· the dog</span></h3>
-									<p>A calm paper companion — your everyday guide. Shows up when something needs you, then folds back into the corner.</p>
-								</div>
+					<div class="pet" data-pet="gami" data-handoff="true">
+						<span class="fig pet-arrive-target">
+							<span class="pet-anim" set:html={gamiWag} aria-hidden="true"></span>
+							<img class="pet-poster" src={`${base}/assets/gami-figure.svg`} width="128" height="128" alt="" aria-hidden="true" />
+						</span>
+						<p class="bubble">Signatures are Ori's craft. Over to her.</p>
+					</div>
+				</div>
+			</section>
+
+			<hr class="crease-line" />
+
+			<!-- Seal -->
+			<section id="seal" class="fold act">
+				<div class="wrap">
+					<div class="seal-grid">
+						<div>
+							<div class="act-head" data-num="三" data-reveal>
+								<p class="kicker"><span class="k-num" aria-hidden="true">三</span>Third fold · Seal</p>
+								<h2>A signature that holds up.</h2>
+								<p class="lede">
+									A drawn mark is a picture. A digital signature is math — a tamper-evident seal
+									over the exact bytes you signed. Orifold produces standards-based PAdES
+									signatures with Keychain and .p12 identities, verifiable anywhere PAdES is
+									understood. <a class="arrow-link" href={`${base}/fill-sign/signatures/`}>How signing works<span class="arrow-ico-wrap"><Fragment set:html={icoChevron} /></span></a>
+								</p>
 							</div>
-							<div class="comp" data-reveal style="--d:1">
-								<span class="fig"><img src={`${base}/assets/ori-figure.svg`} width="68" height="68" alt="Ori, the origami cat" /></span>
-								<div>
-									<h3>Ori<span class="s">· the cat</span></h3>
-									<p>Clever and a touch bossy. She watches the technical corners: signing, privacy, and the fine print.</p>
+							<div class="pet" data-pet="ori">
+								<span class="fig pet-arrive-target">
+									<span class="pet-anim" set:html={oriTwitch} aria-hidden="true"></span>
+									<img class="pet-poster" src={`${base}/assets/ori-figure.svg`} width="128" height="128" alt="" aria-hidden="true" />
+								</span>
+								<p class="bubble">Real cryptography. Not a picture of ink.</p>
+							</div>
+						</div>
+						<figure class="shot" data-reveal style="--d:1">
+							<div class="frame narrow">
+								<img src={cap('seal-signatures-tight.png', 'landing')} width="415" height="745" loading="lazy" decoding="async" alt="The Signatures panel with Digital selected, a self-signed identity chosen, and a live cursive signature preview reading 'Umang D.' with a 'Signed: Jul 7, 2026 at 9:12 PM' timestamp below, before Sign & Export." />
+							</div>
+							<figcaption class="tabnum">Real capture — Orifold v{rel.version}. PAdES signing, right where you're already working.</figcaption>
+						</figure>
+					</div>
+				</div>
+			</section>
+
+			<!-- Keep — the indigo night band: the icon's own dark corner -->
+			<section id="keep" class="fold fold-keep">
+				<div class="wrap">
+					<div class="act-head" data-num="四" data-reveal>
+						<p class="kicker"><span class="k-num" aria-hidden="true">四</span>Fourth fold · Keep</p>
+						<h2>The studio has no windows.</h2>
+						<p class="lede">Everything happens on your Mac. The cloud was not consulted.</p>
+					</div>
+					<figure class="shot act-figure" data-reveal>
+						<div class="frame mid">
+							<img src={cap('keep-export-tight.png', 'landing')} width="640" height="475" loading="lazy" decoding="async" alt="The Export dialog with Protect with password, Reduce file size, and Sanitize for sharing options, ready before export." />
+						</div>
+						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. Sanitize strips what you didn't mean to share.</figcaption>
+					</figure>
+					<div class="stat-row" data-reveal>
+						<div class="stat"><b>0</b><span>The app asks the network for nothing.</span></div>
+						<div class="stat"><b>AES-256</b><span>Real encryption, not a "protected" flag a reader can ignore.</span></div>
+						<div class="stat"><b>Sanitize</b><span>A file that carries nothing you didn't intend to send.</span></div>
+						<div class="stat"><b>{stats.tests ?? '—'}</b><span>tests gate every release.</span></div>
+						<div class="stat"><b>Apache 2.0</b><span>Free forever, open source.</span></div>
+						<div class="stat"><b>6</b><span>languages, everything on-device.</span></div>
+					</div>
+					<p class="fine-print">
+						This page asks GitHub for the latest version number so the button below is always
+						current. The app never does.
+					</p>
+
+					<div class="pet" data-pet="ori">
+						<span class="fig pet-arrive-target">
+							<span class="pet-anim" set:html={oriTwitch} aria-hidden="true"></span>
+							<img class="pet-poster" src={`${base}/assets/ori-figure.svg`} width="128" height="128" alt="" aria-hidden="true" />
+						</span>
+						<p class="bubble">Don't trust me. <a href={site.repoUrl}>Read the source.</a> I did.</p>
+					</div>
+				</div>
+			</section>
+
+			<!-- Ma — why + the living guides -->
+			<section id="ma" class="fold act">
+				<div class="wrap">
+					<div class="act-head centered" data-num="間" data-reveal>
+						<p class="kicker"><span class="k-num" lang="ja" aria-hidden="true">間</span><span class="sr-only">Ma — the margin</span>The margin</p>
+						<h2>Why it folds this way.</h2>
+						<p class="ma-body">
+							Basic file work on a Mac shouldn't require a subscription, an upload, or a small
+							ceremony. Preview is excellent until the job gets complicated; the more capable tools
+							rent your own files back to you. So Orifold is the workspace I wanted: native, local,
+							and free — where merging, editing, signing, and protecting a document are one calm
+							sequence, not six errands across five apps. Still a beta, built in the open, one honest
+							fold at a time.
+						</p>
+					</div>
+
+					<div class="guides" data-reveal>
+						<div class="guide" data-pet="gami">
+							<span class="guide-fig" set:html={gamiWag} aria-hidden="true"></span>
+							<img class="guide-poster" src={`${base}/assets/gami-figure.svg`} width="96" height="96" alt="" aria-hidden="true" />
+							<div class="guide-copy">
+								<h3>Gami</h3>
+								<p>A calm paper Bernedoodle — your everyday guide. Shows up when something needs you, then folds back into the corner.</p>
+							</div>
+						</div>
+						<div class="guide" data-pet="ori">
+							<span class="guide-fig" set:html={oriTwitch} aria-hidden="true"></span>
+							<img class="guide-poster" src={`${base}/assets/ori-figure.svg`} width="96" height="96" alt="" aria-hidden="true" />
+							<div class="guide-copy">
+								<h3>Ori</h3>
+								<p>A clever paper Siberian — precise and a touch bossy. She keeps an eye on the technical corners: signing, privacy, the fine print.</p>
+							</div>
+						</div>
+					</div>
+
+					<figure class="shot act-figure" data-reveal>
+						<div class="frame mid">
+							<img src={cap('language-switcher.png')} width="1200" height="752" loading="lazy" decoding="async" alt="Orifold's welcome screen: the app open with Gami in the corner and a language menu showing English, Español, Français, हिन्दी, 简体中文, 日本語." />
+						</div>
+						<figcaption class="tabnum">Real capture — Orifold v{rel.version}. Not a render — Gami greets you in the app, in six languages.</figcaption>
+					</figure>
+				</div>
+			</section>
+
+			<hr class="crease-line" />
+
+			<!-- Horizon — what folds next (a witty, optimistic teaser; NOT a delivery promise) -->
+			<section id="horizon" class="fold act">
+				<div class="wrap">
+					<div class="act-head centered" data-num="翔" data-reveal>
+						<p class="kicker">Still folding · The horizon</p>
+						<h2>The crane keeps folding.</h2>
+						<p class="lede">
+							Orifold is genuinely useful today — and nowhere near finished. Object editing just
+							landed (in beta); a few more folds are taking shape on the workbench. A friendly
+							sneak peek, not a blood oath.
+						</p>
+					</div>
+
+					<div class="feature-band">
+						<div class="card-grid">
+							<div class="of-card" data-reveal style="--d:0">
+								<span class="card-kanji" aria-hidden="true">消</span>
+								<span class="glyph" aria-hidden="true" set:html={icRedact} />
+								<h3>Real redaction</h3>
+								<p>Secrets that actually <em>leave</em> the file — not a polite black rectangle you can drag right off.</p>
+							</div>
+							<div class="of-card" data-reveal style="--d:1">
+								<span class="card-kanji" aria-hidden="true">束</span>
+								<span class="glyph" aria-hidden="true" set:html={icBatch} />
+								<h3>Fold the whole stack</h3>
+								<p>Compress, OCR, or watermark a whole folder in one pass — not open, save, repeat, fifty times over.</p>
+							</div>
+							<div class="of-card" data-reveal style="--d:2">
+								<span class="card-kanji" aria-hidden="true">較</span>
+								<span class="glyph" aria-hidden="true" set:html={icCompare} />
+								<h3>Side-by-side compare</h3>
+								<p>Two drafts, one screen. Spot the change without printing both and playing spot-the-difference.</p>
+							</div>
+							<div class="of-card" data-reveal style="--d:3">
+								<span class="card-kanji" aria-hidden="true">速</span>
+								<span class="glyph" aria-hidden="true" set:html={icFast} />
+								<h3>Big docs, quick feet</h3>
+								<p>Three-hundred-page beasts that scroll like pamphlets.</p>
+							</div>
+							<div class="of-card" data-reveal style="--d:4">
+								<span class="card-kanji" aria-hidden="true">界</span>
+								<span class="glyph" aria-hidden="true" set:html={icGlobe} />
+								<h3>More languages</h3>
+								<p>Six today, more in night school — the interface <em>and</em> the OCR that reads your scans.</p>
+							</div>
+							<div class="of-card" data-reveal style="--d:5">
+								<span class="card-kanji" aria-hidden="true">扉</span>
+								<span class="glyph" aria-hidden="true" set:html={icUnlock} />
+								<h3>A calmer first launch</h3>
+								<p>Zero security theater on first open — pending one very official Apple handshake.</p>
+							</div>
+						</div>
+						<p class="fine-print centered-row" data-reveal style="margin-top: clamp(2.2rem, 5vw, 3rem)">
+							Built part-time, in the open — so the order may shuffle and a fold or two may take the
+							scenic route. The direction holds: more useful, more polished, more delightful.
+							Got a fold you'd love to see? <a href={`${site.repoUrl}/issues`}>Tell us</a>.
+						</p>
+					</div>
+				</div>
+			</section>
+
+			<hr class="crease-line" />
+
+			<!-- Updates — how new folds reach you (consent-first). Copy is grounded in the
+			     shipped in-app updater: menu "Check for Updates…", an off-by-default
+			     ~daily version-only auto-check, and — only when the user asks — an in-app
+			     download that is SHA-256-verified against the published checksum. Orifold
+			     never downloads or installs on its own. -->
+			<section id="updates" class="fold act" aria-labelledby="updates-title">
+				<div class="wrap">
+					<div class="act-head centered" data-num="新" data-reveal>
+						<p class="kicker">Kept current · The quiet fold</p>
+						<h2 id="updates-title">It tells you.<br />You decide.</h2>
+						<p class="lede">
+							Orifold watches for new versions and lets you know — then waits for your say-so.
+							When you're ready it can download the next version and check it against the
+							published checksum, right inside the app. Nothing downloads or installs on its
+							own, and the only thing it ever asks the network is "is there a newer version?"
+						</p>
+					</div>
+
+					<div class="feature-band">
+						<div class="card-grid">
+							<div class="of-card" data-reveal style="--d:0">
+								<span class="card-kanji" aria-hidden="true">報</span>
+								<span class="glyph" aria-hidden="true" set:html={icNotify} />
+								<h3>You'll always know</h3>
+								<p>Pick <b>Check for Updates…</b> from the Orifold menu whenever you like. A calm, native dialog tells you if you're current or a newer fold is out — plain language, never a cryptic error code.</p>
+							</div>
+							<div class="of-card" data-reveal style="--d:1">
+								<span class="card-kanji" aria-hidden="true">諾</span>
+								<span class="glyph" aria-hidden="true" set:html={icConsent} />
+								<h3>Never behind your back</h3>
+								<p>Automatic checks are <b>off by default</b>, and even switched on they only ever <b>check</b> — about once a day. Downloading and installing happen solely when you choose, and any open work is saved first. Nothing is silent.</p>
+							</div>
+							<div class="of-card" data-reveal style="--d:2">
+								<span class="card-kanji" aria-hidden="true">家</span>
+								<span class="glyph" aria-hidden="true" set:html={icOnDevice} />
+								<h3>One quiet question</h3>
+								<p>A check is a single outbound request for the latest version number. Nothing about you, and nothing about your documents, is ever sent. The rest of the app stays fully offline.</p>
+							</div>
+						</div>
+						<p class="lede update-when" data-reveal style="margin-inline:auto">
+							When a new version is out, updating is one calm step — let Orifold download and
+							verify it for you, or drag in the fresh copy, re-run the installer, or
+							<code>brew upgrade</code>. Every release brings real fixes and new folds, written
+							up in plain English.
+						</p>
+						<p class="guides-row centered-row" data-reveal>
+							<a href={`${base}/get-started/update-uninstall/`}>How updating works</a> · <a class="arrow-link" href={`${base}/releases/`}>See what's new<span class="arrow-ico-wrap"><Fragment set:html={icoChevron} /></span></a>
+						</p>
+					</div>
+				</div>
+			</section>
+
+			<hr class="crease-line" />
+
+			<!-- Download — take flight -->
+			<section id="final-fold" class="fold act download-fold">
+				<div class="wrap">
+					<div class="act-head centered" data-num="飛" data-reveal>
+						<p class="kicker">Final fold · Take flight</p>
+						<h2>Take it home.</h2>
+					</div>
+					<div class="final-crane" data-reveal aria-hidden="true">
+						<img src={`${base}/assets/orifold-app-icon-512.png`} width="512" height="512" loading="lazy" decoding="async" alt="" />
+					</div>
+					<div class="dl-grid">
+						<div class="dl-user" data-reveal style="min-width:0">
+							<a class="btn btn-primary btn-lg" id="cta-final" href={downloadHref}>
+								<span class="btn-face"><Fragment set:html={icoApple} /><span class="btn-main">Download for Mac</span></span>
+								<span class="btn-sub">{subLabel}</span>
+							</a>
+							<p class="meta-row tabnum" aria-label="Download details">
+								<span class="badge"><span class="badge-ico" set:html={badgeIco.package} /><span id="asset-kind-label">{assetKind} · v{rel.version}</span></span>
+								{rel.dmgSize && <span class="badge"><span class="badge-ico" set:html={badgeIco.drive} /><span id="asset-size-label">{rel.dmgSize}</span></span>}
+								<span class="badge"><span class="badge-ico" set:html={badgeIco.chip} />{site.arch}</span>
+								<span class="badge"><span class="badge-ico" set:html={badgeIco.apple} />macOS {site.minMacOS}+</span>
+							</p>
+							<p class="lede">
+								One universal app — it runs natively on Apple Silicon and Intel, on any Mac
+								with macOS {site.minMacOS} Sonoma or newer.
+							</p>
+
+							<div class="pet" data-pet="gami">
+								<span class="fig pet-arrive-target">
+									<span class="pet-anim" set:html={gamiWag} aria-hidden="true"></span>
+									<img class="pet-poster" src={`${base}/assets/gami-figure.svg`} width="104" height="104" alt="" aria-hidden="true" />
+								</span>
+								<p class="bubble">One-time thing. Two seconds. Here's how —</p>
+							</div>
+							<div class="callout-note">
+								<p>Orifold is free and open source, so builds aren't notarized by Apple yet. One-time first launch:</p>
+								<p><b>macOS 14:</b> right-click Orifold → Open → Open.</p>
+								<p><b>macOS 15:</b> open Orifold once (it's blocked), then System Settings → Privacy &amp; Security → <b>Open Anyway</b> → password.</p>
+								<p>Prefer zero dialogs? Install with Homebrew below — it handles Gatekeeper for you.</p>
+							</div>
+
+							<details class="details">
+								<summary>Other ways to install</summary>
+								<div class="chip-cmd" style="margin-top:0.8rem">
+									<code>brew install --cask orifold</code>
+									<button type="button" class="copy-btn" data-copy="brew install --cask orifold" aria-label="Copy Homebrew command">
+										<Fragment set:html={icoClipboard} /><span class="copy-btn-label">Copy</span>
+									</button>
 								</div>
+								<p class="fine-print" style="margin-top:0.8rem">
+									Or the direct <a href={rel.zipUrl}>.zip</a>. <a class="arrow-link" href={rel.allReleasesUrl}>All releases<span class="arrow-ico-wrap"><Fragment set:html={icoChevron} /></span></a>
+								</p>
+							</details>
+						</div>
+
+						<div class="dl-dev" data-reveal style="--d:1; min-width:0">
+							<h3>Build it yourself</h3>
+							<div class="term-card">
+								<div style="overflow-wrap:anywhere"><span class="prompt">❯</span> git clone {site.repoUrl}.git</div>
+								<div><span class="prompt">❯</span> cd Orifold</div>
+								<div><span class="prompt">❯</span> ./scripts/install-mac.command</div>
+							</div>
+							<div class="pet" data-pet="ori">
+								<span class="fig pet-arrive-target">
+									<span class="pet-anim" set:html={oriTwitch} aria-hidden="true"></span>
+									<img class="pet-poster" src={`${base}/assets/ori-figure.svg`} width="104" height="104" alt="" aria-hidden="true" />
+								</span>
+								<p class="bubble">Doubt me? Build it yourself.</p>
 							</div>
 						</div>
 					</div>
 				</div>
 			</section>
+			<hr class="crease-line" />
 
-			<!-- Close · take flight -->
-			<section class="close-band" id="take-flight" aria-labelledby="close-title">
-				<img class="close-fold" src={`${base}/assets/orifold-app-icon-512.png`} width="512" height="512" loading="lazy" decoding="async" alt="" aria-hidden="true" />
-				<div class="close-word mincho">Orifold</div>
-				<div class="close-tag">One sheet, folded into flight</div>
-				<h2 id="close-title" class="sr-only">Take it home</h2>
-				<div class="actions">
-					<a class="primary" id="cta-final" href={downloadHref}>
-						<span class="p-main"><Fragment set:html={icoApple} /><span class="mac-only">Download for Mac</span><span class="not-mac-only" hidden>View on GitHub</span></span>
-						<span class="p-sub">{assetKind} · v{rel.version}{sizePart}</span>
-					</a>
-					<a class="ghost" href={`${base}/get-started/what-is-orifold/`}><Fragment set:html={icoBook} />Read the docs</a>
+			<!-- Paper fortune spotlight: the page's closing delight. SSR renders a real
+			     first fortune (no-JS and pre-hydration visitors get a real line); the
+			     inline script shuffles on click and gently auto-refolds while the section
+			     is on screen. All bursts are finite and reduced-motion safe. -->
+			<section id="fortune-fold" class="fold fortune-fold" aria-labelledby="fortune-eyebrow">
+				<div class="ff-decor" aria-hidden="true">
+					<span class="ff-glow ff-glow-a"></span>
+					<span class="ff-glow ff-glow-b"></span>
+					<span class="ff-dot ff-dot-1"></span>
+					<span class="ff-dot ff-dot-2"></span>
+					<span class="ff-dot ff-dot-3"></span>
+					<span class="ff-dot ff-dot-4"></span>
 				</div>
-				<p class="close-note mac-only">
-					Free and open source, so builds aren't notarized by Apple yet. First launch: <b>right-click Orifold → Open → Open</b>. Prefer zero dialogs? Install with Homebrew — it clears Gatekeeper for you.
-				</p>
-				<div class="chip-cmd">
-					<code>brew install --cask orifold</code>
-					<button type="button" class="copy-btn" data-copy="brew install --cask orifold" aria-label="Copy Homebrew command">Copy</button>
+				<div class="wrap">
+					<div class="fortune-card" data-reveal>
+						<span class="ff-aura" aria-hidden="true"></span>
+						<span class="ff-pets" aria-hidden="true">
+							<span class="ff-pets-glow"></span>
+							<span class="ff-pet ff-pet-gami" data-pet="gami">
+								<span class="guide-fig" set:html={gamiWag}></span>
+								<img class="guide-poster" src={`${base}/assets/gami-figure.svg`} width="96" height="96" alt="" />
+							</span>
+							<span class="ff-pet ff-pet-ori" data-pet="ori">
+								<span class="guide-fig" set:html={oriTwitch}></span>
+								<img class="guide-poster" src={`${base}/assets/ori-figure.svg`} width="96" height="96" alt="" />
+							</span>
+						</span>
+						<div class="ff-copy">
+							<span class="ff-eyebrow" id="fortune-eyebrow"><span class="ff-eyebrow-dot" aria-hidden="true"></span>Today's fold</span>
+							<p class="fortune-line" id="fortune-line" aria-live="polite">One sheet, folded with stubborn optimism.</p>
+						</div>
+						<button type="button" class="ff-refold" id="fortune-refold" aria-label="Refold — a new paper fortune">
+							<span class="fortune-ico" aria-hidden="true">
+								<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 3.8h2.2v2.2"/><path d="M16.4 5.9A6.6 6.6 0 1 0 17 10"/></svg>
+							</span>
+							<span>Refold</span>
+						</button>
+					</div>
 				</div>
 			</section>
 		</main>
 
-		<footer>
-			<p>Folded by hand · Apache-2.0</p>
-			<nav aria-label="Footer">
-				<a href={`${base}/get-started/what-is-orifold/`}>Docs</a>
-				<a href={`${base}/releases/`}>What's new</a>
-				<a href={`${base}/settings/privacy/`}>Privacy</a>
-				<a href={site.repoUrl}>GitHub</a>
-				<a href={rel.releaseUrl}>v{rel.version}</a>
-			</nav>
-			<div class="palette" aria-hidden="true">
-				<span title="Washi #F4F1E8" style="background:#f4f1e8"></span>
-				<span title="Sumi #1B1A17" style="background:#1b1a17"></span>
-				<span title="Ai indigo #2B4566" style="background:#2b4566"></span>
-				<span title="Shu vermilion #C1442F" style="background:#c1442f"></span>
-				<span title="Silver #A9A69C" style="background:#a9a69c"></span>
+		<footer class="landing-footer">
+			<div class="wrap">
+				<p class="row">
+					<strong>Folded by hand. Apache 2.0 licensed.</strong>
+					<span class="palette" aria-hidden="true">
+						<span title="Washi #F6F3EA" style="background:#f6f3ea"></span>
+						<span title="Ink #1E1C17" style="background:#1e1c17"></span>
+						<span title="Ai indigo #2B4566" style="background:#2b4566"></span>
+						<span title="Ice #75BFD4" style="background:#75bfd4"></span>
+						<span title="Tancho #C13A2A — the one reserved red" style="background:#c13a2a"></span>
+					</span>
+				</p>
+				<p class="row">
+					<a href={`${base}/get-started/what-is-orifold/`}>Docs</a>
+					<a href={`${base}/releases/`}>What's New</a>
+					<a href={`${base}/settings/privacy/`}>Privacy</a>
+					<a href={site.repoUrl}>GitHub</a>
+					<a href={`${site.repoUrl}/blob/main/LICENSE`}>License</a>
+					<a class="tabnum" href={rel.releaseUrl}>v{rel.version}{releasedDate ? ` · released ${releasedDate}` : ''}</a>
+				</p>
+				<p class="sig">
+					Since nothing you do in Orifold ever leaves your Mac, stars are the only telemetry we
+					get. ⭐
+				</p>
 			</div>
 		</footer>
 
 		<script is:inline>
 			(function () {
 				var d = document.documentElement;
-				var reduce = d.classList.contains('no-motion');
+				var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+				var body = document.body;
 
-				// ── non-Mac CTA swap (label already gated by CSS; toggle hidden + href) ──
-				if (d.classList.contains('not-mac')) {
-					var repoUrl = (document.body && document.body.dataset.repoUrl) || '';
-					['cta-hero', 'cta-final'].forEach(function (id) {
-						var a = document.getElementById(id);
-						if (!a) return;
-						if (repoUrl) a.setAttribute('href', repoUrl);
-						var mac = a.querySelector('.mac-only');
-						var nm = a.querySelector('.not-mac-only');
-						if (mac) mac.setAttribute('hidden', '');
-						if (nm) nm.removeAttribute('hidden');
+				// ── theme toggle (light ⇄ dark) ────────────────────────────
+				// The initial theme was already resolved pre-paint in <head>; this only
+				// wires the nav toggle and persists changes to the shared 'starlight-theme'
+				// key (so the choice carries into the Starlight docs too). Picking a theme
+				// also retires the first-visit note — a choice has been made.
+				var themeToggle = document.querySelector('.theme-toggle');
+				function syncToggle(theme) {
+					if (!themeToggle) return;
+					var toDark = theme !== 'dark';
+					var label = toDark ? 'Switch to dark mode' : 'Switch to light mode';
+					themeToggle.setAttribute('aria-label', label);
+					themeToggle.setAttribute('title', label);
+					themeToggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+				}
+				function setTheme(theme) {
+					d.dataset.theme = theme;
+					try { localStorage.setItem('starlight-theme', theme); } catch (e) {}
+					d.classList.remove('theme-unchosen');
+					syncToggle(theme);
+				}
+				syncToggle(d.dataset.theme === 'dark' ? 'dark' : 'light');
+				if (themeToggle) {
+					themeToggle.addEventListener('click', function () {
+						setTheme(d.dataset.theme === 'dark' ? 'light' : 'dark');
+					});
+				}
+				// Dismissing the note (without picking a theme) also hides it for good.
+				var noteDismiss = document.querySelector('.theme-note-dismiss');
+				if (noteDismiss) {
+					noteDismiss.addEventListener('click', function () {
+						try { localStorage.setItem('orifold-theme-note', 'dismissed'); } catch (e) {}
+						d.classList.remove('theme-unchosen');
 					});
 				}
 
-				// ── scroll reveals ──
+				// ── reveal observer ──────────────────────────────────────────
 				var revealed = document.querySelectorAll('[data-reveal]');
-				if (reduce || !('IntersectionObserver' in window)) {
-					revealed.forEach(function (el) { el.classList.add('in'); });
+				if ('IntersectionObserver' in window && !reduce) {
+					var revIO = new IntersectionObserver(
+						function (entries) {
+							entries.forEach(function (e) {
+								if (e.isIntersecting) {
+									e.target.classList.add('in');
+									revIO.unobserve(e.target);
+								}
+							});
+						},
+						{ threshold: 0.14 }
+					);
+					revealed.forEach(function (el) { revIO.observe(el); });
 				} else {
-					var io = new IntersectionObserver(function (entries) {
-						entries.forEach(function (e) {
-							if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
-						});
-					}, { threshold: 0.16, rootMargin: '0px 0px -8% 0px' });
-					revealed.forEach(function (el) { io.observe(el); });
+					revealed.forEach(function (el) { el.classList.add('in'); });
 				}
 
-				// ── route-progress thread (reader-drawn) ──
+				// ── route-progress thread — drawn by the reader, not a timer ──
 				var thread = document.querySelector('.route-progress');
-				var raf = 0;
-				function draw() {
-					raf = 0;
+				var threadRaf = 0;
+				function drawThread() {
+					threadRaf = 0;
 					if (!thread) return;
 					var doc = document.documentElement;
 					var max = doc.scrollHeight - doc.clientHeight;
 					thread.style.transform = 'scaleX(' + (max > 0 ? doc.scrollTop / max : 0) + ')';
 				}
-				addEventListener('scroll', function () { if (!raf) raf = requestAnimationFrame(draw); }, { passive: true });
-				draw();
+				addEventListener('scroll', function () { if (!threadRaf) threadRaf = requestAnimationFrame(drawThread); }, { passive: true });
+				drawThread();
 
-				// ── the fold: play once, then settle on the held crane pose ──
-				// The crane-fold SVG loops indefinitely; snap it to its crown-visible
-				// held pose (~3.2s) and freeze, so the hero rests calm rather than
-				// folding on forever. Poll the SVG's own clock (robust under load).
-				var crane = document.getElementById('hero-crane');
-				var svg = crane && crane.querySelector('.crane-anim svg');
-				if (svg && svg.pauseAnimations) {
-					var SETTLE = 3.2, done = false;
-					var settle = function () {
-						if (done) return;
-						try {
-							if (svg.getCurrentTime() !== SETTLE) svg.setCurrentTime(SETTLE);
-							svg.pauseAnimations();
-						} catch (e) { return; }
-						done = true;
-						var art = crane.querySelector('.crane-art') || crane;
-						art.classList.add('crane-float');
-					};
-					if (reduce) { settle(); }
-					else {
-						(function watch() {
-							if (done) return;
-							try { if (svg.getCurrentTime() >= SETTLE) { settle(); return; } } catch (e) { return; }
-							requestAnimationFrame(watch);
-						})();
-						document.addEventListener('visibilitychange', function () { if (!document.hidden) settle(); });
+				// ── pet controller: pets play while on screen, pause off-screen ─
+				function petSvg(el) { return el.querySelector('.pet-anim svg') || el.querySelector('.guide-fig svg'); }
+				// Pause every pet's SMIL on load (they carry begin="0s" repeatCount="indefinite",
+				// which only JS can stop). We then unpause a pet only while it's on screen and
+				// re-pause it when it leaves — so at most the visible pets ever animate, and
+				// reduced-motion visitors (who see the static poster instead) never trigger a play.
+				document.querySelectorAll('.pet-anim svg, .guide-fig svg').forEach(function (svg) {
+					if (svg.pauseAnimations) { try { svg.pauseAnimations(); } catch (e) {} }
+				});
+				if ('IntersectionObserver' in window) {
+					var petIO = new IntersectionObserver(
+						function (entries) {
+							entries.forEach(function (e) {
+								var svg = petSvg(e.target);
+								if (e.isIntersecting) {
+									e.target.classList.add('pet-arrived');
+									if (!reduce && svg && svg.unpauseAnimations) { try { svg.unpauseAnimations(); } catch (er) {} }
+								} else if (svg && svg.pauseAnimations) {
+									try { svg.pauseAnimations(); } catch (er) {}
+								}
+							});
+						},
+						{ threshold: 0.4 }
+					);
+					document.querySelectorAll('.pet, .guide, .ff-pet').forEach(function (p) { petIO.observe(p); });
+				} else {
+					document.querySelectorAll('.pet, .guide, .ff-pet').forEach(function (p) { p.classList.add('pet-arrived'); });
+				}
+
+				// ── Gami→Ori handoff tint (with hysteresis) ──────────────────
+				var handoff = document.querySelector('.pet[data-handoff]');
+				if (handoff && 'IntersectionObserver' in window) {
+					var flipped = false;
+					var hoIO = new IntersectionObserver(
+						function (entries) {
+							entries.forEach(function (e) {
+								if (e.isIntersecting && !flipped) { body.dataset.guide = 'ori'; flipped = true; }
+								else if (!e.isIntersecting && flipped && e.boundingClientRect.top > 0) {
+									body.dataset.guide = 'gami'; flipped = false;
+								}
+							});
+						},
+						{ rootMargin: '-45% 0px -45%' }
+					);
+					hoIO.observe(handoff);
+				}
+
+				// ── nav: scroll-linked active-section state ───────────────────
+				if ('IntersectionObserver' in window) {
+					var navLinks = {};
+					document.querySelectorAll('.nav .links a[href^="#"]').forEach(function (a) {
+						navLinks[a.getAttribute('href').slice(1)] = a;
+					});
+					var navSections = Object.keys(navLinks)
+						.map(function (id) { return document.getElementById(id); })
+						.filter(Boolean);
+					if (navSections.length) {
+						var navIO = new IntersectionObserver(
+							function (entries) {
+								entries.forEach(function (e) {
+									var link = navLinks[e.target.id];
+									if (!link) return;
+									if (e.isIntersecting) {
+										Object.keys(navLinks).forEach(function (id) {
+											navLinks[id].classList.remove('is-active');
+											navLinks[id].removeAttribute('aria-current');
+										});
+										link.classList.add('is-active');
+										link.setAttribute('aria-current', 'true');
+									}
+								});
+							},
+							{ rootMargin: '-45% 0px -50%' }
+						);
+						navSections.forEach(function (s) { navIO.observe(s); });
 					}
 				}
 
-				// ── copy the brew command ──
-				var copyBtn = document.querySelector('.copy-btn');
-				if (copyBtn && navigator.clipboard) {
-					copyBtn.addEventListener('click', function () {
-						navigator.clipboard.writeText(copyBtn.getAttribute('data-copy') || '').then(function () {
-							var t = copyBtn.textContent;
-							copyBtn.textContent = 'Copied';
-							setTimeout(function () { copyBtn.textContent = t; }, 1600);
+				// ── hero crane: play once, then freeze on the held crane pose ──
+				// This is the real animated brand mark (orifold-crane-fold.svg). Its SMIL
+				// animations all loop indefinitely over a 7.6s cycle, so the settle time
+				// must land on the fully-formed crane pose (WITH its tancho crown visible):
+				// verified frame-by-frame, 3.2s sits centered in the held window. That
+				// window is only ~300ms wide and setTimeout drifts under load, so we poll
+				// the SVG's own getCurrentTime() every animation frame and pause the
+				// instant it crosses the target — locked to the real clock.
+				var heroCrane = document.getElementById('hero-crane');
+				var craneArt = heroCrane && heroCrane.querySelector('.crane-art');
+				var heroCraneSvg = craneArt && craneArt.querySelector('svg');
+				if (heroCraneSvg && heroCraneSvg.pauseAnimations) {
+					var settleTime = 3.2;
+					var craneSettled = false;
+					// Snap to the held crane pose and freeze there, exactly once. Called both
+					// from the rAF poll below (the normal foreground-load path) AND from a
+					// visibilitychange listener — rAF is fully suspended in background tabs,
+					// so a page opened in a background tab may never get a single callback
+					// while hidden. Jumping straight to settleTime on becoming visible
+					// guarantees a correct, crown-visible pose the instant it is looked at.
+					var settleCrane = function () {
+						if (craneSettled) return;
+						try {
+							if (heroCraneSvg.getCurrentTime() !== settleTime) heroCraneSvg.setCurrentTime(settleTime);
+							heroCraneSvg.pauseAnimations();
+						} catch (e) {
+							return;
+						}
+						craneSettled = true;
+						// The crane holds its crown-visible pose: one quiet gleam across the
+						// tile (crest-lit → .crane-sheen one-shot) and a gentle float after.
+						if (heroCrane) heroCrane.classList.add('crest-lit');
+						if (craneArt) craneArt.classList.add('crane-settled');
+					};
+					if (reduce) {
+						settleCrane();
+					} else {
+						(function watchSettle() {
+							if (craneSettled) return;
+							try {
+								if (heroCraneSvg.getCurrentTime() >= settleTime) {
+									settleCrane();
+									return;
+								}
+							} catch (e) {
+								return;
+							}
+							requestAnimationFrame(watchSettle);
+						})();
+						document.addEventListener('visibilitychange', function () {
+							if (!document.hidden) settleCrane();
 						});
+					}
+				}
+
+				// ── copy buttons ─────────────────────────────────────────────
+				// Only claim success once navigator.clipboard.writeText actually resolves —
+				// it can be unavailable (non-secure origin, restrictive Permissions-Policy,
+				// older WebKit) or reject (document not focused), and a fire-and-forget call
+				// would show "Copied" either way, leaving the user with nothing on their
+				// clipboard.
+				document.querySelectorAll('.copy-btn').forEach(function (btn) {
+					var icon = btn.querySelector('.btn-ico');
+					var label = btn.querySelector('.copy-btn-label');
+					var originalIcon = icon ? icon.outerHTML : '';
+					var originalLabel = label ? label.textContent : 'Copy';
+					var revert = function () {
+						setTimeout(function () {
+							if (icon) icon.outerHTML = originalIcon;
+							icon = btn.querySelector('.btn-ico');
+							if (label) label.textContent = originalLabel;
+						}, 1400);
+					};
+					var showCopied = function () {
+						if (icon) icon.outerHTML = '<svg class="btn-ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5 8 14l7.5-8.5"/></svg>';
+						icon = btn.querySelector('.btn-ico');
+						if (label) label.textContent = 'Copied';
+						revert();
+					};
+					var showFailed = function () {
+						if (label) label.textContent = 'Copy failed';
+						revert();
+					};
+					btn.addEventListener('click', function () {
+						var txt = btn.getAttribute('data-copy');
+						if (navigator.clipboard && navigator.clipboard.writeText) {
+							navigator.clipboard.writeText(txt).then(showCopied, showFailed);
+						} else {
+							showFailed();
+						}
 					});
+				});
+
+				// ── release enhancer: confirm-or-upgrade only ─────────────────
+				var repo = body.dataset.repo;
+				if (repo && 'fetch' in window) {
+					fetch('https://api.github.com/repos/' + repo + '/releases/latest', {
+						headers: { Accept: 'application/vnd.github+json' },
+					})
+						.then(function (r) { return r.ok ? r.json() : null; })
+						.catch(function () { return null; })
+						.then(function (data) {
+							if (!data || !data.tag_name) return;
+							var v = data.tag_name.replace(/^release-/, '').replace(/^v/, '');
+							var dmgAsset = body.dataset.dmgAsset || 'Orifold.dmg';
+							var dmg = (data.assets || []).filter(function (a) { return a.name === dmgAsset; })[0];
+							document.querySelectorAll('.btn-sub').forEach(function (el) {
+								el.textContent = el.textContent.replace(/v[0-9][^\s·]*/, 'v' + v);
+							});
+							var kindLabel = document.getElementById('asset-kind-label');
+							if (kindLabel) kindLabel.textContent = kindLabel.textContent.replace(/v[0-9][^\s·]*/, 'v' + v);
+							if (dmg && !d.classList.contains('not-mac')) {
+								document.querySelectorAll('#cta-hero, #cta-final').forEach(function (a) {
+									a.setAttribute('href', dmg.browser_download_url);
+								});
+								if (kindLabel) kindLabel.textContent = kindLabel.textContent.replace(/^\.[a-z0-9]+/i, '.dmg');
+								var sizeLabel = document.getElementById('asset-size-label');
+								var mb = dmg.size ? (dmg.size / (1024 * 1024)).toFixed(1) + ' MB' : null;
+								if (mb) {
+									if (sizeLabel) {
+										// The size lives in its own icon badge, so no leading "·".
+										sizeLabel.textContent = mb;
+									} else if (kindLabel && kindLabel.parentNode) {
+										// Build a matching size badge and slot it after the kind badge
+										// (kindLabel's parent is the .badge wrapping it).
+										var sizeBadge = document.createElement('span');
+										sizeBadge.className = 'badge';
+										sizeBadge.innerHTML = '<span class="badge-ico"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.2" y="6.4" width="13.6" height="7.2" rx="2.2"/><path d="M6 10h3.4"/><circle cx="13.2" cy="10" r="1"/></svg></span><span id="asset-size-label"></span>';
+										sizeBadge.querySelector('#asset-size-label').textContent = mb;
+										kindLabel.parentNode.insertAdjacentElement('afterend', sizeBadge);
+									}
+									// The hero/final CTA .btn-sub is baked in at build time as
+									// "macOS 14+ · vX.Y.Z[ · N MB]" — the size segment is only
+									// present if the build-time release lookup had a dmg size.
+									// Backfill it once here if it's missing.
+									document.querySelectorAll('.btn-sub').forEach(function (el) {
+										if (el.textContent.indexOf(' MB') === -1) el.textContent += ' · ' + mb;
+									});
+								}
+							}
+						});
+				}
+
+				// ── non-Mac CTA swap (detection ran pre-paint in <head>) ─────
+				if (d.classList.contains('not-mac')) {
+					document.querySelectorAll('#cta-hero, #cta-final').forEach(function (a) {
+						a.setAttribute('href', body.dataset.repoUrl || a.href);
+						var main = a.querySelector('.btn-main');
+						var sub = a.querySelector('.btn-sub');
+						if (main) main.textContent = 'View on GitHub';
+						if (sub) sub.textContent = 'Orifold is a Mac app';
+					});
+				}
+			})();
+		</script>
+
+		<script is:inline>
+			// ── paper fortune spotlight: a witty on-brand one-liner, promoted to its
+			// own closing stage. Progressive: the SSR line is already a real joke, so
+			// no-JS and pre-hydration visitors see something real. On load we swap in a
+			// random line; the Refold button shuffles to a different one, never repeating
+			// back-to-back; and while the section is on screen we gently auto-refold.
+			// Each refold toggles .is-refolded on the section to re-fire the finite
+			// one-shot pop (the global reduced-motion rule neutralizes it). We skip the
+			// auto-cycle entirely under reduced motion, when the tab is hidden, when the
+			// section is off screen, or while it holds focus — so it never interrupts a
+			// keyboard/screen-reader visitor mid-interaction or spams the aria-live line.
+			(function () {
+				var section = document.getElementById('fortune-fold');
+				if (!section) return;
+				var line = document.getElementById('fortune-line');
+				var refold = document.getElementById('fortune-refold');
+				if (!line || !refold) return;
+				var lines = [
+					'One sheet, folded with stubborn optimism.',
+					'The cloud was not consulted. It never is.',
+					'Nothing on this page phoned home — not even this joke.',
+					"Your files never left your Mac. You're welcome.",
+					"Somewhere, a subscription is confused about why you're smiling.",
+					"Fold responsibly — cranes don't grow back.",
+					'No trackers, no cookies. We fold our own snacks.',
+					'PDFs are Pretty Difficult, Frankly. We disagree — politely.',
+					"This card folded itself. It's quietly proud.",
+					'A crane a day keeps the file room away.',
+					'Made of one sheet, two paper pets, and zero telemetry.',
+				];
+				var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+				// Seed "last" with the SSR line so the first random pick won't repeat it.
+				var last = lines.indexOf(line.textContent.trim());
+				function pick() {
+					if (lines.length < 2) return 0;
+					var i = Math.floor(Math.random() * lines.length);
+					if (i === last) i = (i + 1) % lines.length;
+					last = i;
+					return i;
+				}
+				function refoldTo(animate) {
+					line.textContent = lines[pick()];
+					if (animate && !reduce) {
+						section.classList.remove('is-refolded');
+						void section.offsetWidth; // reflow so the one-shot pop restarts
+						section.classList.add('is-refolded');
+					}
+				}
+				// Fresh line on every load (no animation — it's the initial paint).
+				refoldTo(false);
+				refold.addEventListener('click', function () { refoldTo(true); });
+
+				// Gentle auto-refold, but only while it can be seen and won't disturb anyone.
+				if (!reduce) {
+					var onScreen = false;
+					if ('IntersectionObserver' in window) {
+						new IntersectionObserver(function (entries) {
+							onScreen = entries[0].isIntersecting;
+						}, { threshold: 0.5 }).observe(section);
+					}
+					setInterval(function () {
+						if (document.hidden || !onScreen) return;
+						if (section.contains(document.activeElement)) return;
+						refoldTo(true);
+					}, 8500);
 				}
 			})();
 		</script>
