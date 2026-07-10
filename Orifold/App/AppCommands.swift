@@ -35,6 +35,7 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(after: .saveItem) {
+            DiscardCloseCommandButton(locale: locale)
             PrintCommandButton(locale: locale)
         }
 
@@ -243,6 +244,28 @@ private struct PrintCommandButton: View {
         }
         .keyboardShortcut("p", modifiers: .command)
         .disabled(viewModel == nil)
+    }
+}
+
+/// File-menu escape hatch mirroring the More-menu "Discard Changes & Close" row: posts a
+/// notification so the focused document window presents the same confirmation dialog rather
+/// than acting directly. Enabled only while a document with edits is open.
+private struct DiscardCloseCommandButton: View {
+    @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
+
+    // Read `structureRevision` (bumped by every edit's `rebuild()`) so this re-evaluates its
+    // enabled state, matching how the Undo command buttons stay in sync.
+    private var hasChanges: Bool {
+        _ = viewModel?.structureRevision
+        return viewModel?.hasUnsavedChanges == true
+    }
+
+    var body: some View {
+        Button(L10n.string("appCommands.discardClose.button", locale: locale)) {
+            NotificationCenter.default.post(name: .orifoldRequestDiscardClose, object: nil)
+        }
+        .disabled(!hasChanges)
     }
 }
 

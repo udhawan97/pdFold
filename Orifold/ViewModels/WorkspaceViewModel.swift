@@ -411,6 +411,24 @@ final class WorkspaceViewModel {
     /// Never mutated during editing — used as the immutable base for page regeneration
     /// so multiple edits on the same page always start from the original content.
     private var originalMemberPDFData: [UUID: Data] = [:]
+
+    /// Immutable snapshot of the document exactly as it finished loading — the baseline
+    /// behind "Discard Changes & Close". Captured once at the end of `init`; `Data` and
+    /// `Workspace` are value types (copy-on-write), so this only retains the original
+    /// member buffers, it doesn't eagerly duplicate them until an edit replaces an entry.
+    @ObservationIgnored private var initialDocumentState: InitialDocumentState?
+
+    /// The AppKit window hosting this document, resolved by a background accessor in
+    /// `ContentView`. `discardChangesAndClose()` uses it to close the window directly,
+    /// bypassing the save-on-close path that can dead-end at "The file couldn't be saved."
+    @ObservationIgnored weak var hostingWindow: NSWindow?
+
+    private struct InitialDocumentState {
+        var workspace: Workspace
+        var memberPDFData: [UUID: Data]
+        var sourcePayloads: [UUID: SourceDocumentPayload]
+        var originalMemberPDFData: [UUID: Data]
+    }
     private static let legacyBrandToken = ["PDF", "old"].joined()
     static let textReplacementAnnotationKey = PDFAnnotationKey(rawValue: "/OrifoldTextReplacement")
     static let legacyTextReplacementAnnotationKey = PDFAnnotationKey(rawValue: "/\(legacyBrandToken)TextReplacement")
@@ -746,6 +764,15 @@ final class WorkspaceViewModel {
         reconcileCommittedEditsWithLoadedPages()
 
         if !loadedPDFs.isEmpty { rebuild() }
+
+        // Capture the document exactly as opened (post-reconcile, post-normalization) so
+        // "Discard Changes & Close" can always roll back to this known-good baseline.
+        initialDocumentState = InitialDocumentState(
+            workspace: document.workspace,
+            memberPDFData: document.memberPDFData,
+            sourcePayloads: document.sourcePayloads,
+            originalMemberPDFData: originalMemberPDFData
+        )
     }
 
     deinit {
@@ -1989,6 +2016,62 @@ final class WorkspaceViewModel {
         guard let undoManager, undoManager.canRedo else { return }
         undoManager.redo()
         disarmFormatPainter()
+    }
+
+    // MARK: - Discard changes & close
+
+    /// True once the document differs from how it was opened. Drives whether the
+    /// "Discard Changes & Close" escape hatch is offered. Reads `structureRevision` so it
+    /// re-evaluates after AppKit-driven commits (object move/resize/delete) that don't
+    /// otherwise trigger a SwiftUI refresh — the same gap the toolbar Undo button reads.
+    var hasUnsavedChanges: Bool {
+        _ = structureRevision
+        return undoManager?.canUndo == true
+    }
+
+    /// Rolls every piece of in-memory document state back to the `initialDocumentState`
+    /// captured at open, mirroring `restore(_:)` but WITHOUT registering undo — this
+    /// intentionally throws the edit history away rather than making the reset itself
+    /// undoable. Safe to call when nothing changed (a no-op restore).
+    func revertToInitialState() {
+        guard let initial = initialDocumentState else { return }
+        document.workspace = initial.workspace
+        document.memberPDFData = initial.memberPDFData
+        document.sourcePayloads = initial.sourcePayloads
+        originalMemberPDFData = initial.originalMemberPDFData
+        // Session-only editing caches/selection that must not outlive the reverted content.
+        signingIdentitiesByPlacementID = [:]
+        objectBaseData = [:]
+        objectSelection = nil
+        selectedAnnotation = nil
+        selectedStampDecorationID = nil
+        textAnalysisCache.removeAll()
+        objectAnalysisCache.removeAll()
+        loadedPDFs = initial.workspace.documents.compactMap { member in
+            guard let data = initial.memberPDFData[member.id],
+                  let pdf = PDFDocument(data: data) else { return nil }
+            return (member, pdf)
+        }
+        rebuild()
+    }
+
+    /// The escape hatch for the "The file couldn't be saved" dead-end: restores the
+    /// document to how it was opened (discarding this session's edits), clears the undo
+    /// history so SwiftUI no longer marks the window edited, then closes the window. Users
+    /// can open a document, try things, and back out cleanly even when the normal
+    /// save-on-close path is failing.
+    func discardChangesAndClose() {
+        revertToInitialState()
+        // Wipe undo/redo so the framework stops treating the document as edited; otherwise
+        // closing could re-trigger the very save-on-close that was failing.
+        undoManager?.removeAllActions()
+        // Close on the next runloop turn so this method (usually invoked from a menu/dialog
+        // button) fully unwinds first. Use `close()`, NOT `performClose(_:)`: `close()` is
+        // unconditional and never routes back through the save-on-close machinery.
+        let window = hostingWindow
+        DispatchQueue.main.async {
+            window?.close()
+        }
     }
 
     /// Undo/redo is a strong, explicit signal the user is backing out of recent actions —

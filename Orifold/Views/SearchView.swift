@@ -295,4 +295,5 @@ extension Notification.Name {
     static let orifoldShowShortcuts   = Notification.Name("orifoldShowShortcuts")
     static let orifoldToggleReaderMode = Notification.Name("orifoldToggleReaderMode")
     static let orifoldToggleTableOfContents = Notification.Name("orifoldToggleTableOfContents")
+    static let orifoldRequestDiscardClose = Notification.Name("orifoldRequestDiscardClose")
 }

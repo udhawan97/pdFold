@@ -183,6 +183,7 @@ struct ContentView: View {
     @State private var isWorkspaceDropTargeted = false
     @State private var isNavigationDropTargeted = false
     @State private var isConfirmingOverflowDelete = false
+    @State private var isConfirmingDiscardClose = false
     @State private var isShowingDocumentComfortPopover = false
     @State private var isShowingShortcutsCheatSheet = false
     @State private var isShowingShortcutsFirstRun = false
@@ -319,6 +320,7 @@ struct ContentView: View {
             onOpen: recordRecentOpenIfNeeded,
             onClose: recordRecentVisitOnClose
         ))
+        .background(WorkspaceWindowAccessor { viewModel.hostingWindow = $0 })
         .overlay(alignment: .bottomTrailing) {
             if !viewModel.memberDocuments.isEmpty {
                 PetOverlay(isChromeBusy: viewModel.operationProgress.isActive)
@@ -400,6 +402,7 @@ struct ContentView: View {
             isShowingShortcutsFirstRun: $isShowingShortcutsFirstRun,
             isShowingGuide: $isShowingGuide,
             isConfirmingOverflowDelete: $isConfirmingOverflowDelete,
+            isConfirmingDiscardClose: $isConfirmingDiscardClose,
             isShowingMoreMenu: $isShowingMoreMenu,
             pendingMoreRoute: $pendingMoreRoute,
             showTOC: $showTOC,
@@ -2926,6 +2929,7 @@ private struct ToolbarOverflowPresentations: ViewModifier {
     @Binding var isShowingShortcutsFirstRun: Bool
     @Binding var isShowingGuide: Bool
     @Binding var isConfirmingOverflowDelete: Bool
+    @Binding var isConfirmingDiscardClose: Bool
     @Binding var isShowingMoreMenu: Bool
     @Binding var pendingMoreRoute: MoreRoute?
     @Binding var showTOC: Bool
@@ -2972,6 +2976,18 @@ private struct ToolbarOverflowPresentations: ViewModifier {
                     Text(L10n.format("sidebar.removePages.confirmation.plural", count, locale: languageManager.effectiveLocale))
                 }
             }
+            .confirmationDialog(
+                L10n.string("discardClose.confirm.title"),
+                isPresented: $isConfirmingDiscardClose,
+                titleVisibility: .visible
+            ) {
+                Button(L10n.string("discardClose.confirm.confirm"), role: .destructive) {
+                    viewModel.discardChangesAndClose()
+                }
+                Button(L10n.string("discardClose.confirm.cancel"), role: .cancel) {}
+            } message: {
+                Text(L10n.string("discardClose.confirm.message"))
+            }
             .onChange(of: isShowingMoreMenu) { _, isOpen in
                 guard !isOpen, let route = pendingMoreRoute else { return }
                 pendingMoreRoute = nil
@@ -2984,8 +3000,14 @@ private struct ToolbarOverflowPresentations: ViewModifier {
                     case .shortcuts: isShowingShortcutsCheatSheet = true
                     case .guide: isShowingGuide = true
                     case .deletePages: isConfirmingOverflowDelete = true
+                    case .discardAndClose: isConfirmingDiscardClose = true
                     }
                 }
+            }
+            // The File-menu "Revert & Close Without Saving" command posts this rather than
+            // acting directly, so it routes through the same confirmation as the More-menu row.
+            .onReceive(NotificationCenter.default.publisher(for: .orifoldRequestDiscardClose)) { _ in
+                isConfirmingDiscardClose = true
             }
             .onChange(of: viewModel.memberDocuments.isEmpty) { _, isEmpty in
                 if !isEmpty { onAutoShowOnboarding() }
@@ -3014,6 +3036,25 @@ enum MoreRoute: Equatable {
     case shortcuts
     case guide
     case deletePages
+    case discardAndClose
+}
+
+/// Resolves the AppKit window hosting this document scene and hands it back so the view
+/// model can close it directly. Needed because `discardChangesAndClose()` is invoked from a
+/// popover/menu/dialog whose own window is key at that moment — `NSApp.keyWindow` would be
+/// the wrong one — so the document window is captured up front instead.
+private struct WorkspaceWindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { onResolve(view.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { onResolve(nsView.window) }
+    }
 }
 
 /// The toolbar overflow: one calm, labeled panel that absorbs every secondary control so the
@@ -3078,6 +3119,18 @@ private struct ToolbarMoreMenu: View {
 
             MoreMenuRow(systemImage: "keyboard", titleKey: "shortcuts.cheatSheet.title") { onRoute(.shortcuts) }
             MoreMenuRow(systemImage: "questionmark.circle", titleKey: "more.guide.label") { onRoute(.guide) }
+
+            // Escape hatch: only surfaced once the document has edits to back out of, so a
+            // clean viewing session never sees a destructive row it can't use.
+            if viewModel.hasUnsavedChanges {
+                divider
+                MoreMenuRow(
+                    systemImage: "arrow.uturn.backward.circle",
+                    titleKey: "more.discardClose.label",
+                    subtitleKey: "more.discardClose.subtitle",
+                    isDestructive: true
+                ) { onRoute(.discardAndClose) }
+            }
 
             divider
 
