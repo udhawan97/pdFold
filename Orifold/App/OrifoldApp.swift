@@ -23,7 +23,13 @@ struct OrifoldApp: App {
         }
         .environmentObject(languageManager)
 
-        Window("window.about.title", id: "about-orifold") {
+        // `Window`'s title parameter is a `LocalizedStringKey`, which resolves against
+        // `Bundle.main` — but the shipped app is built with pure SwiftPM, whose catalog
+        // lives in a nested `Orifold_Orifold.bundle`, so a key literal here renders the
+        // raw `window.*.title` on screen. Pass a pre-resolved `String` (selects the
+        // verbatim `StringProtocol` overload) via `L10n.string` instead. Scene titles are
+        // built once at launch, so this reflects the launch-time language.
+        Window(L10n.string("window.about.title"), id: "about-orifold") {
             AppAboutPopover()
                 .environmentObject(languageManager)
                 .environment(\.locale, languageManager.effectiveLocale)
@@ -31,7 +37,7 @@ struct OrifoldApp: App {
         .windowResizability(.contentSize)
         .defaultPosition(.center)
 
-        Window("window.softwareUpdate.title", id: SoftwareUpdateWindow.id) {
+        Window(L10n.string("window.softwareUpdate.title"), id: SoftwareUpdateWindow.id) {
             SoftwareUpdateView()
                 .environmentObject(languageManager)
                 .environment(\.locale, languageManager.effectiveLocale)

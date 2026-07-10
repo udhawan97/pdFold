@@ -22,6 +22,10 @@ final class RawLocalizationKeyLeakTests: XCTestCase {
         "Text", "Label", "Button", "Link", "Toggle", "TextField", "SecureField",
         "Picker", "Stepper", "Menu", "Section", "GroupBox", "DisclosureGroup",
         "NavigationLink",
+        // Scene-level titles are `LocalizedStringKey` too and leak identically — the
+        // v0.8.x software-update/about windows shipped raw `window.*.title` because
+        // these weren't scanned. See OrifoldApp.swift.
+        "Window", "WindowGroup", "DocumentGroup", "MenuBarExtra", "CommandMenu",
     ]
     private static let localizedStringKeyModifiers = [
         "help", "navigationTitle", "navigationSubtitle", "accessibilityLabel",
