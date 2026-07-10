@@ -40,10 +40,6 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/the-orifold-window-annotated.png" alt="The Orifold workspace: a document sidebar on the left, a PDF open on the canvas, a floating markup toolbar across the top, and the paper companion resting in the corner" width="880">
-</p>
-
-<p align="center">
   <sub>The workspace — sidebar, canvas, markup toolbar, and your paper companion, all on your Mac.</sub>
 </p>
 
