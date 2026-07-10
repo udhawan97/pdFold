@@ -231,14 +231,14 @@
     <circle cx="29" cy="120" r="2.5" fill="#2DD4BF"/>
     <text x="40" y="124" class="item">xcodebuild build + test</text>
     <circle cx="29" cy="142" r="2.5" fill="#2DD4BF"/>
-    <text x="40" y="146" class="item">354 tests in the gate</text>
+    <text x="40" y="146" class="item">700+ tests in the gate</text>
     <circle cx="29" cy="164" r="2.5" fill="#2DD4BF"/>
     <text x="40" y="168" class="item">CodeQL + dep review</text>
     <circle cx="29" cy="186" r="2.5" fill="#2DD4BF"/>
     <text x="40" y="190" class="item">plist + shell lint</text>
     <text x="24" y="228" class="badge">RELEASE — TAG / MAIN</text>
     <circle cx="29" cy="244" r="2.5" fill="#2DD4BF"/>
-    <text x="40" y="248" class="item">package Orifold.zip</text>
+    <text x="40" y="248" class="item">package DMG + zip</text>
     <circle cx="29" cy="266" r="2.5" fill="#2DD4BF"/>
     <text x="40" y="270" class="item">publish GitHub asset</text>
     <text x="24" y="308" class="badge">INSTALL — ONE LINE</text>
@@ -260,11 +260,11 @@
     </g>
     <text x="52" y="32" class="eye" fill="#94A3B8">BY THE NUMBERS</text>
     <path d="M24 52 H220" stroke="#26364E"/>
-    <text x="24" y="92" class="stat">61</text>
+    <text x="24" y="92" class="stat">104</text>
     <text x="24" y="112" class="item">Swift source files</text>
-    <text x="24" y="148" class="stat">354</text>
+    <text x="24" y="148" class="stat">700+</text>
     <text x="24" y="168" class="item">tests in the release gate</text>
-    <text x="24" y="204" class="stat">~29k</text>
+    <text x="24" y="204" class="stat">~44k</text>
     <text x="24" y="224" class="item">lines of Swift</text>
     <text x="24" y="260" class="stat">0</text>
     <text x="24" y="280" class="item">documents uploaded, ever</text>
