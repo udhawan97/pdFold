@@ -3095,7 +3095,7 @@ final class WorkspaceViewModel {
     }
 
     @discardableResult
-    func applyObjectEdit(_ operations: [ObjectEditOperation]) -> Bool {
+    func applyObjectEdit(_ operations: [ObjectEditOperation], undoActionNameKey: String = "undo.editObject") -> Bool {
         guard canPerformMutatingAction(), !operations.isEmpty else { return false }
 
         let affectedMembers = Set(operations.compactMap { workspacePageRef($0.pageRefID)?.memberDocId })
@@ -3141,12 +3141,16 @@ final class WorkspaceViewModel {
 
         rebuild()
         markWorkspaceModified()
+        // Set the action name INSIDE the isolated group. Doing it after the group closed (as the
+        // move/resize/delete callers used to) left NSUndoManager to open a fresh implicit group to
+        // hold the name — a spurious, empty top group that swallowed the first Undo.
+        let undoActionName = L10n.string(forKey: undoActionNameKey)
         registerIsolatedUndo {
             undoManager?.registerUndo(withTarget: self) { vm in
                 guard vm.canPerformUndoMutation() else { return }
-                vm.restoreInlineTextEditSnapshot(snapshot, actionName: L10n.string("undo.editObject"))
+                vm.restoreInlineTextEditSnapshot(snapshot, actionName: undoActionName)
             }
-            undoManager?.setActionName(L10n.string("undo.editObject"))
+            undoManager?.setActionName(undoActionName)
         }
         return true
     }
@@ -3328,13 +3332,13 @@ final class WorkspaceViewModel {
             originalTransform: object.transform, newTransform: newMatrix, pageRotation: Int(object.pageRotation),
             originalZIndex: object.zOrder, newZIndex: object.zOrder, replacementStrategy: .pdfiumStructural)
 
-        guard applyObjectEdit([op]) else { return oldBoundsPdf }
+        let actionKey = (canResize && sx != 1) ? "undo.resizeObject" : "undo.moveObject"
+        guard applyObjectEdit([op], undoActionNameKey: actionKey) else { return oldBoundsPdf }
         // Keep the selection in sync so a subsequent drag composes from the new state.
         var updated = object
         updated.boundsPdf = newBounds
         updated.transform = newMatrix
         objectSelection = ObjectSelectionState(pageRefID: sel.pageRefID, object: updated)
-        undoManager?.setActionName(L10n.string(canResize && sx != 1 ? "undo.resizeObject" : "undo.moveObject"))
         return newBounds
     }
 
@@ -3350,9 +3354,8 @@ final class WorkspaceViewModel {
             originalBoundsPdf: object.boundsPdf, newBoundsPdf: object.boundsPdf,
             originalTransform: object.transform, newTransform: object.transform, pageRotation: Int(object.pageRotation),
             originalZIndex: object.zOrder, newZIndex: object.zOrder, replacementStrategy: .pdfiumStructural)
-        guard applyObjectEdit([op]) else { return false }
+        guard applyObjectEdit([op], undoActionNameKey: "undo.deleteObject") else { return false }
         objectSelection = nil
-        undoManager?.setActionName(L10n.string("undo.deleteObject"))
         return true
     }
 

@@ -9,6 +9,18 @@ import Callout from '../../components/Callout.astro';
 
 <Badge variant="new" />
 
+## v0.8.10 — What you see is what's saved
+
+*Released July 2026*
+
+<Callout variant="note" label="Beta">
+	Orifold is in beta, on the road to 1.0.
+</Callout>
+
+Another bug-fix patch for the **Select** tool, this one from driving the app by hand — which caught two things the byte-level tests couldn't. **Moving or deleting an object now updates on screen right away** (before, the edit was correct in the saved file but the canvas kept showing the old position until you scrolled). And **object edits can now be undone** — <kbd>⌘Z</kbd>, the toolbar button, and the Edit menu now light up after a move/resize/delete and revert it cleanly, with the right label. Covered by a new regression test.
+
+Full changelog: [`docs/release-v0.8.10.md`](https://github.com/udhawan97/Orifold/blob/main/docs/release-v0.8.10.md).
+
 ## v0.8.9 — Tightening the hinges
 
 *Released July 2026*

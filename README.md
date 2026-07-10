@@ -31,11 +31,11 @@
 <br>
 <br>
 
-<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Universal: Apple Silicon + Intel" src="https://img.shields.io/badge/universal-Apple%20Silicon%20%2B%20Intel-111111?style=for-the-badge">&nbsp;&nbsp;<img alt="Release v0.8.9" src="https://img.shields.io/badge/release-v0.8.9-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="Beta" src="https://img.shields.io/badge/status-beta-F59E0B?style=for-the-badge">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="6 languages" src="https://img.shields.io/badge/i18n-6%20languages-8B5CF6?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
+<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Universal: Apple Silicon + Intel" src="https://img.shields.io/badge/universal-Apple%20Silicon%20%2B%20Intel-111111?style=for-the-badge">&nbsp;&nbsp;<img alt="Release v0.8.10" src="https://img.shields.io/badge/release-v0.8.10-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="Beta" src="https://img.shields.io/badge/status-beta-F59E0B?style=for-the-badge">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="6 languages" src="https://img.shields.io/badge/i18n-6%20languages-8B5CF6?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
 
 <br>
 
-<sub>Orifold is in beta. <strong>v0.8.8</strong> added <strong>object editing (beta)</strong> — a new <strong>Select</strong> tool lets you click a real graphic on the page (an image, a logo, a line, a shape), then move, resize, or delete it. <strong>v0.8.9</strong> is a bug-fix patch hardening it further. Edits are written into the file's actual content — no ghosts, no leftover copies — and survive save, reopen, and export, with full undo/redo. Ships as a universal build (Apple Silicon + Intel) in a drag-to-Applications <strong>DMG</strong> with published checksums. Built with Swift, SwiftUI, PDFKit, PDFium, qpdf, and Vision — see <a href="#-under-the-hood">Under the Hood</a>.</sub>
+<sub>Orifold is in beta. <strong>v0.8.8</strong> added <strong>object editing (beta)</strong> — a new <strong>Select</strong> tool lets you click a real graphic on the page (an image, a logo, a line, a shape), then move, resize, or delete it. <strong>v0.8.9</strong> and <strong>v0.8.10</strong> are bug-fix patches hardening it further — the latter from hands-on testing, so edits now update on the canvas the moment you make them and undo/redo works cleanly. Edits are written into the file's actual content — no ghosts, no leftover copies — and survive save, reopen, and export, with full undo/redo. Ships as a universal build (Apple Silicon + Intel) in a drag-to-Applications <strong>DMG</strong> with published checksums. Built with Swift, SwiftUI, PDFKit, PDFium, qpdf, and Vision — see <a href="#-under-the-hood">Under the Hood</a>.</sub>
 
 <br>
 <br>
@@ -346,13 +346,13 @@ Install from the current source checkout without opening the app:
 ./scripts/install-mac.sh --no-open
 ```
 
-App metadata: `CFBundleShortVersionString` `0.8.9`, `CFBundleVersion` `16`.
+App metadata: `CFBundleShortVersionString` `0.8.10`, `CFBundleVersion` `17`.
 
 Build the universal DMG the release ships (after producing the zip above):
 
 ```zsh
 ORIFOLD_UNIVERSAL=1 ./scripts/install-mac.sh --package-only --package /tmp/Orifold.zip
-zsh scripts/make-dmg.sh --from-zip /tmp/Orifold.zip --version 0.8.9
+zsh scripts/make-dmg.sh --from-zip /tmp/Orifold.zip --version 0.8.10
 ```
 </details>
 

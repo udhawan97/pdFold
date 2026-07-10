@@ -380,7 +380,9 @@ struct PDFViewRepresentable: NSViewRepresentable {
         view.onDeleteKey = { [weak coordinator = context.coordinator] in
             guard let coordinator else { return }
             if coordinator.viewModel.objectSelection != nil {
+                coordinator.alignUndoManagerToWindow()
                 _ = coordinator.viewModel.deleteSelectedObject()
+                coordinator.syncDocumentPreservingViewport(coordinator.pdfView, newDocument: coordinator.viewModel.combinedPDF)
                 coordinator.refreshObjectOverlay()
             } else {
                 coordinator.viewModel.deleteSelectedAnnotation()
@@ -764,20 +766,44 @@ struct PDFViewRepresentable: NSViewRepresentable {
             refreshObjectOverlay()
         }
 
+        /// Point the view model at the window's (document's) undo manager before an object
+        /// commit. The object commit fires from the AppKit overlay's `mouseUp`, at which point
+        /// the overlay/PDFView holds first responder and SwiftUI's `@Environment(\.undoManager)`
+        /// — the value `WorkspaceViewModel.undoManager` was last set from — can resolve to an
+        /// orphan manager that the app's Undo/Redo menu & toolbar (which read the *window's*
+        /// undo manager) don't observe. Registering the object edit there leaves it invisible:
+        /// the edit is undoable in principle but the Undo control stays disabled. Aligning to
+        /// `window?.undoManager` here guarantees the registration lands on the same manager the
+        /// UI drives, exactly like text edits (which commit from a SwiftUI context) already do.
+        fileprivate func alignUndoManagerToWindow() {
+            if let windowUndo = pdfView?.window?.undoManager {
+                viewModel.undoManager = windowUndo
+            }
+        }
+
         func setupObjectOverlay() {
             objectOverlay.onBoundsChanged = { [weak self] target, proposedBounds, oldBounds in
                 guard let self, target.isContentObject else { return proposedBounds }
                 // During the drag (oldBounds == nil) just let the outline track the cursor — the
                 // heavy structural regenerate runs only on mouse-up (oldBounds != nil).
                 guard let oldBounds else { return proposedBounds }
+                self.alignUndoManagerToWindow()
                 let applied = self.viewModel.commitObjectBoundsChange(from: oldBounds, to: proposedBounds.standardized)
+                // The commit regenerates the member's bytes into a NEW PDFDocument instance
+                // (`viewModel.combinedPDF`); `setNeedsDisplay` alone just repaints whatever
+                // `pdfView.document` already points at — the OLD, pre-edit document — so the
+                // canvas never showed the move/resize even though the underlying bytes were
+                // correct. Swap the document in, same as every other regenerating mutation.
+                self.syncDocumentPreservingViewport(self.pdfView, newDocument: self.viewModel.combinedPDF)
                 self.refreshObjectOverlay()
                 self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
                 return applied
             }
             objectOverlay.onDelete = { [weak self] target in
                 guard let self, target.isContentObject else { return }
+                self.alignUndoManagerToWindow()
                 _ = self.viewModel.deleteSelectedObject()
+                self.syncDocumentPreservingViewport(self.pdfView, newDocument: self.viewModel.combinedPDF)
                 self.refreshObjectOverlay()
                 self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
             }

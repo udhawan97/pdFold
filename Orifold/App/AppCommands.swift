@@ -142,39 +142,51 @@ private struct ReduceFileSizeCommandButton: View {
 }
 
 private struct UndoRedoCommandButtons: View {
-    @Environment(\.undoManager) private var undoManager
     @FocusedValue(\.orifoldIsImporting) private var isImporting
     @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
     var locale: Locale
 
     private var importInProgress: Bool { isImporting == true }
 
+    // Drive Undo/Redo from the view model's own undo manager — the one every edit registers on
+    // and that `performUndoCommand`/`performRedoCommand` actually operate on — NOT
+    // `@Environment(\.undoManager)`, which resolves to nil in the `.commands` scene and left the
+    // controls permanently disabled for object edits (their edit was registered and undoable, but
+    // the button never saw it). Reading `structureRevision` — bumped by every `rebuild()`,
+    // including AppKit-driven object commits that don't originate from a SwiftUI interaction —
+    // forces these buttons to re-evaluate their enabled state after such a commit.
+    private var activeUndoManager: UndoManager? {
+        _ = viewModel?.structureRevision
+        return viewModel?.undoManager
+    }
+
     private var undoTitle: String {
-        guard let name = undoManager?.undoActionName, !name.isEmpty else {
+        guard let name = activeUndoManager?.undoActionName, !name.isEmpty else {
             return L10n.string("appCommands.undo.button", locale: locale)
         }
         return L10n.format("appCommands.undo.withAction", name, locale: locale)
     }
 
     private var redoTitle: String {
-        guard let name = undoManager?.redoActionName, !name.isEmpty else {
+        guard let name = activeUndoManager?.redoActionName, !name.isEmpty else {
             return L10n.string("appCommands.redo.button", locale: locale)
         }
         return L10n.format("appCommands.redo.withAction", name, locale: locale)
     }
 
     var body: some View {
+        let undo = activeUndoManager
         Button(undoTitle) {
             viewModel?.performUndoCommand()
         }
         .keyboardShortcut("z", modifiers: .command)
-        .disabled(importInProgress || viewModel == nil || undoManager?.canUndo != true)
+        .disabled(importInProgress || viewModel == nil || undo?.canUndo != true)
 
         Button(redoTitle) {
             viewModel?.performRedoCommand()
         }
         .keyboardShortcut("y", modifiers: .command)
-        .disabled(importInProgress || undoManager?.canRedo != true)
+        .disabled(importInProgress || undo?.canRedo != true)
     }
 }
 

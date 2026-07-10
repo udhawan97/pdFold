@@ -108,6 +108,37 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         XCTAssertFalse(rectPresent(in: vm.document.memberPDFData[member]), "redo didn't delete rect")
     }
 
+    // Regression (v0.8.10): the Undo/Redo controls read `vm.undoManager` and re-evaluate on
+    // `structureRevision`. An object commit (overlay path) must (a) register an undo on that exact
+    // manager — the same one the toolbar/menu buttons check — so Undo isn't stuck disabled, with a
+    // meaningful action name, and (b) bump `structureRevision` so the SwiftUI buttons re-render
+    // after this AppKit-driven commit. This guards the fix for "object move worked but Undo stayed
+    // greyed out and Cmd-Z did nothing."
+    func testObjectCommitEnablesUndoOnViewModelManagerAndBumpsRevision() throws {
+        let vm = try makeViewModel()
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+
+        let hit = try XCTUnwrap(vm.objectHit(at: CGPoint(x: imagePDF.midX, y: imagePDF.midY), on: ref, scaleFactor: 1))
+        vm.selectObject(hit, on: ref)
+
+        let undo = try XCTUnwrap(vm.undoManager, "test must retain an undo manager")
+        XCTAssertFalse(undo.canUndo, "precondition: nothing to undo before the edit")
+        let revBefore = vm.structureRevision
+
+        let old = hit.boundsPdf
+        _ = vm.commitObjectBoundsChange(from: old, to: old.offsetBy(dx: 60, dy: -20))
+
+        // (a) The manager the UI buttons read now reports an undoable, named action.
+        XCTAssertTrue(undo.canUndo, "object commit did not register an undo on vm.undoManager — Undo would stay disabled")
+        XCTAssertEqual(undo.undoActionName, L10n.string("undo.moveObject"), "undo action name should surface in the menu")
+        // (b) The re-render trigger fired so the SwiftUI buttons re-evaluate their enabled state.
+        XCTAssertGreaterThan(vm.structureRevision, revBefore, "commit must bump structureRevision so Undo/Redo buttons refresh")
+
+        // And it actually reverts.
+        undo.undo()
+        XCTAssertFalse(vm.hasObjectEdits, "undo should clear the object edit")
+    }
+
     // Phase 3: committed object edits survive the real export → fresh-reopen path, from bytes.
     func testObjectEditsSurviveExportAndReopen() throws {
         let vm = try makeViewModel()
