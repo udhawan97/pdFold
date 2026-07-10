@@ -25,13 +25,13 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/value-props-dark.svg">
-  <img src="docs/assets/value-props-light.svg" alt="No account: nothing to sign up for, ever. No upload: your files never leave your Mac. No subscription: free and open source, MIT licensed." width="880">
+  <img src="docs/assets/value-props-light.svg" alt="No account: nothing to sign up for, ever. No upload: your files never leave your Mac. No subscription: free and open source, Apache 2.0 licensed." width="880">
 </picture>
 
 <br>
 <br>
 
-<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Universal: Apple Silicon + Intel" src="https://img.shields.io/badge/universal-Apple%20Silicon%20%2B%20Intel-111111?style=for-the-badge">&nbsp;&nbsp;<img alt="Release v0.8.10" src="https://img.shields.io/badge/release-v0.8.10-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="Beta" src="https://img.shields.io/badge/status-beta-F59E0B?style=for-the-badge">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="6 languages" src="https://img.shields.io/badge/i18n-6%20languages-8B5CF6?style=for-the-badge">&nbsp;&nbsp;<img alt="MIT License" src="https://img.shields.io/badge/license-MIT-6B7280?style=for-the-badge">
+<img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111111?style=for-the-badge&logo=apple&logoColor=white">&nbsp;&nbsp;<img alt="Universal: Apple Silicon + Intel" src="https://img.shields.io/badge/universal-Apple%20Silicon%20%2B%20Intel-111111?style=for-the-badge">&nbsp;&nbsp;<img alt="Release v0.8.10" src="https://img.shields.io/badge/release-v0.8.10-2563EB?style=for-the-badge&logo=github&logoColor=white">&nbsp;&nbsp;<img alt="Beta" src="https://img.shields.io/badge/status-beta-F59E0B?style=for-the-badge">&nbsp;&nbsp;<img alt="100% local" src="https://img.shields.io/badge/privacy-100%25%20local-10B981?style=for-the-badge">&nbsp;&nbsp;<img alt="6 languages" src="https://img.shields.io/badge/i18n-6%20languages-8B5CF6?style=for-the-badge">&nbsp;&nbsp;<img alt="Apache 2.0 License" src="https://img.shields.io/badge/license-Apache%202.0-6B7280?style=for-the-badge">
 
 <br>
 
@@ -488,7 +488,7 @@ Bug reports and feature requests are welcome in [Issues](https://github.com/udha
 
 ## 📜 License
 
-Orifold is available under the [MIT License](LICENSE).
+Orifold is available under the [Apache License 2.0](LICENSE).
 
 ---
 

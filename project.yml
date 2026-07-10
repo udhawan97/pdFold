@@ -61,7 +61,7 @@ targets:
         CFBundleDisplayName: Orifold
         CFBundleShortVersionString: "0.8.10"
         CFBundleVersion: "17"
-        NSHumanReadableCopyright: "Copyright © 2026. MIT License."
+        NSHumanReadableCopyright: "Copyright © 2026. Apache License 2.0."
         NSPrincipalClass: NSApplication
         CFBundleIconFile: AppIcon
         CFBundleIconName: AppIcon

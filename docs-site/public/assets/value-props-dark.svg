@@ -1,6 +1,6 @@
 <svg viewBox="0 0 1080 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="vpTitle vpDesc">
   <title id="vpTitle">No account, no upload, no subscription</title>
-  <desc id="vpDesc">No account: nothing to sign up for, ever. No upload: your files never leave your Mac. No subscription: free and open source, MIT licensed.</desc>
+  <desc id="vpDesc">No account: nothing to sign up for, ever. No upload: your files never leave your Mac. No subscription: free and open source, Apache 2.0 licensed.</desc>
   <defs>
     <linearGradient id="vPanel" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0A1628"/>
@@ -85,7 +85,7 @@
         <line x1="-9" y1="9" x2="9" y2="-9" stroke-width="2"/>
       </g>
       <text x="76" y="38" class="veye" fill="#DDD6FE">NO SUBSCRIPTION</text>
-      <text x="76" y="58" class="vbody">Free and open source. MIT.</text>
+      <text x="76" y="58" class="vbody">Free and open source. Apache 2.0.</text>
       <text x="20" y="96" class="vbody" fill="#64748B">$0 today, $0 forever. Read the code,</text>
       <text x="20" y="113" class="vbody" fill="#64748B">build it yourself, or just use it.</text>
     </g>

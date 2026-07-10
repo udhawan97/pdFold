@@ -121,7 +121,7 @@ const heroBadges = [
 	{ icon: badgeIco.tag, label: `v${rel.version}` },
 	...(releasedDate ? [{ icon: badgeIco.calendar, label: releasedDate }] : []),
 	{ icon: badgeIco.chip, label: site.arch },
-	{ icon: badgeIco.license, label: 'Free & MIT' },
+	{ icon: badgeIco.license, label: 'Free & Apache 2.0' },
 	{ icon: badgeIco.beta, label: 'Beta' },
 ];
 ---
@@ -432,7 +432,7 @@ const heroBadges = [
 						<div class="stat"><b>AES-256</b><span>Real encryption, not a "protected" flag a reader can ignore.</span></div>
 						<div class="stat"><b>Sanitize</b><span>A file that carries nothing you didn't intend to send.</span></div>
 						<div class="stat"><b>{stats.tests ?? '—'}</b><span>tests gate every release.</span></div>
-						<div class="stat"><b>MIT</b><span>Free forever, open source.</span></div>
+						<div class="stat"><b>Apache 2.0</b><span>Free forever, open source.</span></div>
 						<div class="stat"><b>6</b><span>languages, everything on-device.</span></div>
 					</div>
 					<p class="fine-print">
@@ -735,7 +735,7 @@ const heroBadges = [
 		<footer class="landing-footer">
 			<div class="wrap">
 				<p class="row">
-					<strong>Folded by hand. MIT licensed.</strong>
+					<strong>Folded by hand. Apache 2.0 licensed.</strong>
 				</p>
 				<p class="row">
 					<a href={`${base}/get-started/what-is-orifold/`}>Docs</a>
