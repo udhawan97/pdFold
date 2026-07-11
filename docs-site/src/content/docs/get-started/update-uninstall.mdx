@@ -18,6 +18,18 @@ Choose **Check for Updates…** from the Orifold menu, or open **Settings → Up
 
 Automatic checks are **off by default**. Turning them on lets Orifold look about once a day — only ever a version check. It never downloads or installs anything on its own, and a check never sends anything but a request for the latest version number.
 
+The **About Orifold** window (in the Orifold menu) also shows, right under the version, whether you're up to date or an update is waiting — one click there opens the same Software Update window.
+
+### Roll back to the previous version
+
+When Orifold installs an update, it quietly keeps a verified copy of the version you were on. If a new build ever misbehaves, choose **Help → Restore Previous Version…**. Orifold confirms first, makes sure your open documents are saved, then closes, checksum- and signature-verifies the saved copy, swaps it back into place, and reopens — your documents untouched. The menu item is greyed out until there's actually a saved version to go back to.
+
+If the app won't launch at all, you can do the same from Terminal against the saved archive in `~/Library/Application Support/Orifold/Rollback/`:
+
+```zsh
+scripts/install-mac.sh --restore ~/Library/Application\ Support/Orifold/Rollback/Orifold-<version>.zip
+```
+
 ### From your Desktop
 
 Double-click **Orifold.command** on your Desktop. It checks the latest release before launching, and sweeps up any stray `Orifold.app` copies (for example, one dragged straight into `/Applications`) so only one install remains. That's the entire procedure.

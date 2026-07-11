@@ -7,7 +7,7 @@ keywords: [edit objects, move object, resize image, delete shape, edit pdf graph
 import Callout from '../../../components/Callout.astro';
 
 <Callout variant="note" label="Beta">
-	Object editing is new in v0.8.8 and still growing. It works today on unrotated pages for images, logos, lines, and simple shapes. Duplicate, recolor, layering, multi-select, and rotated-page support are on the way. [Feedback](https://github.com/udhawan97/Orifold/issues) helps it mature.
+	Object editing is new in v0.8.8 and still growing. It works today on unrotated pages for images, logos, lines, and simple shapes — you can move, resize, delete, and (new in v0.8.11) restack them front-to-back. Duplicate, recolor, multi-select, and rotated-page support are on the way. [Feedback](https://github.com/udhawan97/Orifold/issues) helps it mature.
 </Callout>
 
 <Callout variant="whentouse">
@@ -21,7 +21,8 @@ import Callout from '../../../components/Callout.astro';
 3. Then:
    - **Move** — drag the object to a new spot.
    - **Resize** — drag a corner or edge handle.
-   - **Delete** — press <kbd>Delete</kbd>, or click the red delete button on the selection.
+   - **Layer** — right-click the object for **Bring to Front** or **Send to Back**, to move it above or behind the other graphics on the page.
+   - **Delete** — press <kbd>Delete</kbd>, or click the red delete button on the selection (also in the right-click menu).
 4. The page updates immediately. Use <kbd>⌘Z</kbd> / <kbd>⌘Y</kbd> to undo and redo.
 
 Your edits are written into the file's **actual content** — a moved image really moves, a deleted shape is really gone, with no ghost left behind and no duplicate. They survive **save, reopen, and export**, and open correctly in other PDF viewers.

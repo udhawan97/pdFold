@@ -23,7 +23,7 @@
 <p align="center">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-2b4566?style=flat-square&logo=apple&logoColor=white">
   <img alt="Universal — Apple Silicon + Intel" src="https://img.shields.io/badge/universal-Apple_Silicon_%2B_Intel-2b4566?style=flat-square">
-  <img alt="version v0.8.10" src="https://img.shields.io/badge/version-v0.8.10-46536b?style=flat-square">
+  <img alt="version v0.8.11" src="https://img.shields.io/badge/version-v0.8.11-46536b?style=flat-square">
   <img alt="100% local" src="https://img.shields.io/badge/privacy-100%25_local-3f6b52?style=flat-square">
   <img alt="6 languages" src="https://img.shields.io/badge/i18n-6_languages-46536b?style=flat-square">
   <img alt="Apache 2.0 License" src="https://img.shields.io/badge/license-Apache_2.0-46536b?style=flat-square">
@@ -98,7 +98,7 @@ Everything below runs on your Mac. The cloud was not consulted.
 | **Read & search** | Native PDF canvas, page indicator, inspector, workspace-wide search, password unlock prompts, distraction-free Reader Mode, Night Mode with Gentle/Paper/Amber presets |
 | **Recently viewed** | An empty-state shelf of the last files you opened, with locally cached thumbnails — nothing about it leaves the machine |
 | **Annotate** | Highlight, notes, ink, underline, strikeout, text boxes, and in-place editing of detected PDF text |
-| **Object editing** *(beta)* | The Select tool clicks a real graphic on the page — image, logo, line, or shape — then moves, resizes, or deletes it; edits are written into the file's actual content and survive save, reopen, and export, with full undo/redo |
+| **Object editing** *(beta)* | The Select tool clicks a real graphic on the page — image, logo, line, or shape — then moves, resizes, restacks (Bring to Front / Send to Back), or deletes it; edits are written into the file's actual content and survive save, reopen, and export, with full undo/redo |
 | **Signatures** | Draw and place signatures, or produce standards-based PAdES digital signatures with Keychain and `.p12` identities — verifiable anywhere PAdES is understood |
 | **Forms** | Detect PDF form fields, edit answers, reset forms, lock answers during export |
 | **Scans & OCR** | Local Vision OCR makes scans searchable; recognized text survives export |
@@ -290,13 +290,13 @@ xcodebuild test  -quiet -project Orifold.xcodeproj -scheme Orifold -destination 
 
 # Build the same release zip GitHub Releases ships, then the universal DMG
 ORIFOLD_UNIVERSAL=1 ./scripts/install-mac.sh --package-only --package /tmp/Orifold.zip
-zsh scripts/make-dmg.sh --from-zip /tmp/Orifold.zip --version 0.8.10
+zsh scripts/make-dmg.sh --from-zip /tmp/Orifold.zip --version 0.8.11
 
 # Install from the current source checkout without opening the app
 ./scripts/install-mac.sh --no-open
 ```
 
-App metadata: `CFBundleShortVersionString` `0.8.10`, `CFBundleVersion` `17`.
+App metadata: `CFBundleShortVersionString` `0.8.11`, `CFBundleVersion` `18`.
 </details>
 
 <details>
