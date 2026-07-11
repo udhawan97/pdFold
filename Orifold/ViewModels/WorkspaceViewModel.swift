@@ -3463,9 +3463,9 @@ final class WorkspaceViewModel {
     func sendSelectedObjectToBack() -> Bool { reorderSelectedObject(toFront: false) }
 
     /// Realizes a z-order change via an `.objectReorder` op (engine: RemoveObject + InsertObjectAtIndex).
-    /// No-ops when the object is already at the requested extreme among detected objects, so a repeated
-    /// click doesn't queue a redundant regenerate. The selection is re-resolved by its digest-stable key
-    /// afterward so its reported `zOrder` reflects the new position for a subsequent reorder.
+    /// No-ops when the object is already at the requested absolute extreme, so a repeated click doesn't
+    /// queue a redundant regenerate. Afterward the selection keeps the same object with its `zOrder`
+    /// updated in place to the new absolute index, so a subsequent reorder's guard stays correct.
     @discardableResult
     private func reorderSelectedObject(toFront: Bool) -> Bool {
         guard let sel = objectSelection, sel.object.editability.capabilities.canLayer,

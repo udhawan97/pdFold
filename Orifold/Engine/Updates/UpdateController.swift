@@ -304,22 +304,23 @@ final class UpdateController {
               let archiveURL = archiver.archiveURL(for: manifest) else { return false }
         guard documentsBlockingInstall().isEmpty else { return false }
         isRestoreInFlight = true
-        defer { isRestoreInFlight = false }
 
         // Re-verify integrity before trusting the archive (the script re-checks too, but a
-        // mismatch here avoids quitting the app for a restore that would only fail).
+        // mismatch here avoids quitting the app for a restore that would only fail). On any
+        // failure the flag is cleared so a retry is allowed; on success it stays set — the app
+        // is quitting and no second restore should slip in during the terminate window.
         let archivePath = archiveURL.path
         let expected = manifest.sha256.lowercased()
         let digest = await Task.detached(operation: {
             try? RollbackArchiver.sha256(of: URL(fileURLWithPath: archivePath))
         }).value
-        guard digest == expected else { return false }
+        guard digest == expected else { isRestoreInFlight = false; return false }
 
         let inputs = UpdaterScriptGenerator.RestoreInputs(
             appPID: processID, appBundlePath: bundleURL.path,
             archiveZipPath: archivePath, archiveSHA256: manifest.sha256,
             restoreVersion: manifest.version)
-        guard handOff.launchRestore(inputs) else { return false }
+        guard handOff.launchRestore(inputs) else { isRestoreInFlight = false; return false }
 
         handOff.terminateForInstall()
         return true

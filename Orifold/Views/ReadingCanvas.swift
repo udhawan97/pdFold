@@ -821,7 +821,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
         private func commitObjectReorder(_ target: PageObjectSelectionTarget, toFront: Bool) {
             guard target.isContentObject else { return }
             self.alignUndoManagerToWindow()
-            _ = toFront ? self.viewModel.bringSelectedObjectToFront() : self.viewModel.sendSelectedObjectToBack()
+            let changed = toFront ? self.viewModel.bringSelectedObjectToFront() : self.viewModel.sendSelectedObjectToBack()
+            // A no-op reorder (object already at the requested extreme) regenerated nothing —
+            // don't swap the document or repaint for it.
+            guard changed else { return }
             self.syncDocumentPreservingViewport(self.pdfView, newDocument: self.viewModel.combinedPDF)
             self.refreshObjectOverlay()
             self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)

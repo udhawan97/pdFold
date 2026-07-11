@@ -45633,6 +45633,47 @@
           }
         }
       }
+    },
+    "update.restore.unsavedMessage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You have unsaved changes in %@. Save or close them, then restore so no work is lost."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tienes cambios sin guardar en %@. Guárdalos o ciérralos y luego restaura para no perder trabajo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous avez des modifications non enregistrées dans %@. Enregistrez-les ou fermez-les, puis restaurez pour ne rien perdre."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ में सहेजे न गए बदलाव हैं। उन्हें सहेजें या बंद करें, फिर पुनर्स्थापित करें ताकि कोई काम न खोए।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ に未保存の変更があります。保存または閉じてから復元してください。作業が失われないようにするためです。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 中有未保存的更改。请先保存或关闭，然后恢复，以免丢失工作。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

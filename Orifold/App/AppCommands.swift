@@ -100,7 +100,7 @@ private struct RestorePreviousVersionCommandButton: View {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = L10n.string("update.install.unsavedTitle", locale: locale)
-        alert.informativeText = L10n.format("update.install.unsavedMessage", names, locale: locale)
+        alert.informativeText = L10n.format("update.restore.unsavedMessage", names, locale: locale)
         alert.addButton(withTitle: L10n.string("common.ok", locale: locale))
         alert.runModal()
     }
