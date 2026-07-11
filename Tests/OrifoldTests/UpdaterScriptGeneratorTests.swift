@@ -50,6 +50,87 @@ final class UpdaterScriptGeneratorTests: XCTestCase {
         }
     }
 
+    // MARK: - Restore rendering & validation
+
+    private func restoreInputs(
+        pid: Int32 = 4321,
+        appPath: String = "/Users/x/Applications/Orifold.app",
+        zip: String = "/Users/x/Rollback/Orifold-0.8.5.zip",
+        sha: String = String(repeating: "b", count: 64),
+        version: String = "0.8.5",
+        relaunch: String = "/usr/bin/open"
+    ) -> UpdaterScriptGenerator.RestoreInputs {
+        .init(appPID: pid, appBundlePath: appPath, archiveZipPath: zip, archiveSHA256: sha,
+              restoreVersion: version, relaunchCommand: relaunch)
+    }
+
+    func testRenderRestoreSubstitutesEveryToken() throws {
+        let script = try generator.renderRestore(restoreInputs())
+        XCTAssertFalse(script.contains("@@"), "no placeholder token may survive rendering")
+        XCTAssertTrue(script.contains("APP_PID='4321'"))
+        XCTAssertTrue(script.contains("ARCHIVE_ZIP='/Users/x/Rollback/Orifold-0.8.5.zip'"))
+        XCTAssertTrue(script.contains("EXPECTED_SHA='\(String(repeating: "b", count: 64))'"))
+        XCTAssertTrue(script.contains("RESTORE_VERSION='0.8.5'"))
+        XCTAssertTrue(script.hasPrefix("#!/bin/zsh"))
+    }
+
+    func testRenderRestoreRejectsBadDigestPIDAndInjection() {
+        XCTAssertThrowsError(try generator.renderRestore(restoreInputs(sha: "short"))) {
+            XCTAssertEqual($0 as? UpdaterScriptGenerator.GeneratorError, .invalidDigest)
+        }
+        XCTAssertThrowsError(try generator.renderRestore(restoreInputs(pid: 0))) {
+            XCTAssertEqual($0 as? UpdaterScriptGenerator.GeneratorError, .invalidPID)
+        }
+        XCTAssertThrowsError(try generator.renderRestore(restoreInputs(zip: "/x/'; rm -rf ~/'.zip"))) {
+            guard case UpdaterScriptGenerator.GeneratorError.unsafeValue = $0 else { return XCTFail("expected unsafeValue") }
+        }
+    }
+
+    /// Live dry-run of the restore swap: a signed "CURRENT" bundle installed, a signed
+    /// "PREVIOUS" bundle zipped exactly as `RollbackArchiver` does (`ditto -c -k --keepParent`),
+    /// then the generated restore script runs and must replace CURRENT with PREVIOUS and relaunch.
+    func testGeneratedRestoreScriptSwapsBundleAndRelaunches() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("orifold-restore-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let installDir = root.appendingPathComponent("Applications", isDirectory: true)
+        let prevDir = root.appendingPathComponent("prev-src", isDirectory: true)
+        try FileManager.default.createDirectory(at: installDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: prevDir, withIntermediateDirectories: true)
+
+        let installedApp = installDir.appendingPathComponent("Orifold.app")
+        let previousApp = prevDir.appendingPathComponent("Orifold.app")
+        try makeSignedApp(at: installedApp, marker: "CURRENT")
+        try makeSignedApp(at: previousApp, marker: "PREVIOUS")
+
+        // Archive the previous bundle exactly like RollbackArchiver (keepParent zip of the .app).
+        let zip = root.appendingPathComponent("Orifold-0.8.5.zip")
+        try XCTAssertProcess("/usr/bin/ditto", ["-c", "-k", "--keepParent", previousApp.path, zip.path])
+        let sha = try RollbackArchiver.sha256(of: zip)
+
+        let recorded = root.appendingPathComponent("relaunched.txt")
+        let recorder = root.appendingPathComponent("recorder.sh")
+        try "#!/bin/zsh\nprintf '%s' \"$1\" > '\(recorded.path)'\n".write(to: recorder, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: recorder.path)
+
+        let script = try UpdaterScriptGenerator().writeRestore(
+            .init(appPID: 999_999,                       // no such PID → proceeds at once
+                  appBundlePath: installedApp.path, archiveZipPath: zip.path, archiveSHA256: sha,
+                  restoreVersion: "0.8.5", relaunchCommand: recorder.path),
+            to: root
+        )
+
+        let result = try runProcess("/bin/zsh", [script.path])
+        XCTAssertEqual(result.status, 0, "restore script failed:\n\(result.output)")
+
+        let installedMarker = try String(contentsOf: installedApp.appendingPathComponent("Contents/Resources/marker.txt"), encoding: .utf8)
+        XCTAssertEqual(installedMarker, "PREVIOUS", "current bundle should have been replaced by the archived previous one")
+        XCTAssertEqual(try? String(contentsOf: recorded, encoding: .utf8), installedApp.path)
+        let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: installDir.path)) ?? []
+        XCTAssertEqual(leftovers.sorted(), ["Orifold.app"], "no .replaced/.staging debris")
+    }
+
     // MARK: - Live dry-run of the swap (macOS tools)
 
     /// Builds two ad-hoc-signed fake app bundles + a real DMG, then runs the generated

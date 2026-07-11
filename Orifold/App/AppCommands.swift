@@ -58,7 +58,60 @@ struct AppCommands: Commands {
         CommandGroup(after: .help) {
             ViewDocumentationCommandLink(locale: locale)
             ShowKeyboardShortcutsCommandButton(locale: locale)
+            RestorePreviousVersionCommandButton(locale: locale)
         }
+    }
+}
+
+/// "Restore Previous Version…" — enabled only when a rollback archive exists (i.e. an update
+/// was installed during this app's lifetime). Confirms intent, guards unsaved work, then hands
+/// the archived previous-version bundle to the unsandboxed restore script and quits.
+private struct RestorePreviousVersionCommandButton: View {
+    var locale: Locale
+    @State private var updates = UpdateController.shared
+
+    var body: some View {
+        Button(L10n.string("appCommands.restorePreviousVersion.button", locale: locale)) {
+            confirmRestore()
+        }
+        .disabled(!updates.canRestorePreviousVersion)
+    }
+
+    private func confirmRestore() {
+        guard let version = updates.rollbackManifest?.version else { return }
+        let blocking = updates.documentsBlockingInstall()
+        guard blocking.isEmpty else { presentUnsavedWorkAlert(blocking); return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.format("update.restore.confirmTitle", version, locale: locale)
+        alert.informativeText = L10n.format("update.restore.confirmMessage", version, locale: locale)
+        alert.addButton(withTitle: L10n.string("update.restore.confirmButton", locale: locale))  // default
+        alert.addButton(withTitle: L10n.string("update.action.cancel", locale: locale))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        Task { @MainActor in
+            if await updates.restorePreviousVersion() == false { presentRestoreFailedAlert() }
+        }
+    }
+
+    private func presentUnsavedWorkAlert(_ documents: [UpdateInstallPreflight.DocumentState]) {
+        let names = documents.map(\.displayName).joined(separator: ", ")
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.string("update.install.unsavedTitle", locale: locale)
+        alert.informativeText = L10n.format("update.install.unsavedMessage", names, locale: locale)
+        alert.addButton(withTitle: L10n.string("common.ok", locale: locale))
+        alert.runModal()
+    }
+
+    private func presentRestoreFailedAlert() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.string("update.restore.failedTitle", locale: locale)
+        alert.informativeText = L10n.string("update.restore.failed", locale: locale)
+        alert.addButton(withTitle: L10n.string("common.ok", locale: locale))
+        alert.runModal()
     }
 }
 

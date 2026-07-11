@@ -807,6 +807,24 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 self.refreshObjectOverlay()
                 self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
             }
+            objectOverlay.onBringToFront = { [weak self] target in
+                self?.commitObjectReorder(target, toFront: true)
+            }
+            objectOverlay.onSendToBack = { [weak self] target in
+                self?.commitObjectReorder(target, toFront: false)
+            }
+        }
+
+        /// Shared commit+refresh for a z-order change, mirroring `onDelete`: register on the
+        /// window's undo manager, mutate, swap the regenerated document into the canvas, and
+        /// refresh the selection overlay so it tracks the object's new state.
+        private func commitObjectReorder(_ target: PageObjectSelectionTarget, toFront: Bool) {
+            guard target.isContentObject else { return }
+            self.alignUndoManagerToWindow()
+            _ = toFront ? self.viewModel.bringSelectedObjectToFront() : self.viewModel.sendSelectedObjectToBack()
+            self.syncDocumentPreservingViewport(self.pdfView, newDocument: self.viewModel.combinedPDF)
+            self.refreshObjectOverlay()
+            self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
         }
 
         func refreshObjectOverlay() {
@@ -816,7 +834,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
                let ref = viewModel.workspacePageRef(selection.pageRefID),
                let pageIndex = viewModel.combinedPageIndex(for: ref),
                let page = pdfView.document?.page(at: pageIndex) {
-                objectOverlay.selectObject(pageRefID: selection.pageRefID, page: page, bounds: selection.object.boundsPdf)
+                objectOverlay.selectObject(pageRefID: selection.pageRefID, page: page,
+                                           bounds: selection.object.boundsPdf,
+                                           canLayer: viewModel.canLayerSelectedObject,
+                                           canDelete: selection.object.editability.capabilities.canDeleteStructurally)
             } else {
                 objectOverlay.clearSelection()
             }
@@ -1823,6 +1844,17 @@ final class SignatureSelectionOverlayView: NSView {
     weak var pdfView: PDFView?
     var onBoundsChanged: ((PageObjectSelectionTarget, CGRect, CGRect?) -> CGRect)?
     var onDelete: ((PageObjectSelectionTarget) -> Void)?
+    /// Content-object z-order actions. Wired only for the object overlay; nil for the
+    /// signature/stamp overlay, whose right-click menu therefore omits the layer items.
+    var onBringToFront: ((PageObjectSelectionTarget) -> Void)?
+    var onSendToBack: ((PageObjectSelectionTarget) -> Void)?
+    /// Whether the current object selection supports z-order changes (`canLayer`). Gates the
+    /// Bring to Front / Send to Back items in the right-click menu.
+    var canLayerObject = false
+    /// Whether the current object selection can be structurally deleted (`canDeleteStructurally`).
+    /// Gates the right-click Delete item so it's never shown-and-inert. Defaults true (signatures
+    /// and stamps, which use this same overlay, are always deletable).
+    var canDeleteObject = true
 
     private var selectionTarget: PageObjectSelectionTarget?
     private var dragMode: DragMode?
@@ -1843,28 +1875,77 @@ final class SignatureSelectionOverlayView: NSView {
 
     func select(_ annotation: PDFAnnotation) {
         selectionTarget = PageObjectSelectionTarget(annotation: annotation)
+        canLayerObject = false
+        canDeleteObject = true
         isHidden = false
         needsDisplay = true
     }
 
     func selectStamp(id: UUID, page: PDFPage, bounds: CGRect) {
         selectionTarget = PageObjectSelectionTarget(stampDecorationID: id, page: page, bounds: bounds)
+        canLayerObject = false
+        canDeleteObject = true
         isHidden = false
         needsDisplay = true
     }
 
-    func selectObject(pageRefID: UUID, page: PDFPage, bounds: CGRect) {
+    func selectObject(pageRefID: UUID, page: PDFPage, bounds: CGRect, canLayer: Bool, canDelete: Bool) {
         selectionTarget = PageObjectSelectionTarget(objectPageRefID: pageRefID, page: page, bounds: bounds)
+        canLayerObject = canLayer
+        canDeleteObject = canDelete
         isHidden = false
         needsDisplay = true
     }
 
     func clearSelection() {
         selectionTarget = nil
+        canLayerObject = false
+        canDeleteObject = true
         dragMode = nil
         initialPageBounds = nil
         isHidden = true
         needsDisplay = true
+    }
+
+    /// Right-click menu for a selected object: z-order (when supported) plus Delete (when the
+    /// object can actually be deleted). Items the object doesn't support are omitted rather than
+    /// shown-and-inert; if nothing applies (e.g. a visual-only raster region), there's no menu.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard !isHidden, let selectionTarget, selectionTarget.isContentObject else { return nil }
+        let point = convert(event.locationInWindow, from: nil)
+        guard interactionFrame()?.contains(point) == true else { return nil }
+
+        let menu = NSMenu()
+        if canLayerObject, onBringToFront != nil, onSendToBack != nil {
+            let front = NSMenuItem(title: L10n.string("object.action.bringToFront"),
+                                   action: #selector(bringSelectedObjectToFront(_:)), keyEquivalent: "")
+            front.target = self
+            let back = NSMenuItem(title: L10n.string("object.action.sendToBack"),
+                                  action: #selector(sendSelectedObjectToBack(_:)), keyEquivalent: "")
+            back.target = self
+            menu.addItem(front)
+            menu.addItem(back)
+        }
+        if canDeleteObject {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            let delete = NSMenuItem(title: L10n.string("object.action.delete"),
+                                    action: #selector(deleteSelectedObjectFromMenu(_:)), keyEquivalent: "")
+            delete.target = self
+            menu.addItem(delete)
+        }
+        return menu.items.isEmpty ? nil : menu
+    }
+
+    @objc private func bringSelectedObjectToFront(_ sender: Any?) {
+        if let selectionTarget { onBringToFront?(selectionTarget) }
+    }
+
+    @objc private func sendSelectedObjectToBack(_ sender: Any?) {
+        if let selectionTarget { onSendToBack?(selectionTarget) }
+    }
+
+    @objc private func deleteSelectedObjectFromMenu(_ sender: Any?) {
+        if let selectionTarget { onDelete?(selectionTarget) }
     }
 
     func containsInteractivePoint(_ pdfViewPoint: CGPoint) -> Bool {

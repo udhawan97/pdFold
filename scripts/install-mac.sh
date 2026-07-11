@@ -13,6 +13,7 @@ PREBUILT_ONLY=0
 VERBOSE=0
 PACKAGE_PATH=""
 PACKAGE_ONLY=0
+RESTORE_ZIP=""
 SIGNING_IDENTITY="${ORIFOLD_SIGNING_IDENTITY:--}"
 NOTARIZE="${ORIFOLD_NOTARIZE:-0}"
 UNIVERSAL="${ORIFOLD_UNIVERSAL:-0}"
@@ -56,6 +57,7 @@ Options:
   --verbose        Print detailed install diagnostics to the console.
   --package PATH   Build and write a distributable zip to PATH.
   --package-only   With --package, build the zip without installing locally.
+  --restore PATH   Restore a previously-archived Orifold.app from a zip (no build).
   --help           Show this help.
 
 Re-running this script updates Orifold.
@@ -94,6 +96,63 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Restore a previously-archived Orifold.app from a zip, without building. Mirrors the in-app
+# restore path (stage-then-swap + verify + relaunch) for use from Terminal — the recovery route
+# when the app itself won't launch. Any failure after the swap begins puts the old bundle back.
+do_restore() {
+    local zip_path="$1"
+    [[ -f "$zip_path" ]] || fail "Restore archive not found: $zip_path"
+
+    local target=""
+    if [[ -d "$INSTALLED_APP" ]]; then
+        target="$INSTALLED_APP"
+    elif [[ -d "/Applications/$APP_NAME.app" ]]; then
+        target="/Applications/$APP_NAME.app"
+    else
+        target="$INSTALLED_APP"
+    fi
+    /bin/mkdir -p "$(dirname "$target")"
+    [[ -w "$(dirname "$target")" ]] || fail "No permission to restore into $(dirname "$target")."
+
+    print_step "Restoring $APP_NAME from $zip_path"
+    local work found staged backup
+    work="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/orifold-restore.XXXXXX")" || fail "Could not create a temp directory."
+
+    /usr/bin/ditto -x -k "$zip_path" "$work" >>"$LOG_FILE" 2>&1 || { /bin/rm -rf "$work"; fail "Could not read the restore archive."; }
+    found="$(/usr/bin/find "$work" -maxdepth 2 -name "$APP_NAME.app" -type d -print -quit)"
+    [[ -n "$found" ]] || { /bin/rm -rf "$work"; fail "The archive did not contain $APP_NAME.app."; }
+    codesign --verify --deep --strict "$found" >>"$LOG_FILE" 2>&1 \
+        || { /bin/rm -rf "$work"; fail "The archived app signature could not be verified."; }
+
+    staged="${target}.restore-staging-$$"
+    backup="${target}.replaced-$$"
+    /bin/rm -rf "$staged"
+    /usr/bin/ditto --norsrc "$found" "$staged" >>"$LOG_FILE" 2>&1 \
+        || { /bin/rm -rf "$work" "$staged"; fail "Could not stage the restored app."; }
+    /bin/rm -rf "$work"
+
+    if [[ -d "$target" ]]; then
+        /bin/rm -rf "$backup"
+        /bin/mv "$target" "$backup" || { /bin/rm -rf "$staged"; fail "Could not move the current app aside."; }
+    fi
+    if ! /bin/mv "$staged" "$target"; then
+        [[ -d "$backup" ]] && /bin/mv "$backup" "$target"
+        fail "Could not move the restored app into place."
+    fi
+    /usr/bin/xattr -cr "$target" 2>/dev/null || true
+    if ! codesign --verify --deep --strict "$target" >>"$LOG_FILE" 2>&1; then
+        /bin/rm -rf "$target"
+        [[ -d "$backup" ]] && /bin/mv "$backup" "$target"
+        fail "The restored app failed verification."
+    fi
+    /bin/rm -rf "$backup"
+
+    print_note "Restored $APP_NAME to $target"
+    if [[ $OPEN_AFTER_INSTALL -eq 1 ]]; then
+        open "$target" || print_note "Restored, but macOS could not relaunch it. Open $APP_NAME from Applications."
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --clean)
@@ -116,6 +175,11 @@ while [[ $# -gt 0 ]]; do
         --package-only)
             PACKAGE_ONLY=1
             OPEN_AFTER_INSTALL=0
+            ;;
+        --restore)
+            shift
+            [[ $# -gt 0 ]] || fail "--restore requires a path to an archived Orifold.app zip."
+            RESTORE_ZIP="$1"
             ;;
         --help|-h)
             usage
@@ -141,6 +205,13 @@ Verbose: $VERBOSE
 Signing identity: $SIGNING_IDENTITY
 Notarize: $NOTARIZE
 LOG
+
+# Restore short-circuits the whole build/install pipeline.
+if [[ -n "${RESTORE_ZIP:-}" ]]; then
+    do_restore "$RESTORE_ZIP"
+    print_step "Restore complete"
+    exit 0
+fi
 
 latest_release_zip_url() {
     local release_json asset_name

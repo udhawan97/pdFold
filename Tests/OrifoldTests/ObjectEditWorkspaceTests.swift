@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import CoreText
 import PDFKit
 import XCTest
 @testable import Orifold
@@ -34,8 +35,8 @@ final class ObjectEditWorkspaceTests: XCTestCase {
     // retain it or it deallocates immediately and every registerUndo silently no-ops.
     private var retainedUndoManager: UndoManager?
 
-    private func makeViewModel() throws -> WorkspaceViewModel {
-        let wrapper = FileWrapper(regularFileWithContents: makeFixture())
+    private func makeViewModel(data: Data? = nil) throws -> WorkspaceViewModel {
+        let wrapper = FileWrapper(regularFileWithContents: data ?? makeFixture())
         wrapper.preferredFilename = "obj.pdf"
         let document = try WorkspaceDocument(testingFile: wrapper, contentType: .pdf, filename: "obj.pdf")
         let vm = WorkspaceViewModel(document: document, processingEngine: PDFiumProcessingEngine())
@@ -43,6 +44,26 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         retainedUndoManager = undo
         vm.undoManager = undo
         return vm
+    }
+
+    /// A shape with a real TEXT object drawn on top. Text objects are excluded from object
+    /// detection, so the page's raw object count exceeds the detected set — the exact condition
+    /// under which the (fixed) no-op guard used to wrongly cancel Bring-to-Front.
+    private func makeTextOverShapeFixture() -> Data {
+        let data = NSMutableData()
+        var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let ctx = CGContext(consumer: CGDataConsumer(data: data as CFMutableData)!, mediaBox: &mediaBox, nil)!
+        ctx.beginPDFPage(nil)
+        ctx.setFillColor(NSColor.systemBlue.cgColor)
+        ctx.fill(CGRect(x: 100, y: 100, width: 220, height: 90))
+        let attributed = NSAttributedString(string: "TEXT ON TOP",
+                                            attributes: [.font: NSFont.systemFont(ofSize: 24),
+                                                         .foregroundColor: NSColor.black])
+        let line = CTLineCreateWithAttributedString(attributed)
+        ctx.textPosition = CGPoint(x: 120, y: 135)
+        CTLineDraw(line, ctx)
+        ctx.endPDFPage(); ctx.closePDF()
+        return data as Data
     }
 
     private func transformOp(_ o: DetectedObject, ref: PageRef, member: UUID, dx: CGFloat, dy: CGFloat) -> ObjectEditOperation {
@@ -199,6 +220,75 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         XCTAssertTrue(vm.deleteSelectedObject())
         XCTAssertNil(vm.objectSelection, "selection should clear after delete")
         XCTAssertFalse(rectPresent(in: vm.document.memberPDFData[member]), "rect not deleted")
+    }
+
+    // z-order: bring-to-front / send-to-back change the object's PDFium draw index without
+    // dropping either object, keep the selection live, and undo restores the original order.
+    func testObjectZOrderBringToFrontAndSendToBack() throws {
+        let vm = try makeViewModel()
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let member = ref.memberDocId
+
+        func zOrder(nearBounds target: CGRect) -> Int? {
+            guard let data = vm.document.memberPDFData[member] else { return nil }
+            return PDFObjectDetectionEngine.detect(pdfData: data, pageIndex: 0, pageRefID: UUID())
+                .objects.first { near($0.boundsPdf, target, tol: 6) }?.zOrder
+        }
+
+        // Fixture draws the rect first, then the image on top → image has the higher draw index.
+        XCTAssertLessThan(try XCTUnwrap(zOrder(nearBounds: deleteRect)),
+                          try XCTUnwrap(zOrder(nearBounds: imagePDF)),
+                          "precondition: the rect is drawn behind the image")
+
+        // Select the rect and bring it to the front.
+        let rectHit = try XCTUnwrap(vm.objectHit(at: CGPoint(x: deleteRect.midX, y: deleteRect.midY), on: ref, scaleFactor: 1))
+        vm.selectObject(rectHit, on: ref)
+        XCTAssertTrue(vm.canLayerSelectedObject, "the rect should support z-order changes")
+        XCTAssertTrue(vm.bringSelectedObjectToFront(), "bring to front should apply")
+        XCTAssertNotNil(vm.objectSelection, "selection must survive a reorder")
+        XCTAssertGreaterThan(try XCTUnwrap(zOrder(nearBounds: deleteRect)),
+                             try XCTUnwrap(zOrder(nearBounds: imagePDF)),
+                             "rect should now be in front of the image")
+
+        // Send it back to the bottom.
+        XCTAssertTrue(vm.sendSelectedObjectToBack(), "send to back should apply")
+        XCTAssertLessThan(try XCTUnwrap(zOrder(nearBounds: deleteRect)),
+                          try XCTUnwrap(zOrder(nearBounds: imagePDF)),
+                          "rect should be behind the image again")
+
+        // Neither object was dropped by the reordering.
+        XCTAssertTrue(rectPresent(in: vm.document.memberPDFData[member]), "rect vanished during reorder")
+        XCTAssertNotNil(imageBounds(in: vm.document.memberPDFData[member]), "image vanished during reorder")
+
+        // Undo walks the two reorders back; the rect ends up in front of the image again
+        // (the state after bring-to-front), proving each reorder is its own undo step.
+        vm.performUndoCommand()
+        XCTAssertGreaterThan(try XCTUnwrap(zOrder(nearBounds: deleteRect)),
+                             try XCTUnwrap(zOrder(nearBounds: imagePDF)),
+                             "undoing send-to-back should restore the front position")
+    }
+
+    // Regression (audit finding #1): the no-op guard must measure the ABSOLUTE draw order, not
+    // the detected subset (which excludes text). A shape under a text layer is the topmost
+    // *detected* object yet not the topmost *overall* — Bring-to-Front must still move it, not
+    // silently no-op as the old detected-extreme guard did.
+    func testBringToFrontDoesNotNoOpWhenObjectSitsBelowExcludedText() throws {
+        let vm = try makeViewModel(data: makeTextOverShapeFixture())
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let map = vm.objectMap(for: ref)
+        // Precondition for the bug: excluded text objects make the raw count exceed the detected set.
+        try XCTSkipUnless(map.rawObjectCount > map.objects.count,
+                          "fixture didn't yield excluded text objects on this SDK")
+        let shape = try XCTUnwrap(map.objects.first { $0.objectType == .rectangle || $0.objectType == .filledShape },
+                                  "no detectable shape in the fixture")
+        // The shape is the topmost DETECTED object — the exact case the old guard no-op'd.
+        XCTAssertEqual(shape.zOrder, map.objects.map(\.zOrder).max(), "shape should be the topmost detected object")
+
+        vm.selectObject(shape, on: ref)
+        let before = shape.zOrder
+        XCTAssertTrue(vm.bringSelectedObjectToFront(), "must NOT no-op: the shape sits below the excluded text")
+        let after = vm.objectMap(for: ref).objects.first { $0.stableKey == shape.stableKey }?.zOrder
+        XCTAssertGreaterThan(try XCTUnwrap(after), before, "the shape should have risen above the text layer")
     }
 
     // Regression (audit CRITICAL): text + object edits on the same member must NOT silently

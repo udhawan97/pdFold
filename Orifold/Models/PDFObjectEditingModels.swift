@@ -277,12 +277,20 @@ struct PageObjectMap: Equatable {          // NOT Codable — never serialized
     var analysisRevision: Int = 0           // debug/telemetry only
     /// True when the object scan hit its safety cap (mirrors PageGraphicsIndex.didTruncateScan).
     var didTruncateScan: Bool = false
+    /// Total PDFium page-object count INCLUDING text objects (which detection skips). The
+    /// absolute top draw index is `rawObjectCount - 1`; z-order "front"/"back" operate on this
+    /// absolute space, so callers must compare against it — NOT against the detected subset,
+    /// whose extremes exclude text and would make "bring to front" appear to no-op on an image
+    /// sitting under a text layer.
+    var rawObjectCount: Int = 0
 
-    init(pageRefID: UUID, objects: [DetectedObject], analysisRevision: Int = 0, didTruncateScan: Bool = false) {
+    init(pageRefID: UUID, objects: [DetectedObject], analysisRevision: Int = 0,
+         didTruncateScan: Bool = false, rawObjectCount: Int = 0) {
         self.pageRefID = pageRefID
         self.objects = objects
         self.analysisRevision = analysisRevision
         self.didTruncateScan = didTruncateScan
+        self.rawObjectCount = rawObjectCount
     }
 
     static let empty = PageObjectMap(pageRefID: UUID(), objects: [])

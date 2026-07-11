@@ -112,6 +112,8 @@ struct AppAboutPopover: View {
                 }
 
                 SealVersionBadge(version: versionString)
+
+                AboutUpdateStatusRow(locale: locale, onOpen: { dismiss() })
             }
 
             LinearGradient(colors: [.clear, Color.dsSeparator, .clear], startPoint: .leading, endPoint: .trailing)
@@ -139,6 +141,61 @@ struct AppAboutPopover: View {
         .padding(.dsLG)
         .frame(width: 280)
         .background(PopoverAuroraBackground())
+    }
+}
+
+/// A quiet update-awareness line under the version badge. It reflects the shared
+/// `UpdateController` (the same object Settings and the Software Update window drive), so the
+/// About window can answer "am I current?" without duplicating the full status UI. Any action
+/// opens the Software Update window — the one place downloads/installs actually happen — and
+/// closes this window via `onOpen`.
+private struct AboutUpdateStatusRow: View {
+    var locale: Locale
+    var onOpen: () -> Void
+    @Environment(\.openWindow) private var openWindow
+    @State private var updates = UpdateController.shared
+
+    var body: some View {
+        Group {
+            switch updates.phase {
+            case .checking:
+                HStack(spacing: .dsXS) {
+                    ProgressView().controlSize(.mini)
+                    caption(L10n.string("settings.updates.status.checking", locale: locale))
+                }
+            case .upToDate:
+                HStack(spacing: .dsXS) {
+                    Image(systemName: "checkmark.circle")
+                    caption(L10n.format("settings.updates.status.upToDate", updates.currentVersionString, locale: locale))
+                }
+                .foregroundStyle(Color.dsTextTertiary)
+            case let .updateAvailable(update) where update.version != updates.skippedVersion:
+                // Only the "offer" phase gets the download affordance. Download/install-in-flight
+                // phases fall through to the neutral "Check for Updates" link so this quiet row
+                // never invites re-getting an update that's already in progress.
+                Button(action: openSoftwareUpdate) {
+                    Label(L10n.format("settings.updates.status.available", update.version, locale: locale),
+                          systemImage: "arrow.down.circle")
+                }
+                .buttonStyle(.link)
+            default:
+                Button(L10n.string("appCommands.checkForUpdates.button", locale: locale), action: openSoftwareUpdate)
+                    .buttonStyle(.link)
+            }
+        }
+        .font(.dsCaption())
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text).foregroundStyle(Color.dsTextTertiary)
+    }
+
+    private func openSoftwareUpdate() {
+        openWindow(id: SoftwareUpdateWindow.id)
+        Task { @MainActor in
+            if !updates.phase.isBusy { await updates.checkForUpdates(userInitiated: true) }
+        }
+        onOpen()
     }
 }
 

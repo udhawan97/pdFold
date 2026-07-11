@@ -8,6 +8,8 @@ protocol UpdateInstallHandOff {
     /// Writes + opens the updater `.command` (unsandboxed, via LaunchServices). Returns
     /// `false` if the OS wouldn't open it, so the caller can fall back to a manual reveal.
     func launchUpdater(_ inputs: UpdaterScriptGenerator.Inputs) -> Bool
+    /// Writes + opens the restore `.command` (unsandboxed). Same failure contract as `launchUpdater`.
+    func launchRestore(_ inputs: UpdaterScriptGenerator.RestoreInputs) -> Bool
     /// Quits the app so the (already-launched) updater can swap the bundle and relaunch it.
     func terminateForInstall()
 }
@@ -19,6 +21,11 @@ protocol UpdateInstallHandOff {
 struct SystemUpdateInstallHandOff: UpdateInstallHandOff {
     func launchUpdater(_ inputs: UpdaterScriptGenerator.Inputs) -> Bool {
         guard let url = try? UpdaterScriptGenerator().write(inputs) else { return false }
+        return NSWorkspace.shared.open(url)
+    }
+
+    func launchRestore(_ inputs: UpdaterScriptGenerator.RestoreInputs) -> Bool {
+        guard let url = try? UpdaterScriptGenerator().writeRestore(inputs) else { return false }
         return NSWorkspace.shared.open(url)
     }
 

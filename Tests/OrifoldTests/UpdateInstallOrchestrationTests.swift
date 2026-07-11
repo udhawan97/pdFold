@@ -16,10 +16,15 @@ private struct OrchDownloader: UpdateDownloading {
 @MainActor
 private final class SpyHandOff: UpdateInstallHandOff {
     var launchedInputs: UpdaterScriptGenerator.Inputs?
+    var restoreInputs: UpdaterScriptGenerator.RestoreInputs?
     var terminated = false
     var launchResult = true
     func launchUpdater(_ inputs: UpdaterScriptGenerator.Inputs) -> Bool {
         launchedInputs = inputs
+        return launchResult
+    }
+    func launchRestore(_ inputs: UpdaterScriptGenerator.RestoreInputs) -> Bool {
+        restoreInputs = inputs
         return launchResult
     }
     func terminateForInstall() { terminated = true }
@@ -144,5 +149,83 @@ final class UpdateInstallOrchestrationTests: XCTestCase {
         let ok = await c.installAndRelaunch(reopenDocuments: [])
         XCTAssertFalse(ok)
         XCTAssertFalse(spy.terminated)
+    }
+
+    // MARK: - Restore previous version
+
+    /// Archives a fake previous bundle, then builds a controller whose archiver points at that
+    /// same directory so init loads the resulting manifest (making restore available).
+    private func controllerWithArchive(spy: SpyHandOff) throws -> (UpdateController, manifest: RollbackManifest, bundle: URL, rollbackDir: URL) {
+        let previous = tmp.appendingPathComponent("Previous.app")
+        try FileManager.default.createDirectory(at: previous.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        try Data("v0.8.5".utf8).write(to: previous.appendingPathComponent("Contents/marker"))
+
+        let rollbackDir = tmp.appendingPathComponent("Rollback")
+        let archiver = RollbackArchiver(directory: rollbackDir)
+        let manifest = try archiver.archive(bundleURL: previous, version: "0.8.5", build: "11")
+
+        let bundle = tmp.appendingPathComponent("Orifold.app")
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+
+        let c = UpdateController(
+            transport: OrchTransport(outcome: .upToDate),
+            downloader: OrchDownloader(result: .failure(URLError(.badURL))),
+            defaults: defaults,
+            currentVersion: UpdateVersion(string: "0.8.6")!,
+            archiver: archiver,
+            handOff: spy,
+            bundleURL: bundle,
+            processID: 4242,
+            now: { Date(timeIntervalSince1970: 1) }
+        )
+        return (c, manifest, bundle, rollbackDir)
+    }
+
+    func testRestoreHandsOffTheVerifiedArchiveAndQuits() async throws {
+        let spy = SpyHandOff()
+        let (c, manifest, bundle, rollbackDir) = try controllerWithArchive(spy: spy)
+        XCTAssertTrue(c.canRestorePreviousVersion)
+
+        let ok = await c.restorePreviousVersion()
+        XCTAssertTrue(ok)
+        XCTAssertTrue(spy.terminated, "must quit so the restore script can swap the bundle")
+
+        let inputs = try XCTUnwrap(spy.restoreInputs)
+        XCTAssertEqual(inputs.appPID, 4242)
+        XCTAssertEqual(inputs.appBundlePath, bundle.path)
+        XCTAssertEqual(inputs.restoreVersion, "0.8.5")
+        XCTAssertEqual(inputs.archiveSHA256, manifest.sha256)
+        XCTAssertEqual(inputs.archiveZipPath, rollbackDir.appendingPathComponent(manifest.archiveFileName).path)
+    }
+
+    func testRestoreIsNoOpWithoutAnArchive() async {
+        let spy = SpyHandOff()
+        let c = UpdateController(
+            transport: OrchTransport(outcome: .upToDate),
+            downloader: OrchDownloader(result: .failure(URLError(.badURL))),
+            defaults: defaults,
+            currentVersion: UpdateVersion(string: "0.8.6")!,
+            archiver: RollbackArchiver(directory: tmp.appendingPathComponent("EmptyRollback")),
+            handOff: spy,
+            now: { Date(timeIntervalSince1970: 1) }
+        )
+        XCTAssertFalse(c.canRestorePreviousVersion)
+        let ok = await c.restorePreviousVersion()
+        XCTAssertFalse(ok)
+        XCTAssertFalse(spy.terminated)
+        XCTAssertNil(spy.restoreInputs)
+    }
+
+    func testRestoreAbortsWhenTheArchiveFailsItsChecksum() async throws {
+        let spy = SpyHandOff()
+        let (c, manifest, _, rollbackDir) = try controllerWithArchive(spy: spy)
+        // Corrupt the archive after the manifest recorded its hash → integrity guard must trip,
+        // and the app must NOT quit for a restore that would only fail.
+        try Data("corrupted-bytes".utf8).write(to: rollbackDir.appendingPathComponent(manifest.archiveFileName))
+
+        let ok = await c.restorePreviousVersion()
+        XCTAssertFalse(ok)
+        XCTAssertFalse(spy.terminated)
+        XCTAssertNil(spy.restoreInputs, "a checksum mismatch must never reach the hand-off")
     }
 }

@@ -3442,6 +3442,62 @@ final class WorkspaceViewModel {
         return true
     }
 
+    /// A target z-index deliberately above any real page-object count. The edit engine clamps
+    /// `newZIndex` to `poe_CountObjects(page)`, so passing this reliably lands the object at the
+    /// very front (topmost) without the VM needing PDFium's exact raw object count.
+    private static let frontZIndexSentinel = 1_000_000
+
+    /// True when the current selection is a content object whose z-order can be changed.
+    /// Rotated-page object editing is punted in v1, mirroring move/resize/delete.
+    var canLayerSelectedObject: Bool {
+        guard let sel = objectSelection else { return false }
+        return sel.object.editability.capabilities.canLayer && sel.object.pageRotation == 0
+    }
+
+    /// Bring the selected object to the front of the page's draw order (drawn last, on top).
+    @discardableResult
+    func bringSelectedObjectToFront() -> Bool { reorderSelectedObject(toFront: true) }
+
+    /// Send the selected object to the back of the page's draw order (drawn first, behind).
+    @discardableResult
+    func sendSelectedObjectToBack() -> Bool { reorderSelectedObject(toFront: false) }
+
+    /// Realizes a z-order change via an `.objectReorder` op (engine: RemoveObject + InsertObjectAtIndex).
+    /// No-ops when the object is already at the requested extreme among detected objects, so a repeated
+    /// click doesn't queue a redundant regenerate. The selection is re-resolved by its digest-stable key
+    /// afterward so its reported `zOrder` reflects the new position for a subsequent reorder.
+    @discardableResult
+    private func reorderSelectedObject(toFront: Bool) -> Bool {
+        guard let sel = objectSelection, sel.object.editability.capabilities.canLayer,
+              sel.object.pageRotation == 0, let ref = workspacePageRef(sel.pageRefID) else { return false }
+        let object = sel.object
+        // The engine realizes "front" as the ABSOLUTE top draw index (it clamps `newZIndex` to
+        // `poe_CountObjects`, which counts text objects too) and "back" as absolute 0. The no-op
+        // guard must use that same absolute space — `rawObjectCount - 1` and `0` — not the
+        // detected subset's extremes (which exclude the text lane). Using the detected extremes
+        // made bring/send silently no-op for the common case of one image sitting under a text
+        // layer (there `min == max == the image's own index`).
+        let absoluteTop = max(0, objectMap(for: ref).rawObjectCount - 1)
+        if toFront, object.zOrder >= absoluteTop { return false }
+        if !toFront, object.zOrder <= 0 { return false }
+
+        let targetZ = toFront ? Self.frontZIndexSentinel : 0
+        let op = ObjectEditOperation(
+            type: .objectReorder, documentID: ref.memberDocId, pageRefID: sel.pageRefID,
+            sourceObjectKey: object.stableKey, objectType: object.objectType, editability: object.editability,
+            originalBoundsPdf: object.boundsPdf, newBoundsPdf: object.boundsPdf,
+            originalTransform: object.transform, newTransform: object.transform, pageRotation: Int(object.pageRotation),
+            originalZIndex: object.zOrder, newZIndex: targetZ, replacementStrategy: .pdfiumStructural)
+        let actionKey = toFront ? "undo.bringObjectToFront" : "undo.sendObjectToBack"
+        guard applyObjectEdit([op], undoActionNameKey: actionKey) else { return false }
+        // The reorder cleared the object cache; re-detect and re-bind the selection to the SAME
+        // object (its structural digest is z-order-independent) so its `zOrder` is now current.
+        if let fresh = objectMap(for: ref).objects.first(where: { $0.stableKey == object.stableKey }) {
+            objectSelection = ObjectSelectionState(pageRefID: sel.pageRefID, object: fresh)
+        }
+        return true
+    }
+
     // MARK: - Committed edit ↔ page byte reconciliation
 
     /// Pristine (pre-edit) bytes for every member that currently has committed inline

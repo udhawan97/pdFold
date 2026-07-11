@@ -64,7 +64,8 @@ struct PDFObjectDetectionEngine {
                     objects.append(detected)
                 }
             }
-            return PageObjectMap(pageRefID: pageRefID, objects: objects, didTruncateScan: truncated)
+            return PageObjectMap(pageRefID: pageRefID, objects: objects, didTruncateScan: truncated,
+                                 rawObjectCount: rawCount)
         }
     }
 

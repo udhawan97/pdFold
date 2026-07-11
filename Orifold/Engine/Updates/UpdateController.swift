@@ -278,6 +278,36 @@ final class UpdateController {
         return true
     }
 
+    /// Restores the archived previous version: re-verify the rollback zip's integrity, hand it
+    /// to the unsandboxed restore script, and quit so it can swap the bundle and relaunch the
+    /// older version. Returns false (staying put, nothing touched) when there is no valid
+    /// archive, unsaved work blocks it, the archive fails its checksum, or the script could not
+    /// be launched. The caller confirms intent and clears unsaved work first.
+    @discardableResult
+    func restorePreviousVersion() async -> Bool {
+        guard let manifest = rollbackManifest,
+              let archiveURL = archiver.archiveURL(for: manifest) else { return false }
+        guard documentsBlockingInstall().isEmpty else { return false }
+
+        // Re-verify integrity before trusting the archive (the script re-checks too, but a
+        // mismatch here avoids quitting the app for a restore that would only fail).
+        let archivePath = archiveURL.path
+        let expected = manifest.sha256.lowercased()
+        let digest = await Task.detached(operation: {
+            try? RollbackArchiver.sha256(of: URL(fileURLWithPath: archivePath))
+        }).value
+        guard digest == expected else { return false }
+
+        let inputs = UpdaterScriptGenerator.RestoreInputs(
+            appPID: processID, appBundlePath: bundleURL.path,
+            archiveZipPath: archivePath, archiveSHA256: manifest.sha256,
+            restoreVersion: manifest.version)
+        guard handOff.launchRestore(inputs) else { return false }
+
+        handOff.terminateForInstall()
+        return true
+    }
+
     /// Postpones an install that's ready, keeping the verified download for later.
     func installLater() {
         if case .readyToInstall = phase { phase = .idle }
