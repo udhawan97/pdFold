@@ -113,7 +113,14 @@ final class UpdateController {
         return update.version != skippedVersion
     }
 
-    var canRestorePreviousVersion: Bool { rollbackManifest != nil }
+    /// True when an archived previous version exists AND it isn't the version already running.
+    /// The version check matters after a restore: the app relaunches into the archived version,
+    /// whose manifest still names that same version — without this guard the menu would offer to
+    /// "restore" the build you're already on.
+    var canRestorePreviousVersion: Bool {
+        guard let manifest = rollbackManifest else { return false }
+        return manifest.version != currentVersion.description
+    }
 
     /// Runs a check. `userInitiated` checks always surface their result (including a
     /// previously-skipped version and the "you're up to date" confirmation); background
@@ -283,11 +290,21 @@ final class UpdateController {
     /// older version. Returns false (staying put, nothing touched) when there is no valid
     /// archive, unsaved work blocks it, the archive fails its checksum, or the script could not
     /// be launched. The caller confirms intent and clears unsaved work first.
+    /// Guards `restorePreviousVersion` against re-entry during its own async integrity check —
+    /// two launched restore scripts would race the same bundle swap. (The install path gets the
+    /// same protection structurally, from its `.readyToInstall` → `.installing` phase transition.)
+    private var isRestoreInFlight = false
+
     @discardableResult
     func restorePreviousVersion() async -> Bool {
+        // Match install's re-entrancy discipline: never start a bundle swap while an
+        // install/download/check is active, nor re-enter during our own async window below.
+        guard !phase.isBusy, !isRestoreInFlight else { return false }
         guard let manifest = rollbackManifest,
               let archiveURL = archiver.archiveURL(for: manifest) else { return false }
         guard documentsBlockingInstall().isEmpty else { return false }
+        isRestoreInFlight = true
+        defer { isRestoreInFlight = false }
 
         // Re-verify integrity before trusting the archive (the script re-checks too, but a
         // mismatch here avoids quitting the app for a restore that would only fail).

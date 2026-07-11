@@ -1979,30 +1979,37 @@ final class SignatureSelectionOverlayView: NSView {
             handle.stroke()
         }
 
-        let deleteFrame = deleteButtonRect(for: frame)
-        NSColor.systemRed.setFill()
-        NSColor.white.setStroke()
-        let deleteCircle = NSBezierPath(ovalIn: deleteFrame)
-        deleteCircle.fill()
-        deleteCircle.lineWidth = 1
-        deleteCircle.stroke()
+        // The delete button is drawn only for selections that can actually be deleted (signatures
+        // and stamps always can; a content object only if `canDeleteStructurally`) — otherwise it
+        // would be an inert control that silently does nothing when clicked.
+        if canDeleteObject {
+            let deleteFrame = deleteButtonRect(for: frame)
+            NSColor.systemRed.setFill()
+            NSColor.white.setStroke()
+            let deleteCircle = NSBezierPath(ovalIn: deleteFrame)
+            deleteCircle.fill()
+            deleteCircle.lineWidth = 1
+            deleteCircle.stroke()
 
-        let inset = deleteFrame.insetBy(dx: 5.5, dy: 5.5)
-        let xPath = NSBezierPath()
-        xPath.lineWidth = 1.7
-        xPath.lineCapStyle = .round
-        xPath.move(to: CGPoint(x: inset.minX, y: inset.minY))
-        xPath.line(to: CGPoint(x: inset.maxX, y: inset.maxY))
-        xPath.move(to: CGPoint(x: inset.maxX, y: inset.minY))
-        xPath.line(to: CGPoint(x: inset.minX, y: inset.maxY))
-        xPath.stroke()
+            let inset = deleteFrame.insetBy(dx: 5.5, dy: 5.5)
+            let xPath = NSBezierPath()
+            xPath.lineWidth = 1.7
+            xPath.lineCapStyle = .round
+            xPath.move(to: CGPoint(x: inset.minX, y: inset.minY))
+            xPath.line(to: CGPoint(x: inset.maxX, y: inset.maxY))
+            xPath.move(to: CGPoint(x: inset.maxX, y: inset.minY))
+            xPath.line(to: CGPoint(x: inset.minX, y: inset.maxY))
+            xPath.stroke()
+        }
     }
 
     override func resetCursorRects() {
         super.resetCursorRects()
         guard let frame = selectionFrame() else { return }
         addCursorRect(frame, cursor: .openHand)
-        addCursorRect(deleteButtonRect(for: frame).insetBy(dx: -3, dy: -3), cursor: .pointingHand)
+        if canDeleteObject {
+            addCursorRect(deleteButtonRect(for: frame).insetBy(dx: -3, dy: -3), cursor: .pointingHand)
+        }
         for (handle, rect) in handleRects(for: frame) {
             addCursorRect(rect.insetBy(dx: -4, dy: -4), cursor: handle.cursor)
         }
@@ -2012,7 +2019,7 @@ final class SignatureSelectionOverlayView: NSView {
         guard let frame = selectionFrame(),
               let selectionTarget else { return }
         let point = convert(event.locationInWindow, from: nil)
-        if deleteButtonRect(for: frame).insetBy(dx: -3, dy: -3).contains(point) {
+        if canDeleteObject, deleteButtonRect(for: frame).insetBy(dx: -3, dy: -3).contains(point) {
             onDelete?(selectionTarget)
             return
         }

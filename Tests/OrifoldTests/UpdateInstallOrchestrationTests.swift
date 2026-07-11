@@ -198,6 +198,27 @@ final class UpdateInstallOrchestrationTests: XCTestCase {
         XCTAssertEqual(inputs.archiveZipPath, rollbackDir.appendingPathComponent(manifest.archiveFileName).path)
     }
 
+    func testRestoreNotOfferedForTheVersionAlreadyRunning() throws {
+        // After a restore relaunches into the archived version, its manifest still names that
+        // same version — the menu must not then offer to "restore" the build you're already on.
+        let previous = tmp.appendingPathComponent("Same.app")
+        try FileManager.default.createDirectory(at: previous.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        try Data("same".utf8).write(to: previous.appendingPathComponent("Contents/marker"))
+        let archiver = RollbackArchiver(directory: tmp.appendingPathComponent("RollbackSame"))
+        _ = try archiver.archive(bundleURL: previous, version: "0.8.6", build: "12")   // == currentVersion below
+
+        let c = UpdateController(
+            transport: OrchTransport(outcome: .upToDate),
+            downloader: OrchDownloader(result: .failure(URLError(.badURL))),
+            defaults: defaults,
+            currentVersion: UpdateVersion(string: "0.8.6")!,
+            archiver: archiver,
+            handOff: SpyHandOff(),
+            now: { Date(timeIntervalSince1970: 1) }
+        )
+        XCTAssertFalse(c.canRestorePreviousVersion, "must not offer to restore the version already running")
+    }
+
     func testRestoreIsNoOpWithoutAnArchive() async {
         let spy = SpyHandOff()
         let c = UpdateController(

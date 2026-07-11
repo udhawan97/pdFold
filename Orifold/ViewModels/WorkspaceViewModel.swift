@@ -3477,7 +3477,8 @@ final class WorkspaceViewModel {
         // detected subset's extremes (which exclude the text lane). Using the detected extremes
         // made bring/send silently no-op for the common case of one image sitting under a text
         // layer (there `min == max == the image's own index`).
-        let absoluteTop = max(0, objectMap(for: ref).rawObjectCount - 1)
+        let rawObjectCount = objectMap(for: ref).rawObjectCount
+        let absoluteTop = max(0, rawObjectCount - 1)
         if toFront, object.zOrder >= absoluteTop { return false }
         if !toFront, object.zOrder <= 0 { return false }
 
@@ -3490,11 +3491,14 @@ final class WorkspaceViewModel {
             originalZIndex: object.zOrder, newZIndex: targetZ, replacementStrategy: .pdfiumStructural)
         let actionKey = toFront ? "undo.bringObjectToFront" : "undo.sendObjectToBack"
         guard applyObjectEdit([op], undoActionNameKey: actionKey) else { return false }
-        // The reorder cleared the object cache; re-detect and re-bind the selection to the SAME
-        // object (its structural digest is z-order-independent) so its `zOrder` is now current.
-        if let fresh = objectMap(for: ref).objects.first(where: { $0.stableKey == object.stableKey }) {
-            objectSelection = ObjectSelectionState(pageRefID: sel.pageRefID, object: fresh)
-        }
+        // Keep the SAME selected object (bounds/transform/digest are unchanged by a reorder) and
+        // just set its new absolute draw index — the engine landed it at the top (`absoluteTop`)
+        // or the bottom (0). This mirrors the move lane's "update the selection in place" and
+        // avoids a digest-only re-detect, which for identical twin objects (same structuralDigest,
+        // different positions) could bind the selection to the wrong twin.
+        var updated = object
+        updated.zOrder = toFront ? absoluteTop : 0
+        objectSelection = ObjectSelectionState(pageRefID: sel.pageRefID, object: updated)
         return true
     }
 

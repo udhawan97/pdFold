@@ -192,8 +192,16 @@ private struct AboutUpdateStatusRow: View {
 
     private func openSoftwareUpdate() {
         openWindow(id: SoftwareUpdateWindow.id)
-        Task { @MainActor in
-            if !updates.phase.isBusy { await updates.checkForUpdates(userInitiated: true) }
+        // Only kick a fresh check when nothing is already in flight to preserve. A re-check
+        // resolves to a NEW phase, so firing it during .downloading/.readyToInstall/.installing
+        // would throw away an offer the user is mid-way through (the Software Update window we
+        // just opened already shows that live state). `.checking`/`.updateAvailable` also need
+        // no re-check. Only the "resting" phases benefit from a refresh.
+        switch updates.phase {
+        case .idle, .upToDate, .failed:
+            Task { @MainActor in await updates.checkForUpdates(userInitiated: true) }
+        case .checking, .updateAvailable, .downloading, .readyToInstall, .installing:
+            break
         }
         onOpen()
     }
