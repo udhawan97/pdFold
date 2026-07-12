@@ -16,6 +16,7 @@ import site from '../data/site.json';
 import stats from '../data/stats.json';
 import { getRelease } from '../lib/release';
 
+import craneFold from '../assets/orifold-crane-fold.svg?raw';
 import gamiWag from '../assets/pets/gami-wag.svg?raw';
 import oriTwitch from '../assets/pets/ori-twitch.svg?raw';
 
@@ -681,8 +682,16 @@ const heroBadges = [
 						<p class="kicker">Final fold · Take flight</p>
 						<h2>Take it home.</h2>
 					</div>
-					<div class="final-crane" data-reveal aria-hidden="true">
-						<img src={`${base}/assets/orifold-app-icon-512.png`} width="512" height="512" loading="lazy" decoding="async" alt="" />
+					<div class="final-flight" id="final-flight" data-reveal role="img" aria-label="A sheet of paper folds into the Orifold crane and lands as the app icon">
+						<span class="flight-aura" aria-hidden="true"></span>
+						<span class="flight-orbit flight-orbit-one" aria-hidden="true"></span>
+						<span class="flight-orbit flight-orbit-two" aria-hidden="true"></span>
+						<span class="flight-star flight-star-one" aria-hidden="true"></span>
+						<span class="flight-star flight-star-two" aria-hidden="true"></span>
+						<span class="flight-star flight-star-three" aria-hidden="true"></span>
+						<div class="final-flight-animation" aria-hidden="true" set:html={craneFold}></div>
+						<img class="final-flight-poster" src={`${base}/assets/orifold-app-icon-512.png`} width="512" height="512" loading="lazy" decoding="async" alt="" aria-hidden="true" />
+						<p class="flight-caption" aria-hidden="true"><span>One sheet</span><i></i><b>Folded for home</b><i></i><span>One calm workspace</span></p>
 					</div>
 					<div class="dl-grid">
 						<div class="dl-user" data-reveal style="min-width:0">
@@ -876,6 +885,32 @@ const heroBadges = [
 					revealed.forEach(function (el) { revIO.observe(el); });
 				} else {
 					revealed.forEach(function (el) { el.classList.add('in'); });
+				}
+
+				// ── final fold: restart the real crane sequence on arrival ─────
+				// The SVG uses SMIL. Pause it while off-screen so the visitor sees the
+				// complete sheet → crane → app-icon fold, then replay it if they return.
+				var finalFlight = document.getElementById('final-flight');
+				var finalFlightSvg = finalFlight && finalFlight.querySelector('svg');
+				if (finalFlight && finalFlightSvg && finalFlightSvg.pauseAnimations) {
+					try { finalFlightSvg.pauseAnimations(); } catch (e) {}
+					if (!reduce && 'IntersectionObserver' in window) {
+						var flightIO = new IntersectionObserver(function (entries) {
+							entries.forEach(function (entry) {
+								if (entry.isIntersecting) {
+									finalFlight.classList.add('flight-active');
+									try {
+										finalFlightSvg.setCurrentTime(0);
+										finalFlightSvg.unpauseAnimations();
+									} catch (e) {}
+								} else {
+									finalFlight.classList.remove('flight-active');
+									try { finalFlightSvg.pauseAnimations(); } catch (e) {}
+								}
+							});
+						}, { threshold: 0.35 });
+						flightIO.observe(finalFlight);
+					}
 				}
 
 				// ── route-progress thread — drawn by the reader, not a timer ──

@@ -717,9 +717,107 @@ html.theme-unchosen .theme-note { display: flex; }
 
 /* ---- download ------------------------------------------------------------ */
 
-.final-crane { margin: 0 0 clamp(2rem, 4vw, 2.8rem); text-align: center; }
-.final-crane img { width: clamp(7rem, 14vw, 10rem); height: auto; filter: drop-shadow(0 22px 44px rgb(13 27 42 / 32%)); transition: transform 0.5s var(--ease-spring); }
-.final-crane img:hover { transform: translateY(-6px) rotate(-3deg); }
+.download-fold { overflow: hidden; }
+
+.final-flight {
+	position: relative;
+	isolation: isolate;
+	display: grid;
+	place-items: center;
+	width: min(100%, 48rem);
+	min-height: clamp(22rem, 48vw, 32rem);
+	margin: clamp(-1.5rem, -2vw, -0.5rem) auto clamp(2.5rem, 6vw, 4.5rem);
+}
+.final-flight::before {
+	content: '';
+	position: absolute;
+	inset: 8% 18% 12%;
+	z-index: -2;
+	background: radial-gradient(ellipse at 50% 48%, rgb(117 191 212 / 26%), rgb(43 69 102 / 9%) 44%, transparent 72%);
+	filter: blur(18px);
+}
+.flight-aura {
+	position: absolute;
+	inset: 13% 26% 19%;
+	z-index: -1;
+	border-radius: 50%;
+	background: radial-gradient(circle, rgb(117 191 212 / 20%), transparent 68%);
+	filter: blur(14px);
+	opacity: 0.62;
+}
+.flight-orbit {
+	position: absolute;
+	z-index: -1;
+	border: 1px solid color-mix(in srgb, var(--ice-deep) 24%, transparent);
+	border-radius: 50%;
+	pointer-events: none;
+}
+.flight-orbit::after {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: -3px;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--ice-deep);
+	box-shadow: 0 0 18px rgb(117 191 212 / 90%);
+}
+.flight-orbit-one { width: 56%; aspect-ratio: 1; transform: rotate(18deg) scaleY(0.48); }
+.flight-orbit-two { width: 72%; aspect-ratio: 1; border-style: dashed; opacity: 0.48; transform: rotate(-24deg) scaleY(0.4); }
+.flight-star {
+	position: absolute;
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: var(--ice-deep);
+	box-shadow: 0 0 15px rgb(117 191 212 / 78%);
+	opacity: 0.42;
+}
+.flight-star-one { top: 24%; left: 23%; }
+.flight-star-two { top: 34%; right: 19%; width: 3px; height: 3px; }
+.flight-star-three { bottom: 29%; left: 19%; width: 3px; height: 3px; }
+.final-flight-animation,
+.final-flight-poster {
+	grid-area: 1 / 1;
+	width: clamp(17rem, 29vw, 23rem);
+	height: auto;
+	filter: drop-shadow(0 32px 62px rgb(13 27 42 / 42%));
+	transform: translateZ(0);
+}
+.final-flight-animation svg { display: block; width: 100%; height: auto; }
+.final-flight-poster { display: none; width: clamp(10rem, 18vw, 13rem); }
+.flight-caption {
+	position: absolute;
+	left: 50%;
+	bottom: 3%;
+	display: flex;
+	align-items: center;
+	gap: clamp(0.65rem, 2vw, 1.2rem);
+	width: min(92%, 34rem);
+	margin: 0;
+	color: var(--faint);
+	font-size: 0.62rem;
+	font-weight: 600;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	transform: translateX(-50%);
+}
+.flight-caption i { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--line-strong), transparent); }
+.flight-caption b { color: var(--ice-deep); font-size: inherit; white-space: nowrap; }
+
+.final-flight.flight-active .flight-orbit-one { animation: of-orbit-one 10s linear infinite; }
+.final-flight.flight-active .flight-orbit-two { animation: of-orbit-two 14s linear infinite reverse; }
+.final-flight.flight-active .flight-aura { animation: of-flight-breathe 4.6s ease-in-out infinite; }
+.final-flight.flight-active .flight-star { animation: of-flight-twinkle 2.8s ease-in-out infinite; }
+.final-flight.flight-active .flight-star-two { animation-delay: -0.9s; }
+.final-flight.flight-active .flight-star-three { animation-delay: -1.8s; }
+.final-flight.flight-active .final-flight-animation { animation: of-flight-arrive 1s var(--ease-spring) both; }
+@keyframes of-orbit-one { to { transform: rotate(378deg) scaleY(0.48); } }
+@keyframes of-orbit-two { to { transform: rotate(336deg) scaleY(0.4); } }
+@keyframes of-flight-breathe { 0%, 100% { opacity: 0.46; transform: scale(0.94); } 50% { opacity: 0.78; transform: scale(1.05); } }
+@keyframes of-flight-twinkle { 0%, 100% { opacity: 0.2; transform: scale(0.7); } 50% { opacity: 0.9; transform: scale(1.35); } }
+@keyframes of-flight-arrive { from { opacity: 0; transform: translateY(24px) scale(0.9); } to { opacity: 1; transform: none; } }
 
 .dl-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(17rem, 0.9fr); gap: clamp(2.5rem, 6vw, 5rem); align-items: start; margin-top: clamp(2.5rem, 5vw, 3.5rem); }
 
@@ -835,6 +933,12 @@ html.theme-unchosen .theme-note { display: flex; }
 @media (max-width: 560px) {
 	.act { padding-block: 3.4rem; }
 	.pet .fig { width: 72px; height: 72px; }
+	.final-flight { min-height: 23rem; margin-top: -2rem; }
+	.final-flight-animation { width: min(19rem, 92vw); }
+	.flight-orbit-one { width: 76%; }
+	.flight-orbit-two { width: 94%; }
+	.flight-caption { bottom: 1%; gap: 0.5rem; font-size: 0.53rem; letter-spacing: 0.08em; }
+	.flight-caption span:last-child { text-align: right; }
 	/* on phones there's no right margin — let the numeral sit as a faint
 	   watermark top-right and drop the left-aligned gloss to avoid clutter */
 	.act-head::before, .seal-grid .act-head::before { font-size: 4.6rem; top: -1.2rem; }
@@ -852,7 +956,10 @@ html.theme-unchosen .theme-note { display: flex; }
 	.crane-art.crane-settled { animation: none; }
 	.hero-crane.crest-lit .crane-sheen { animation: none; opacity: 0; }
 	.fortune-fold.is-refolded .fortune-card { animation: none; }
-	.of-card, .of-card:hover, .btn:hover, .whatsnew-pill:hover, .ff-refold:hover, .badge:hover, .guide:hover, .final-crane img:hover { transform: none; }
+	.of-card, .of-card:hover, .btn:hover, .whatsnew-pill:hover, .ff-refold:hover, .badge:hover, .guide:hover { transform: none; }
+	.final-flight-animation { display: none; }
+	.final-flight-poster { display: block; }
+	.flight-orbit, .flight-aura, .flight-star { animation: none !important; }
 	.pet .fig, .pet .bubble { opacity: 1; transform: none; transition: none; }
 	body, .theme-toggle, .brand img { transition: none; }
 }
