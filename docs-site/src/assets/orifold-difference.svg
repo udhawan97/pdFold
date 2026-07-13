@@ -299,8 +299,8 @@
     <path class="crease" d="M210 0 540 310 854 0M210 620 540 310 854 620" fill="none" stroke-width="1" />
     <circle class="core-aura" cx="540" cy="305" r="246" fill="url(#difference-aura)" />
 
-    <circle class="ambient-star" cx="382" cy="84" r="3" fill="var(--difference-ice, #9ed4e8)" />
-    <circle class="ambient-star star-two" cx="710" cy="102" r="2.4" fill="var(--difference-ice, #9ed4e8)" />
+    <circle class="ambient-star" cx="372" cy="123" r="3" fill="var(--difference-ice, #9ed4e8)" />
+    <circle class="ambient-star star-two" cx="696" cy="131" r="2.4" fill="var(--difference-ice, #9ed4e8)" />
     <circle class="ambient-star star-three" cx="691" cy="518" r="2.8" fill="var(--difference-ice, #9ed4e8)" />
 
     <!-- Left: the familiar market route, made visibly longer and gated. -->
@@ -433,11 +433,11 @@
 
     <!-- Right: the shorter path and the resulting polished document. -->
     <g aria-hidden="true">
-      <text x="760" y="54" class="eyebrow" fill="var(--difference-ice, #9ed4e8)">ORIFOLD'S ROUTE</text>
-      <text x="760" y="84" class="headline">Local work moves at Mac speed.</text>
-      <text x="760" y="106" class="body">Open it. Fold the whole job. Keep moving.</text>
+      <text x="726" y="54" class="eyebrow" fill="var(--difference-ice, #9ed4e8)">ORIFOLD'S ROUTE</text>
+      <text x="726" y="84" class="headline">Local work moves at Mac speed.</text>
+      <text x="726" y="106" class="body">Open it. Fold the whole job. Keep moving.</text>
 
-      <rect x="755" y="140" width="274" height="330" rx="26" fill="url(#difference-panel)" class="panel-stroke" stroke-width="1" />
+      <rect x="730" y="140" width="300" height="330" rx="26" fill="url(#difference-panel)" class="panel-stroke" stroke-width="1" />
       <g clip-path="url(#difference-output-clip)">
         <circle cx="900" cy="301" r="155" fill="url(#difference-aura)" opacity="0.7" />
         <path class="output-sheet" d="M809 176h141l38 38v215H809z" fill="url(#difference-paper)" filter="url(#difference-soft-shadow)" />
@@ -454,7 +454,7 @@
         </g>
       </g>
 
-      <g transform="translate(776 486)">
+      <g transform="translate(752 486)">
         <text x="0" y="23" class="metric">0</text>
         <text x="0" y="43" class="micro">UPLOADS</text>
         <path d="M77 0v50" class="panel-stroke" />
@@ -467,15 +467,18 @@
     </g>
 
     <!-- Bottom thesis: a single sentence, readable even when motion is removed. -->
-    <g transform="translate(68 570)">
-      <circle cx="4" cy="0" r="4" fill="#5eead4" />
-      <text x="19" y="4" class="micro">NATIVE macOS</text>
-      <circle cx="156" cy="0" r="2" fill="var(--difference-muted, #93a5b5)" opacity="0.55" />
-      <text x="171" y="4" class="micro">ON-DEVICE ENGINES</text>
-      <circle cx="355" cy="0" r="2" fill="var(--difference-muted, #93a5b5)" opacity="0.55" />
-      <text x="370" y="4" class="micro">OPEN SOURCE</text>
-      <path d="M493 0h130" class="panel-stroke" />
-      <text x="642" y="4" class="label" fill="var(--difference-ice, #9ed4e8)">THE SHORTEST PATH FROM MESS TO DONE.</text>
+    <g transform="translate(68 554)">
+      <rect x="0" y="0" width="944" height="42" rx="21" fill="var(--difference-panel-a, #172b43)" opacity="0.66" class="panel-stroke" />
+      <circle cx="29" cy="21" r="4" fill="#5eead4" />
+      <text x="45" y="25" class="micro">NATIVE macOS</text>
+      <path d="M186 10v22" class="panel-stroke" />
+      <circle cx="216" cy="21" r="3" fill="var(--difference-ice, #9ed4e8)" opacity="0.8" />
+      <text x="231" y="25" class="micro">ON-DEVICE ENGINES</text>
+      <path d="M436 10v22" class="panel-stroke" />
+      <circle cx="466" cy="21" r="3" fill="var(--difference-ice, #9ed4e8)" opacity="0.8" />
+      <text x="481" y="25" class="micro">OPEN SOURCE</text>
+      <path d="M636 10v22" class="panel-stroke" />
+      <text x="668" y="25" class="label" fill="var(--difference-ice, #9ed4e8)">SHORTEST PATH FROM MESS TO DONE</text>
     </g>
   </g>
   <rect x="1" y="1" width="1078" height="618" rx="28" fill="none" class="panel-stroke" stroke-width="1.2" />
