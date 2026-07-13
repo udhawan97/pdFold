@@ -715,7 +715,10 @@ html.theme-unchosen .theme-note { display: flex; }
 /* The market-comparison flight: a wide, theme-aware SVG replaces the old
  * language-switcher screenshot. Variables are passed into the inline SVG so
  * the illustration changes with the site's paper / ink-night toggle. */
-.difference-figure { width: min(100%, 67.5rem); margin-inline: auto; }
+.difference-figure {
+	width: min(100%, 67.5rem);
+	margin: clamp(2.6rem, 5vw, 4rem) auto 0;
+}
 .difference-stage {
 	--difference-stage-a: #16304a;
 	--difference-stage-b: #0d1b2a;
@@ -736,6 +739,11 @@ html.theme-unchosen .theme-note { display: flex; }
 	transform: translateZ(0);
 }
 .difference-stage svg { display: block; width: 100%; height: auto; }
+.difference-figure figcaption {
+	max-width: 54rem;
+	margin: 1rem auto 0;
+	padding-inline: clamp(0.6rem, 2vw, 1rem);
+}
 .difference-stage-mobile { display: none; }
 [data-theme='dark'] .difference-stage {
 	--difference-stage-a: #10243a;
@@ -969,8 +977,11 @@ html.theme-unchosen .theme-note { display: flex; }
 	.act-head:not(.centered)::after { display: none; }
 }
 @media (max-width: 640px) {
-	.difference-figure { width: calc(100% + 1.5rem); margin-left: -0.75rem; }
-	.difference-stage { border-radius: 0.9rem; }
+	.difference-figure {
+		width: min(100%, 24.5rem);
+		margin-top: 2.2rem;
+	}
+	.difference-stage { border-radius: 1rem; }
 	.difference-stage-desktop { display: none; }
 	.difference-stage-mobile { display: block; }
 }
