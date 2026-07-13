@@ -717,7 +717,7 @@ html.theme-unchosen .theme-note { display: flex; }
  * the illustration changes with the site's paper / ink-night toggle. */
 .difference-figure {
 	width: min(100%, 67.5rem);
-	margin: clamp(2.6rem, 5vw, 4rem) auto 0;
+	margin: clamp(3rem, 6vw, 4.75rem) auto 0;
 }
 .difference-stage {
 	--difference-stage-a: #16304a;
@@ -736,13 +736,16 @@ html.theme-unchosen .theme-note { display: flex; }
 	border-radius: clamp(1rem, 2.5vw, 1.75rem);
 	background: var(--night);
 	box-shadow: 0 38px 86px -46px rgb(13 27 42 / 74%);
+	contain: layout paint;
+	isolation: isolate;
 	transform: translateZ(0);
 }
-.difference-stage svg { display: block; width: 100%; height: auto; }
+.difference-stage svg { display: block; width: 100%; height: auto; overflow: hidden; }
 .difference-figure figcaption {
-	max-width: 54rem;
-	margin: 1rem auto 0;
-	padding-inline: clamp(0.6rem, 2vw, 1rem);
+	max-width: 48rem;
+	margin: 1.25rem auto 0;
+	padding-inline: clamp(0.8rem, 3vw, 1.5rem);
+	line-height: 1.7;
 }
 .difference-stage-mobile { display: none; }
 [data-theme='dark'] .difference-stage {
@@ -976,14 +979,21 @@ html.theme-unchosen .theme-note { display: flex; }
 	.act-head:not(.centered)::before, .seal-grid .act-head::before { font-size: clamp(4rem, 10vw, 6rem); top: -0.8rem; }
 	.act-head:not(.centered)::after { display: none; }
 }
+@media (max-width: 900px) {
+	.difference-figure {
+		width: min(100%, 34rem);
+		margin-top: clamp(2.5rem, 7vw, 3.5rem);
+	}
+	.difference-stage { border-radius: 1.25rem; }
+	.difference-stage-desktop { display: none; }
+	.difference-stage-mobile { display: block; }
+}
 @media (max-width: 640px) {
 	.difference-figure {
 		width: min(100%, 24.5rem);
 		margin-top: 2.2rem;
 	}
 	.difference-stage { border-radius: 1rem; }
-	.difference-stage-desktop { display: none; }
-	.difference-stage-mobile { display: block; }
 }
 @media (max-width: 560px) {
 	.act { padding-block: 3.4rem; }
