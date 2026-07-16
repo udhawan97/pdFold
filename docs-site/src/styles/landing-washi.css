@@ -264,6 +264,75 @@ html.js:not(.no-motion) h1 em, html.js:not(.no-motion) h2 em { animation: of-she
 .seal-grid .act-head::before { top: -4.6rem; right: 0; font-size: clamp(4rem, 7vw, 6.4rem); line-height: 1; }
 .seal-grid .act-head::after { top: -1rem; right: 0; }
 
+/* ---- the fold rail — tategaki marginalia -------------------------------- */
+/* The four ordinal folds (一二三四) carry a vertical rail in the left margin:
+ * numeral, hairline, and a romaji gloss set in vertical-rl so it reads downward
+ * — the marginal column of a hanging scroll. It is sticky, so the mark travels
+ * beside its act and answers "which fold am I in?" without a word of chrome.
+ * The kanji is structure here, not wallpaper: it replaces the giant ::before
+ * watermark and the inline .k-num, so each numeral appears exactly once.
+ * Below 1080px there is no margin to live in — the rail folds away and the
+ * inline .k-num carries the numeral again. */
+
+.act-rail { display: none; }
+
+@media (min-width: 1080px) {
+	/* The rail is absolutely placed rather than a grid column, so the act's
+	 * existing markup needs no wrapper element: .wrap is already positioned, and
+	 * padding-inline-start opens the margin the rail lives in. Spanning top:0 to
+	 * bottom:0 gives .rail-inner the full act to travel through. */
+	.act-scroll { padding-inline-start: clamp(5rem, 6vw, 6.5rem); }
+
+	.act-rail {
+		display: block; position: absolute;
+		inset-block: 0; inset-inline-start: 0; width: 4rem;
+	}
+	.rail-inner {
+		position: sticky; top: 7.5rem;
+		display: flex; flex-direction: column; align-items: center; gap: 1rem;
+	}
+	/* 一二三四 are strokes: a gradient fill lets a lone horizontal stroke wash out
+	 * into a stray dash, so the numeral takes solid indigo — unmistakably type,
+	 * not rule. It cannot carry the ordinal alone either (nothing makes a single
+	 * stroke read as "chapter one"), so the gloss below is load-bearing, not
+	 * marginalia, and is set to be read. Together they answer "which fold is
+	 * this?" long after the kicker has scrolled away — that is the rail's whole
+	 * job, and why it is sticky. */
+	.rail-num {
+		font-family: var(--kanji);
+		font-size: clamp(2.4rem, 3vw, 3.1rem);
+		line-height: 1;
+		color: color-mix(in srgb, var(--indigo) 72%, transparent);
+	}
+	[data-theme='dark'] .rail-num { color: color-mix(in srgb, var(--ice) 66%, transparent); }
+	/* the night band re-points --ink but not --indigo, so the numeral would sit
+	 * dark-on-dark there; it takes the band's own ice instead. */
+	.fold-keep .rail-num { color: color-mix(in srgb, var(--ice) 70%, transparent); }
+	.rail-rule {
+		width: 1px; height: clamp(2rem, 3.6vw, 2.8rem);
+		background: linear-gradient(to bottom, var(--line-strong), transparent);
+	}
+	.rail-gloss {
+		writing-mode: vertical-rl;
+		font-size: 0.62rem; font-weight: 600;
+		letter-spacing: 0.2em; text-transform: uppercase;
+		color: color-mix(in srgb, var(--ink) 52%, transparent);
+	}
+
+	/* the rail now carries the mark — retire the watermark and the inline numeral */
+	.act-scroll .act-head::before,
+	.act-scroll .act-head::after { content: none; }
+	.act-scroll .kicker .k-num { display: none; }
+
+	/* Gather alone bleeds its figure into the right gutter — the widest gesture
+	 * on the page, spent once, on the act where the pile arrives. Zero below
+	 * 1200px (no gutter to spend), capped at 8rem so ultrawide stays sane.
+	 * html{overflow-x:clip} (top of file) backstops the scrollbar rounding. */
+	.act-scroll.act-bleed-end .act-figure {
+		margin-right: calc(-1 * min(8rem, max(0rem, (100vw - 1200px) / 2)));
+	}
+}
+
 .shead-note { margin-top: 1.4rem; }
 
 /* crease divider — hairline with a folded paper diamond */
@@ -626,7 +695,10 @@ html.theme-unchosen .theme-note { display: flex; }
 /* ---- feature / horizon / updates cards ----------------------------------- */
 
 .feature-band { margin-top: clamp(2.4rem, 5vw, 3.4rem); }
-.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+/* min(300px, 100%), not a bare 300px: at 320px the wrap is only 272px wide, and
+ * a hard 300px floor pushed the cards 4px past the edge (clipped, not scrolled,
+ * so it read as a shaved right border rather than a bug). */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 1rem; }
 
 .of-card {
 	position: relative; display: flex; flex-direction: column; justify-content: flex-end;
@@ -666,8 +738,9 @@ html.theme-unchosen .theme-note { display: flex; }
 .of-card:hover .glyph { transform: translateY(-2px) rotate(-4deg); }
 .of-card .glyph svg { width: 1.2rem; height: 1.2rem; }
 
+/* No 01/02/03 here: these cards are a set of jobs, not a sequence. Ordinal
+ * marks are reserved for the four folds, which genuinely are one. */
 .of-card h3 { margin: 1.4rem 0 0.55rem; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; }
-.of-card h3 .nnum { margin-right: 0.55rem; font-weight: 500; color: var(--ice-deep); font-variant-numeric: tabular-nums; }
 .of-card p { margin: 0; max-width: 38ch; color: var(--muted); font-size: 0.9rem; line-height: 1.75; }
 
 .guides-row { margin: 2.4rem 0 0; color: var(--muted); font-size: 0.92rem; max-width: none; }
@@ -695,16 +768,49 @@ html.theme-unchosen .theme-note { display: flex; }
 .fold-keep .frame { border-color: rgb(234 240 245 / 18%); box-shadow: 0 40px 80px -40px rgb(0 0 0 / 82%); }
 .fold-keep .pet .bubble::after { background: linear-gradient(225deg, var(--night) 0 50%, rgb(234 240 245 / 14%) 50% 100%); }
 
-.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 2.4rem 2rem; margin-top: clamp(2.6rem, 5vw, 3.6rem); }
+/* Six stats on one auto-fit row squeezed each track to ~190px, which broke
+ * "AES-256" across two lines. Fixed 3 × 2 gives every value room to sit on one
+ * line at every width. */
+.stat-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(2rem, 4vw, 2.8rem) 2rem; margin-top: clamp(2.6rem, 5vw, 3.6rem); }
+@media (max-width: 860px) { .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .stat-row { grid-template-columns: minmax(0, 1fr); } }
 .stat b { display: block; font-family: var(--display); font-size: clamp(1.9rem, 3.4vw, 2.7rem); font-weight: 560; line-height: 1.05; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .stat span { display: block; margin-top: 0.6rem; max-width: 24ch; color: var(--muted); font-size: 0.84rem; line-height: 1.65; }
 .stat-row + .fine-print { margin-top: 2.4rem; }
 
 /* ---- ma ------------------------------------------------------------------ */
 
-.ma-body { max-width: 66ch; margin: 1.6rem auto 0; color: var(--muted); font-size: clamp(1.05rem, 1.6vw, 1.18rem); line-height: 1.85; }
+/* 間 means the interval — the active emptiness between things. It used to sit
+ * as a watermark directly behind this section's running copy, which is the one
+ * thing the glyph argues against. Here it takes the left column and the essay
+ * takes the right, so the mark occupies a real interval instead of crowding the
+ * text that names it. It is a subject now rather than a texture, so it carries
+ * real weight instead of watermark opacity. */
+.ma-grid { display: grid; gap: clamp(1.6rem, 4vw, 3rem); }
+@media (min-width: 900px) {
+	.ma-grid {
+		grid-template-columns: minmax(8rem, 0.3fr) minmax(0, 0.7fr);
+		gap: clamp(2.5rem, 6vw, 5rem);
+		align-items: start;
+	}
+}
+.ma-mark { display: flex; flex-direction: column; align-items: flex-start; gap: 0.7rem; }
+.ma-glyph {
+	font-family: var(--kanji);
+	font-size: clamp(4.5rem, 10vw, 9rem);
+	line-height: 0.82;
+	color: color-mix(in srgb, var(--indigo) 34%, transparent);
+}
+[data-theme='dark'] .ma-glyph { color: color-mix(in srgb, var(--ice) 38%, transparent); }
+.ma-gloss {
+	font-size: 0.56rem; font-weight: 600;
+	letter-spacing: 0.22em; text-transform: uppercase;
+	color: color-mix(in srgb, var(--ink) 34%, transparent);
+}
 
-.guides { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; max-width: 56rem; margin: clamp(2.6rem, 5vw, 3.6rem) auto 0; }
+.ma-body { max-width: 66ch; margin: 1.6rem 0 0; color: var(--muted); font-size: clamp(1.05rem, 1.6vw, 1.18rem); line-height: 1.85; }
+
+.guides { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 2rem; max-width: 56rem; margin: clamp(2.6rem, 5vw, 3.6rem) auto 0; }
 .guide { display: flex; align-items: flex-start; gap: 1.15rem; padding: 1.5rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); text-align: left; transition: transform 0.4s var(--ease-spring), box-shadow 0.35s ease; }
 .guide:hover { transform: translateY(-4px); box-shadow: 0 20px 46px -24px rgb(13 27 42 / 22%); }
 .guide .guide-fig, .guide .guide-poster { flex: 0 0 auto; width: 84px; height: 84px; }
