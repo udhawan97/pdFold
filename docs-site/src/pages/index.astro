@@ -357,7 +357,14 @@ const heroBadges = [
 
 			<!-- Gather -->
 			<section id="gather" class="fold act">
-				<div class="wrap">
+				<div class="wrap act-scroll act-bleed-end">
+					<aside class="act-rail" aria-hidden="true">
+						<div class="rail-inner">
+							<span class="rail-num">一</span>
+							<span class="rail-rule"></span>
+							<span class="rail-gloss">ichi · gather</span>
+						</div>
+					</aside>
 					<div class="act-head" data-num="一" data-gloss="ichi · one" data-reveal>
 						<p class="kicker"><span class="k-num" aria-hidden="true">一</span>First fold · Gather</p>
 						<h2>Fifty messy files. One quiet stack.</h2>
@@ -389,7 +396,14 @@ const heroBadges = [
 
 			<!-- Shape -->
 			<section id="shape" class="fold act">
-				<div class="wrap">
+				<div class="wrap act-scroll">
+					<aside class="act-rail" aria-hidden="true">
+						<div class="rail-inner">
+							<span class="rail-num">二</span>
+							<span class="rail-rule"></span>
+							<span class="rail-gloss">ni · shape</span>
+						</div>
+					</aside>
 					<div class="act-head" data-num="二" data-gloss="ni · two" data-reveal>
 						<p class="kicker"><span class="k-num" aria-hidden="true">二</span>Second fold · Shape</p>
 						<h2>Edit the page itself.</h2>
@@ -422,7 +436,7 @@ const heroBadges = [
 								<a class="of-card" href={`${base}/${c.href}`} data-reveal style={`--d:${i}`}>
 									<span class="card-kanji" aria-hidden="true">{c.k}<span class="kanji-gloss">{c.km}</span></span>
 									<span class="glyph" aria-hidden="true" set:html={c.icon} />
-									<h3><span class="nnum">0{i + 1}</span>{c.t}</h3>
+									<h3>{c.t}</h3>
 									<p>{c.p}</p>
 								</a>
 							))}
@@ -446,7 +460,14 @@ const heroBadges = [
 
 			<!-- Seal -->
 			<section id="seal" class="fold act">
-				<div class="wrap">
+				<div class="wrap act-scroll">
+					<aside class="act-rail" aria-hidden="true">
+						<div class="rail-inner">
+							<span class="rail-num">三</span>
+							<span class="rail-rule"></span>
+							<span class="rail-gloss">san · seal</span>
+						</div>
+					</aside>
 					<div class="seal-grid">
 						<div>
 							<div class="act-head" data-num="三" data-gloss="san · three" data-reveal>
@@ -479,7 +500,14 @@ const heroBadges = [
 
 			<!-- Keep — the indigo night band: the icon's own dark corner -->
 			<section id="keep" class="fold fold-keep">
-				<div class="wrap">
+				<div class="wrap act-scroll">
+					<aside class="act-rail" aria-hidden="true">
+						<div class="rail-inner">
+							<span class="rail-num">四</span>
+							<span class="rail-rule"></span>
+							<span class="rail-gloss">shi · keep</span>
+						</div>
+					</aside>
 					<div class="act-head" data-num="四" data-gloss="shi · four" data-reveal>
 						<p class="kicker"><span class="k-num" aria-hidden="true">四</span>Fourth fold · Keep</p>
 						<h2>The studio has no windows.</h2>
@@ -517,8 +545,13 @@ const heroBadges = [
 			<!-- Ma — why + the living guides -->
 			<section id="ma" class="fold act">
 				<div class="wrap">
-					<div class="act-head centered" data-num="間" data-gloss="ma · the interval" data-reveal>
-						<p class="kicker"><span class="k-num" lang="ja" aria-hidden="true">間</span><span class="sr-only">Ma — the margin</span>The margin</p>
+					<div class="ma-grid">
+					<div class="ma-mark" aria-hidden="true" data-reveal>
+						<span class="ma-glyph" lang="ja">間</span>
+						<span class="ma-gloss">ma · the interval</span>
+					</div>
+					<div class="act-head ma-head" data-reveal>
+						<p class="kicker"><span class="sr-only">Ma — the margin</span>The margin</p>
 						<h2>Why it folds this way.</h2>
 						<p class="ma-body">
 							Basic file work on a Mac shouldn't require a subscription, an upload, or a small
@@ -528,6 +561,7 @@ const heroBadges = [
 							sequence, not six errands across five apps. Still a beta, built in the open, one honest
 							fold at a time.
 						</p>
+					</div>
 					</div>
 
 					<div class="guides" data-reveal>
