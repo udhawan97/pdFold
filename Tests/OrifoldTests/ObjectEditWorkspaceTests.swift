@@ -88,6 +88,21 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         return data as Data
     }
 
+    private func makeMixedEditingFormFixture() throws -> Data {
+        let document = try XCTUnwrap(PDFDocument(data: makeMixedEditingFixture()))
+        let page = try XCTUnwrap(document.page(at: 0))
+        let field = PDFAnnotation(
+            bounds: CGRect(x: 72, y: 640, width: 220, height: 28),
+            forType: .widget,
+            withProperties: nil
+        )
+        field.widgetFieldType = .text
+        field.fieldName = "Replay field"
+        field.widgetStringValue = "Retain this value"
+        page.addAnnotation(field)
+        return try XCTUnwrap(document.dataRepresentation())
+    }
+
     private func makeTwoPageFixture() throws -> Data {
         let source = try XCTUnwrap(PDFDocument(data: makeFixture()))
         let page = try XCTUnwrap(source.page(at: 0))
@@ -277,12 +292,18 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         XCTAssertTrue(vm.canLayerSelectedObject, "the rect should support z-order changes")
         XCTAssertTrue(vm.bringSelectedObjectToFront(), "bring to front should apply")
         XCTAssertNotNil(vm.objectSelection, "selection must survive a reorder")
+        let frontMap = vm.objectMap(for: ref)
+        XCTAssertEqual(frontMap.objects.map(\.zOrder), frontMap.objects.map(\.zOrder).sorted())
+        XCTAssertEqual(Set(frontMap.objects.map(\.zOrder)).count, frontMap.objects.count)
         XCTAssertGreaterThan(try XCTUnwrap(zOrder(nearBounds: deleteRect)),
                              try XCTUnwrap(zOrder(nearBounds: imagePDF)),
                              "rect should now be in front of the image")
 
         // Send it back to the bottom.
         XCTAssertTrue(vm.sendSelectedObjectToBack(), "send to back should apply")
+        let backMap = vm.objectMap(for: ref)
+        XCTAssertEqual(backMap.objects.map(\.zOrder), backMap.objects.map(\.zOrder).sorted())
+        XCTAssertEqual(Set(backMap.objects.map(\.zOrder)).count, backMap.objects.count)
         XCTAssertLessThan(try XCTUnwrap(zOrder(nearBounds: deleteRect)),
                           try XCTUnwrap(zOrder(nearBounds: imagePDF)),
                           "rect should be behind the image again")
@@ -297,6 +318,15 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         XCTAssertGreaterThan(try XCTUnwrap(zOrder(nearBounds: deleteRect)),
                              try XCTUnwrap(zOrder(nearBounds: imagePDF)),
                              "undoing send-to-back should restore the front position")
+
+        let imageAfterReorder = try XCTUnwrap(vm.objectMap(for: ref).objects.first { $0.objectType == .imageXObject })
+        vm.selectObject(imageAfterReorder, on: ref)
+        let countBeforeDelete = vm.objectMap(for: ref).rawObjectCount
+        XCTAssertTrue(vm.deleteSelectedObject())
+        let deletedMap = vm.objectMap(for: ref)
+        XCTAssertEqual(deletedMap.rawObjectCount, countBeforeDelete - 1)
+        XCTAssertEqual(deletedMap.objects.map(\.zOrder), deletedMap.objects.map(\.zOrder).sorted())
+        XCTAssertEqual(Set(deletedMap.objects.map(\.zOrder)).count, deletedMap.objects.count)
     }
 
     // Regression (audit finding #1): the no-op guard must measure the ABSOLUTE draw order, not
@@ -365,7 +395,7 @@ final class ObjectEditWorkspaceTests: XCTestCase {
     }
 
     func testCrossLaneTextEditReplaysWithMemberObjectEdits() throws {
-        let vm = try makeViewModel(data: makeMixedEditingFixture())
+        let vm = try makeViewModel(data: makeMixedEditingFormFixture())
         let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
         let member = ref.memberDocId
         let image = try XCTUnwrap(vm.objectMap(for: ref).objects.first { $0.objectType == .imageXObject })
@@ -397,6 +427,16 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         ))
 
         let replayedData = try XCTUnwrap(vm.document.memberPDFData[member])
+        XCTAssertTrue(QPDFService.isStructurallySound(replayedData), "combined replay must remain structurally sound")
+        XCTAssertTrue(
+            QPDFService.formFieldsReferencePageAnnotations(replayedData),
+            "combined replay must keep the AcroForm field and page widget as one object"
+        )
+        let replayedWidget = try XCTUnwrap(
+            PDFDocument(data: replayedData)?.page(at: 0)?.annotations.first { $0.isPDFWidget }
+        )
+        XCTAssertEqual(replayedWidget.widgetStringValue, "Retain this value")
+        XCTAssertEqual(replayedWidget.fieldName, "Replay field")
         XCTAssertTrue(near(try XCTUnwrap(imageBounds(in: replayedData)), imagePDF.offsetBy(dx: 35, dy: -12), tol: 4),
                       "committing text lost the earlier object transform")
         XCTAssertTrue(PDFDocument(data: replayedData)?.page(at: 0)?.string?.contains("Replayed mixed editing text") == true,
@@ -423,6 +463,9 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         XCTAssertEqual(refs.count, 2)
         let firstRef = refs[0]
         let member = firstRef.memberDocId
+        let firstPage = try XCTUnwrap(vm.loadedPDFs.first?.1.page(at: 0))
+        let samePageNote = try XCTUnwrap(vm.addNote(at: CGPoint(x: 100, y: 100), on: firstPage))
+        samePageNote.contents = "keep edited-page note"
         let secondPage = try XCTUnwrap(vm.loadedPDFs.first?.1.page(at: 1))
         let note = try XCTUnwrap(vm.addNote(at: CGPoint(x: 80, y: 80), on: secondPage))
         note.contents = "keep sibling note"
@@ -431,6 +474,11 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         XCTAssertTrue(vm.applyObjectEdit([transformOp(image, ref: firstRef, member: member, dx: 20, dy: -10)]))
 
         let replayedSibling = try XCTUnwrap(vm.loadedPDFs.first?.1.page(at: 1))
+        let replayedEditedPage = try XCTUnwrap(vm.loadedPDFs.first?.1.page(at: 0))
+        XCTAssertTrue(
+            replayedEditedPage.annotations.contains { $0.contents == "keep edited-page note" },
+            "member replay discarded an annotation on the edited page"
+        )
         XCTAssertTrue(
             replayedSibling.annotations.contains { $0.contents == "keep sibling note" },
             "member replay discarded an annotation on an untouched sibling page"
@@ -513,6 +561,27 @@ final class ObjectEditWorkspaceTests: XCTestCase {
 
         vm.rotatePage(ref1, by: 90)
         XCTAssertNil(vm.objectSelection, "rotating the selected object's own page should clear it")
+    }
+
+    func testReselectingAfterRotationKeepsObjectEditingRefused() throws {
+        let vm = try makeViewModel()
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        _ = vm.objectMap(for: ref) // Populate the canonical inspection before live rotation.
+
+        vm.rotatePage(ref, by: 90)
+        let rotatedMap = vm.objectMap(for: ref)
+        let image = try XCTUnwrap(rotatedMap.objects.first { $0.objectType == .imageXObject })
+        XCTAssertEqual(image.pageRotation, 90)
+
+        vm.selectObject(image, on: ref)
+        let originalBounds = image.boundsPdf
+        let attemptedBounds = originalBounds.offsetBy(dx: 20, dy: 10)
+        let revisionBeforeAttempt = vm.structureRevision
+        let applied = vm.commitObjectBoundsChange(from: originalBounds, to: attemptedBounds)
+
+        XCTAssertEqual(applied, originalBounds, "rotated-page editing must stay refused after reselect")
+        XCTAssertFalse(vm.hasObjectEdits)
+        XCTAssertEqual(vm.structureRevision, revisionBeforeAttempt)
     }
 
     func testBulkRotatePagesInvalidatesSelectionOnlyForRotatedPages() throws {

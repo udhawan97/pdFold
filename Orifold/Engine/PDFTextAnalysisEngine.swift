@@ -164,8 +164,27 @@ final class PDFTextAnalysisEngine {
             .mode
     }
 
-    func analyze(data: Data, pageIndex: Int, pageRefID: UUID? = nil, fallbackPage: PDFPage? = nil) -> PDFTextPageAnalysis {
-        if let pdfium = analyzeWithPDFium(data: data, pageIndex: pageIndex, pageRefID: pageRefID, sourcePage: fallbackPage),
+    func analyze(
+        data: Data,
+        pageIndex: Int,
+        pageRefID: UUID? = nil,
+        fallbackPage: PDFPage? = nil,
+        inspection: PDFPageObjectInspection.Result? = nil
+    ) -> PDFTextPageAnalysis {
+        guard inspection?.wasRefused != true else {
+            return PDFTextPageAnalysis(
+                pageRefID: pageRefID,
+                blocks: [],
+                graphics: inspection?.graphics ?? .empty
+            )
+        }
+        if let pdfium = analyzeWithPDFium(
+            data: data,
+            pageIndex: pageIndex,
+            pageRefID: pageRefID,
+            sourcePage: fallbackPage,
+            inspection: inspection
+        ),
            !pdfium.blocks.isEmpty {
             return pdfium
         }
@@ -219,7 +238,13 @@ final class PDFTextAnalysisEngine {
         blocks.min { ($0.bounds.width * $0.bounds.height) < ($1.bounds.width * $1.bounds.height) }
     }
 
-    private func analyzeWithPDFium(data: Data, pageIndex: Int, pageRefID: UUID?, sourcePage: PDFPage?) -> PDFTextPageAnalysis? {
+    private func analyzeWithPDFium(
+        data: Data,
+        pageIndex: Int,
+        pageRefID: UUID?,
+        sourcePage: PDFPage?,
+        inspection suppliedInspection: PDFPageObjectInspection.Result?
+    ) -> PDFTextPageAnalysis? {
         guard !data.isEmpty, data.count <= Int(Int32.max) else { return nil }
         pdfiumLock.lock()
         defer { pdfiumLock.unlock() }
@@ -239,7 +264,7 @@ final class PDFTextAnalysisEngine {
             let count = Int(FPDFText_CountChars(textPage))
             guard count > 0 else { return PDFTextPageAnalysis(pageRefID: pageRefID, blocks: []) }
 
-            let inspection = PDFPageObjectInspection.inspect(
+            let inspection = suppliedInspection ?? PDFPageObjectInspection.inspect(
                 openPage: page,
                 pageRefID: pageRefID ?? UUID(),
                 allowsEditing: false

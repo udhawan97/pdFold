@@ -116,6 +116,114 @@ enum QPDFService {
         }
     }
 
+    /// Replaces only page annotations and the document AcroForm in `destinationData` with
+    /// their live counterparts from `sourceData`. Page contents/resources remain those of the
+    /// destination. This is the preserving bridge used after canonical edit replay: PDFKit bytes
+    /// may provide live notes, signatures, and form values, but never become the destination's
+    /// page-content base.
+    static func replacingInteractiveState(in destinationData: Data, from sourceData: Data) -> Data? {
+        withQPDF(destinationData, description: "interactive-state-destination") { destination in
+            withQPDF(sourceData, description: "interactive-state-source") { source in
+                guard hasErrors(qpdf_check_pdf(destination)) == false,
+                      hasErrors(qpdf_check_pdf(source)) == false else { return nil }
+                let destinationPageCount = qpdf_get_num_pages(destination)
+                guard destinationPageCount >= 0,
+                      destinationPageCount == qpdf_get_num_pages(source) else { return nil }
+
+                for pageIndex in 0..<destinationPageCount {
+                    let sourcePage = qpdf_get_page_n(source, numericCast(pageIndex))
+                    let destinationPage = qpdf_get_page_n(destination, numericCast(pageIndex))
+                    if hasKey(source, sourcePage, "/Annots") {
+                        let sourceAnnotations = indirectObject(
+                            qpdf_oh_get_key(source, sourcePage, "/Annots"),
+                            in: source
+                        )
+                        let copiedAnnotations = qpdf_oh_copy_foreign_object(
+                            destination,
+                            source,
+                            sourceAnnotations
+                        )
+                        replaceKey(destination, in: destinationPage, key: "/Annots", value: copiedAnnotations)
+
+                        // Annotation `/P` entries must reference the destination page rather
+                        // than a recursively copied source page.
+                        let count = qpdf_oh_get_array_n_items(destination, copiedAnnotations)
+                        if count > 0 {
+                            for annotationIndex in 0..<count {
+                                let annotation = qpdf_oh_get_array_item(
+                                    destination,
+                                    copiedAnnotations,
+                                    annotationIndex
+                                )
+                                replaceKey(destination, in: annotation, key: "/P", value: destinationPage)
+                            }
+                        }
+                    } else {
+                        removeKey(destination, from: destinationPage, key: "/Annots")
+                    }
+                }
+
+                let sourceRoot = qpdf_get_root(source)
+                let destinationRoot = qpdf_get_root(destination)
+                if hasKey(source, sourceRoot, "/AcroForm") {
+                    let sourceForm = indirectObject(
+                        qpdf_oh_get_key(source, sourceRoot, "/AcroForm"),
+                        in: source
+                    )
+                    let copiedForm = qpdf_oh_copy_foreign_object(
+                        destination,
+                        source,
+                        sourceForm
+                    )
+                    replaceKey(destination, in: destinationRoot, key: "/AcroForm", value: copiedForm)
+                } else {
+                    removeKey(destination, from: destinationRoot, key: "/AcroForm")
+                }
+
+                return write(destination) { _ in }
+            }
+        }
+    }
+
+    /// Structural diagnostic for the annotation/form graft: every terminal field in
+    /// `/AcroForm/Fields` must be the same indirect object reachable from a destination page's
+    /// `/Annots` array. Kept internal so replay regression tests can verify identity, not merely
+    /// that PDFKit happens to display a copied value.
+    static func formFieldsReferencePageAnnotations(_ data: Data) -> Bool {
+        withQPDF(data, description: "form-annotation-identity") { qpdf in
+            let root = qpdf_get_root(qpdf)
+            guard hasKey(qpdf, root, "/AcroForm") else { return true }
+            let form = qpdf_oh_get_key(qpdf, root, "/AcroForm")
+            guard hasKey(qpdf, form, "/Fields") else { return true }
+
+            var pageAnnotationIDs = Set<String>()
+            let pageCount = qpdf_get_num_pages(qpdf)
+            guard pageCount >= 0 else { return false }
+            for pageIndex in 0..<pageCount {
+                let page = qpdf_get_page_n(qpdf, numericCast(pageIndex))
+                guard hasKey(qpdf, page, "/Annots") else { continue }
+                let annotations = qpdf_oh_get_key(qpdf, page, "/Annots")
+                for annotationIndex in 0..<qpdf_oh_get_array_n_items(qpdf, annotations) {
+                    let annotation = qpdf_oh_get_array_item(qpdf, annotations, annotationIndex)
+                    if let identity = indirectIdentity(annotation, in: qpdf) {
+                        pageAnnotationIDs.insert(identity)
+                    }
+                }
+            }
+
+            var fieldIDs = Set<String>()
+            var visitedFieldIDs = Set<String>()
+            collectTerminalFieldIDs(
+                from: qpdf_oh_get_key(qpdf, form, "/Fields"),
+                in: qpdf,
+                into: &fieldIDs,
+                visited: &visitedFieldIDs,
+                depth: 0
+            )
+            return !fieldIDs.isEmpty && fieldIDs.isSubset(of: pageAnnotationIDs)
+        } ?? false
+    }
+
     // MARK: - Private helpers
 
     private static func hasKey(_ qpdf: qpdf_data, _ oh: qpdf_oh, _ key: String) -> Bool {
@@ -124,6 +232,53 @@ enum QPDFService {
 
     private static func removeKey(_ qpdf: qpdf_data, from oh: qpdf_oh, key: String) {
         key.withCString { qpdf_oh_remove_key(qpdf, oh, $0) }
+    }
+
+    private static func replaceKey(_ qpdf: qpdf_data, in oh: qpdf_oh, key: String, value: qpdf_oh) {
+        key.withCString { qpdf_oh_replace_key(qpdf, oh, $0, value) }
+    }
+
+    /// qpdf can copy only indirect objects across documents. PDF permits `/Annots` arrays and
+    /// `/AcroForm` dictionaries to be direct, so promote those legal containers in the temporary
+    /// source instance before asking qpdf to copy them.
+    private static func indirectObject(_ object: qpdf_oh, in qpdf: qpdf_data) -> qpdf_oh {
+        qpdf_oh_is_indirect(qpdf, object) != QPDF_FALSE
+            ? object
+            : qpdf_make_indirect_object(qpdf, object)
+    }
+
+    private static func collectTerminalFieldIDs(
+        from fields: qpdf_oh,
+        in qpdf: qpdf_data,
+        into identities: inout Set<String>,
+        visited: inout Set<String>,
+        depth: Int
+    ) {
+        guard depth < 64, qpdf_oh_is_array(qpdf, fields) != QPDF_FALSE else { return }
+        for index in 0..<qpdf_oh_get_array_n_items(qpdf, fields) {
+            let field = qpdf_oh_get_array_item(qpdf, fields, index)
+            if let identity = indirectIdentity(field, in: qpdf),
+               !visited.insert(identity).inserted {
+                continue
+            }
+            if hasKey(qpdf, field, "/Kids") {
+                collectTerminalFieldIDs(
+                    from: qpdf_oh_get_key(qpdf, field, "/Kids"),
+                    in: qpdf,
+                    into: &identities,
+                    visited: &visited,
+                    depth: depth + 1
+                )
+            } else if let identity = indirectIdentity(field, in: qpdf) {
+                identities.insert(identity)
+            }
+        }
+    }
+
+    private static func indirectIdentity(_ object: qpdf_oh, in qpdf: qpdf_data) -> String? {
+        let objectID = qpdf_oh_get_object_id(qpdf, object)
+        guard objectID > 0 else { return nil }
+        return "\(objectID):\(qpdf_oh_get_generation(qpdf, object))"
     }
 
     private static func hasErrors(_ code: QPDF_ERROR_CODE) -> Bool {

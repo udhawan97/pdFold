@@ -68,6 +68,45 @@ enum PDFEditedPageRenderer {
         return newPage
     }
 
+    /// Builds a transparent, single-page PDF containing only the visual text-edit overlay:
+    /// erase patches plus replacement glyphs. The original page content is deliberately not
+    /// drawn into this artifact. `PDFPageOverlayMergeEngine` imports it as a Form XObject into
+    /// PDFium's structurally edited page, preserving the destination object graph and ensuring
+    /// object deletes never regain hidden source bytes through a PDFKit page copy.
+    static func replacementOverlayData(from page: PDFPage, applying operations: [PDFTextEditOperation]) -> Data? {
+        guard !operations.isEmpty else { return Data() }
+        let mediaBox = page.bounds(for: .mediaBox)
+        guard mediaBox.width > 0, mediaBox.height > 0 else { return nil }
+
+        let data = NSMutableData()
+        var outputBox = CGRect(origin: .zero, size: mediaBox.size)
+        guard let consumer = CGDataConsumer(data: data as CFMutableData),
+              let context = CGContext(consumer: consumer, mediaBox: &outputBox, nil) else {
+            return nil
+        }
+
+        context.beginPDFPage([:] as CFDictionary)
+        context.saveGState()
+        context.translateBy(x: -mediaBox.minX, y: -mediaBox.minY)
+        for operation in operations {
+            for sourceBounds in eraseBounds(for: operation, on: page) {
+                drawErasePatch(
+                    for: sourceBounds,
+                    on: page,
+                    in: context,
+                    preservingRules: operation.sourcePreserveRuleBounds
+                )
+            }
+        }
+        for operation in operations {
+            drawReplacement(operation, in: context)
+        }
+        context.restoreGState()
+        context.endPDFPage()
+        context.closePDF()
+        return data as Data
+    }
+
     private static func drawPageBackground(from page: PDFPage, unrotatedPage: PDFPage, mediaBox: CGRect, in context: CGContext) {
         if page.pageRef != nil {
             context.saveGState()

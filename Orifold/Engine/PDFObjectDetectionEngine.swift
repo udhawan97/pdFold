@@ -34,6 +34,123 @@ struct PDFObjectDetectionEngine {
         ).objectMap
     }
 
+    /// Projects committed absolute operations over a canonical inspection snapshot. Selection
+    /// therefore sees live bounds/style/order without rescanning replayed bytes (whose text
+    /// overlay Form XObjects are implementation details, not user-editable source objects).
+    static func projecting(_ map: PageObjectMap, operations: [ObjectEditOperation]) -> PageObjectMap {
+        guard !operations.isEmpty else { return map }
+        var objects = map.objects
+        var deletedIndexes = Set<Int>()
+        var projectedRawObjectCount = map.rawObjectCount
+
+        for operation in operations.sorted(by: { projectionRank($0.type) < projectionRank($1.type) }) {
+            let candidates = objects.indices.filter { index in
+                !deletedIndexes.contains(index) &&
+                    objects[index].stableKey.structuralDigest == operation.sourceObjectKey.structuralDigest &&
+                    objects[index].objectType == operation.objectType
+            }
+            guard let target = candidates.min(by: { lhs, rhs in
+                // Resolve against the immutable canonical snapshot, not already-projected
+                // bounds. A transform followed by a style op for one of two identical twins
+                // must not switch targets merely because the first projection moved it.
+                distanceSquared(map.objects[lhs].boundsPdf, operation.originalBoundsPdf) <
+                    distanceSquared(map.objects[rhs].boundsPdf, operation.originalBoundsPdf)
+            }) else { continue }
+
+            switch operation.type {
+            case .objectTransform:
+                objects[target].boundsPdf = operation.newBoundsPdf
+                objects[target].transform = operation.newTransform
+            case .objectStyleChange:
+                if let payload = operation.newStylePayload {
+                    if let fill = payload.fillColor { objects[target].style.fillColor = fill }
+                    if let stroke = payload.strokeColor { objects[target].style.strokeColor = stroke }
+                    if let width = payload.lineWidth { objects[target].style.lineWidth = width }
+                    if let opacity = payload.opacity { objects[target].style.opacity = opacity }
+                    if let dash = payload.dashArray { objects[target].style.dashPattern = dash }
+                    if let phase = payload.dashPhase { objects[target].style.dashPhase = phase }
+                }
+            case .objectReorder:
+                let oldIndex = objects[target].zOrder
+                let newIndex = min(
+                    max(0, operation.newZIndex),
+                    max(0, projectedRawObjectCount - 1)
+                )
+                if newIndex > oldIndex {
+                    for peer in objects.indices where peer != target && !deletedIndexes.contains(peer) &&
+                        objects[peer].zOrder > oldIndex && objects[peer].zOrder <= newIndex {
+                        objects[peer].zOrder -= 1
+                    }
+                } else if newIndex < oldIndex {
+                    for peer in objects.indices where peer != target && !deletedIndexes.contains(peer) &&
+                        objects[peer].zOrder >= newIndex && objects[peer].zOrder < oldIndex {
+                        objects[peer].zOrder += 1
+                    }
+                }
+                objects[target].zOrder = newIndex
+            case .objectDelete:
+                deletedIndexes.insert(target)
+                let deletedZOrder = objects[target].zOrder
+                for peer in objects.indices where !deletedIndexes.contains(peer) &&
+                    objects[peer].zOrder > deletedZOrder {
+                    objects[peer].zOrder -= 1
+                }
+                projectedRawObjectCount = max(0, projectedRawObjectCount - 1)
+            case .objectReplace:
+                // Replacement is not part of the current structural implementation; keep the
+                // canonical detected object until that operation gains a typed projection.
+                break
+            }
+        }
+
+        let projected = objects.enumerated().compactMap { index, object in
+            deletedIndexes.contains(index) ? nil : object
+        }.sorted { $0.zOrder < $1.zOrder }
+        return PageObjectMap(
+            pageRefID: map.pageRefID,
+            objects: projected,
+            analysisRevision: map.analysisRevision,
+            didTruncateScan: map.didTruncateScan,
+            rawObjectCount: projectedRawObjectCount
+        )
+    }
+
+    static func applyingEditingPermission(_ allowsEditing: Bool, to map: PageObjectMap) -> PageObjectMap {
+        guard !allowsEditing else { return map }
+        var locked = map
+        for index in locked.objects.indices {
+            locked.objects[index].editability = .lockedOrPermissionRestricted
+        }
+        return locked
+    }
+
+    /// Canonical inspection uses canonical bytes, while page rotation remains live PDFKit state.
+    /// Project it explicitly so reselecting after a rotation cannot bypass the rotated-page edit
+    /// guard merely because the shared inspection snapshot predates that rotation.
+    static func applyingPageRotation(_ rotation: CGFloat, to map: PageObjectMap) -> PageObjectMap {
+        var rotated = map
+        for index in rotated.objects.indices {
+            rotated.objects[index].pageRotation = rotation
+        }
+        return rotated
+    }
+
+    private static func distanceSquared(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
+        let dx = lhs.midX - rhs.midX
+        let dy = lhs.midY - rhs.midY
+        return dx * dx + dy * dy
+    }
+
+    private static func projectionRank(_ type: ObjectEditType) -> Int {
+        switch type {
+        case .objectStyleChange: return 0
+        case .objectTransform: return 1
+        case .objectReorder: return 2
+        case .objectReplace: return 3
+        case .objectDelete: return 4
+        }
+    }
+
     // MARK: - Per-object inspection (shared with PDFObjectEditEngine's resolver)
 
     /// Everything read from a single live PDFium page object EXCEPT the per-detection-pass
@@ -125,7 +242,9 @@ struct PDFObjectDetectionEngine {
             (objectType, confidence) = classifyPath(extracted, isBackgroundLike: isBackgroundLike)
             // Intrinsic = segment topology in the path's own (matrix-independent) space.
             digestValues = extracted.data.segments.flatMap { [Double($0.kind.ordinal), Double($0.point.x), Double($0.point.y)] }
-            if digestValues.isEmpty { digestValues = [Double(round(bounds.width)), Double(round(bounds.height))] }
+            if digestValues.isEmpty {
+                digestValues = [Double(round(bounds.width)), Double(round(bounds.height))]
+            }
 
         default:
             objectType = .vectorPath
@@ -162,11 +281,23 @@ struct PDFObjectDetectionEngine {
                                               clip: o.clip, isBackgroundLike: o.isBackgroundLike,
                                               allowsEditing: allowsEditing)
 
+        // Path points are needed transiently for classification/digesting but no current object
+        // editing consumer reads them after detection. Retain only the draw-mode summary so the
+        // revision cache cannot multiply thousands of path points across hundreds of pages.
+        let retainedPathData = o.pathData.map {
+            PDFPathData(
+                segments: [],
+                fillRule: $0.fillRule,
+                isStroked: $0.isStroked,
+                isFilled: $0.isFilled,
+                flattenedStroke: []
+            )
+        }
         return DetectedObject(
             stableKey: stableKey, pageRefID: pageRefID, objectType: o.objectType,
             sourceType: .pdfiumPageObject, confidence: o.confidence, editability: editability,
             boundsPdf: o.bounds, transform: o.transform, pageRotation: pageRotation, zOrder: zOrder,
-            style: o.style, pathData: o.pathData, imageMetadata: o.imageMeta, clipInfo: o.clip,
+            style: o.style, pathData: retainedPathData, imageMetadata: o.imageMeta, clipInfo: o.clip,
             groupSource: o.objectType == .formXObject && o.childCount > 0 ? .formXObject(name: o.formName ?? "") : .none,
             formXObjectName: o.formName, isBackgroundLike: o.isBackgroundLike)
     }
@@ -198,10 +329,10 @@ struct PDFObjectDetectionEngine {
         var segments: [PDFPathSegment] = []
         var flattened: [CGPoint] = []
         var moveCount = 0, lineCount = 0, bezierCount = 0, closed = false
-        let segCount = poe_PathCountSegments(obj)
-        if segCount > 0 {
-            for i in 0..<segCount {
-                guard let seg = poe_PathGetSegment(obj, i) else { continue }
+        let segmentCount = poe_PathCountSegments(obj)
+        if segmentCount > 0 {
+            for index in 0..<segmentCount {
+                guard let seg = poe_PathGetSegment(obj, index) else { continue }
                 var x: Float = 0, y: Float = 0
                 _ = poe_SegGetPoint(seg, &x, &y)
                 let point = CGPoint(x: CGFloat(x), y: CGFloat(y))

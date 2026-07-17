@@ -14,13 +14,13 @@ Apple's native framework owns `PDFView`, `PDFDocument`, `PDFPage`, `PDFAnnotatio
 
 A supplemental local backend vendored at `Packages/PDFiumBinary` as a prebuilt XCFramework (MIT, built from Chromium's PDFium). It does five jobs:
 
-- **Shared page inspection** — one bounded object walk derives text render modes, thin-rule graphics, and editable image/shape/object metadata.
+- **Shared page inspection** — one retained snapshot per admitted PageRef/canonical-member revision derives text render modes, thin-rule graphics, and editable image/shape/object metadata. Per-revision and process-wide page/cost ceilings fail closed instead of evicting and rescanning accepted snapshots.
 - **Structural object editing** — moving, resizing, restacking, and deleting page objects by mutating the real content stream, followed by a color-preserving regenerate/save pass.
 - **Image compression** — downsampling and re-encoding embedded images during a compression pass.
 - **Import validation** — a non-blocking smoke check; if PDFium is unavailable or rejects a file PDFKit can open, the PDFKit import path still proceeds. PDFium never blocks an import PDFKit is willing to handle.
 - **Glyph geometry** — reporting the raw affine transforms of text runs so in-place text editing lands in exactly the right place.
 
-Committed text and object operations are materialized by `WorkspaceEditReplayEngine` from one canonical member base. PDFium applies the object lane; PDFKit/CoreGraphics re-composes the text lane over it; a combined per-page stamp lets reopen/export reconciliation detect stale bytes and replay both together.
+Committed text and object operations are materialized by `WorkspaceEditReplayEngine` from one canonical member base. PDFium applies the object lane; CoreGraphics emits transparent text-only overlay pages that PDFium imports as Form XObjects; qpdf copies live annotations and form state without touching page contents; and a final PDFium `SaveAsCopy` writes rotations plus combined per-page stamps. PDFKit-serialized live bytes may source annotations and form values, but they never become the replay destination's page-content base.
 
 ## qpdf — repair, encryption, sanitize, validation
 

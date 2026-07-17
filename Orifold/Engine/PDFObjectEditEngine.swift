@@ -203,7 +203,9 @@ enum PDFObjectEditEngine {
         Int((v * 255).rounded().clamped(to: 0...255))
     }
 
-    private static func saveAsCopy(_ doc: OpaquePointer?) -> Data {
+    /// Serializes an already-open PDFium document without routing its object graph through
+    /// PDFKit. Callers must hold `pdfiumLock` and own the PDFium library lifetime.
+    static func saveAsCopy(_ doc: OpaquePointer?) -> Data {
         poeEditSaveBuffer = Data()
         var fw = FPDFCompressionFileWrite(version: 1, writeBlock: { _, data, size in
             if let data, size > 0 { poeEditSaveBuffer.append(data.assumingMemoryBound(to: UInt8.self), count: Int(size)) }

@@ -70,6 +70,34 @@ final class QPDFServiceTests: XCTestCase {
         XCTAssertEqual(PDFDocument(data: linearized)?.pageCount, 1)
     }
 
+    func testInteractiveStateGraftSupportsDirectAnnotationAndAcroFormContainers() throws {
+        let source = Data("""
+        %PDF-1.4
+        1 0 obj<</Type/Catalog/Pages 2 0 R/AcroForm<</Fields[4 0 R]/NeedAppearances true>>>>endobj
+        2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
+        3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Annots[4 0 R]>>endobj
+        4 0 obj<</Type/Annot/Subtype/Widget/FT/Tx/T(Full name)/V(Alice Example)/Rect[120 600 340 628]/P 3 0 R>>endobj
+        trailer<</Root 1 0 R/Size 5>>
+        %%EOF
+        """.utf8)
+        let destinationPDF = PDFDocument()
+        destinationPDF.insert(makeBlankPage(), at: 0)
+        let destination = try XCTUnwrap(destinationPDF.dataRepresentation())
+
+        let grafted = try XCTUnwrap(
+            QPDFService.replacingInteractiveState(in: destination, from: source)
+        )
+        XCTAssertTrue(QPDFService.isStructurallySound(grafted))
+        XCTAssertTrue(
+            QPDFService.formFieldsReferencePageAnnotations(grafted),
+            "AcroForm /Fields must reference the exact widget reachable from the destination page"
+        )
+        let reopened = try XCTUnwrap(PDFDocument(data: grafted))
+        let widget = try XCTUnwrap(reopened.page(at: 0)?.annotations.first { $0.isPDFWidget })
+        XCTAssertEqual(widget.widgetStringValue, "Alice Example")
+        XCTAssertEqual(widget.fieldName, "Full name")
+    }
+
     func testEncryptedAES256ProducesR6EncryptionDictionaryAndUnlocks() throws {
         let pdf = PDFDocument()
         pdf.insert(makeBlankPage(), at: 0)

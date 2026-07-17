@@ -20,6 +20,14 @@ struct POEFSMatrix {
     var a: Float = 1, b: Float = 0, c: Float = 0, d: Float = 1, e: Float = 0, f: Float = 0
 }
 
+/// FS_RECTF marshalling struct (fpdfview.h: left, bottom, right, top).
+struct POEFSRect {
+    var left: Float
+    var bottom: Float
+    var right: Float
+    var top: Float
+}
+
 // PDFium page-object type constants (fpdf_edit.h).
 enum POEObjType {
     static let text: Int32 = 1
@@ -46,6 +54,7 @@ enum POEFillMode {
 @_silgen_name("FPDF_LoadPage") func poe_LoadPage(_ document: OpaquePointer?, _ pageIndex: Int32) -> OpaquePointer?
 @_silgen_name("FPDF_ClosePage") func poe_ClosePage(_ page: OpaquePointer?)
 @_silgen_name("FPDFPage_GetRotation") func poe_GetPageRotation(_ page: OpaquePointer?) -> Int32
+@_silgen_name("FPDFPage_SetRotation") func poe_SetPageRotation(_ page: OpaquePointer?, _ rotation: Int32)
 @_silgen_name("FPDFPage_CountObjects") func poe_CountObjects(_ page: OpaquePointer?) -> Int32
 @_silgen_name("FPDFPage_GetObject") func poe_GetObject(_ page: OpaquePointer?, _ index: Int32) -> OpaquePointer?
 @_silgen_name("FPDF_GetPageWidth") func poe_GetPageWidth(_ page: OpaquePointer?) -> Double
@@ -94,6 +103,29 @@ func poe_GetBounds(_ obj: OpaquePointer?, _ l: UnsafeMutablePointer<Float>?, _ b
 @_silgen_name("FPDFPageObj_GetMark") func poe_GetMark(_ obj: OpaquePointer?, _ index: UInt) -> OpaquePointer?
 @_silgen_name("FPDFPageObjMark_GetName") func poe_MarkGetName(_ mark: OpaquePointer?, _ buffer: UnsafeMutablePointer<UInt16>?, _ buflen: UInt, _ outBuflen: UnsafeMutablePointer<UInt>?) -> Int32
 @_silgen_name("FPDFPage_GenerateContent") func poe_GenerateContent(_ page: OpaquePointer?) -> Int32
+
+// MARK: - Preserving page composition
+@_silgen_name("FPDF_NewXObjectFromPage") func poe_NewXObjectFromPage(
+    _ destinationDocument: OpaquePointer?,
+    _ sourceDocument: OpaquePointer?,
+    _ sourcePageIndex: Int32
+) -> OpaquePointer?
+@_silgen_name("FPDF_CloseXObject") func poe_CloseXObject(_ xObject: OpaquePointer?)
+@_silgen_name("FPDF_NewFormObjectFromXObject") func poe_NewFormObjectFromXObject(_ xObject: OpaquePointer?) -> OpaquePointer?
+
+// MARK: - Replay bookkeeping annotations
+@_silgen_name("FPDFPage_GetAnnotCount") func poe_GetAnnotationCount(_ page: OpaquePointer?) -> Int32
+@_silgen_name("FPDFPage_GetAnnot") func poe_GetAnnotation(_ page: OpaquePointer?, _ index: Int32) -> OpaquePointer?
+@_silgen_name("FPDFPage_CloseAnnot") func poe_CloseAnnotation(_ annotation: OpaquePointer?)
+@_silgen_name("FPDFPage_RemoveAnnot") func poe_RemoveAnnotation(_ page: OpaquePointer?, _ index: Int32) -> Int32
+@_silgen_name("FPDFPage_CreateAnnot") func poe_CreateAnnotation(_ page: OpaquePointer?, _ subtype: Int32) -> OpaquePointer?
+@_silgen_name("FPDFAnnot_HasKey") func poe_AnnotationHasKey(_ annotation: OpaquePointer?, _ key: UnsafePointer<CChar>?) -> Int32
+@_silgen_name("FPDFAnnot_SetRect") func poe_SetAnnotationRect(_ annotation: OpaquePointer?, _ rect: UnsafePointer<POEFSRect>?) -> Int32
+@_silgen_name("FPDFAnnot_SetStringValue") func poe_SetAnnotationString(
+    _ annotation: OpaquePointer?,
+    _ key: UnsafePointer<CChar>?,
+    _ value: UnsafePointer<UInt16>?
+) -> Int32
 
 // MARK: - Shared helpers
 

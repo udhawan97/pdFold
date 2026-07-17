@@ -381,6 +381,8 @@ final class WorkspaceViewModel {
     private let engine: PDFEngine
     private let processingEngine: PDFProcessingEngine
     private let textAnalysisEngine = PDFTextAnalysisEngine()
+    private let pageInspectionCache = PDFPageObjectInspection.Cache()
+    private var pageInspectionRevisions: [UUID: PDFPageObjectInspection.Revision] = [:]
     private var textAnalysisCache: [UUID: PDFTextPageAnalysis] = [:]
     // Object editing (docs/OBJECT_EDITING_PLAN.md §3.5/§8). Detection map cached per PageRef;
     // `objectBaseData` is the canonical per-member replay base. Both text and object operations
@@ -1283,6 +1285,7 @@ final class WorkspaceViewModel {
         removeDecorations(forRemovedPageRefIDs: removedPageRefIDs)
         removedIds.forEach { document.memberPDFData.removeValue(forKey: $0) }
         removedIds.forEach { document.sourcePayloads.removeValue(forKey: $0) }
+        removedIds.forEach { invalidatePageInspection(for: $0) }
         loadedPDFs.removeAll { removedIds.contains($0.0.id) }
         selectedPageRefIDs.subtract(removedPageRefIDs)
         rebuildPageOrder()
@@ -1409,6 +1412,7 @@ final class WorkspaceViewModel {
         signingIdentitiesByPlacementID = snapshot.signatureIdentities
         document.memberPDFData = snapshot.pdfData
         originalMemberPDFData = snapshot.originalMemberPDFData
+        invalidatePageInspection()
         document.sourcePayloads = snapshot.sourcePayloads
         document.workspace.pageEditStates = snapshot.pageEditStates
         document.workspace.objectEditStates = snapshot.objectEditStates
@@ -2043,6 +2047,7 @@ final class WorkspaceViewModel {
         document.memberPDFData = initial.memberPDFData
         document.sourcePayloads = initial.sourcePayloads
         originalMemberPDFData = initial.originalMemberPDFData
+        invalidatePageInspection()
         // Session-only editing caches/selection that must not outlive the reverted content.
         signingIdentitiesByPlacementID = [:]
         objectBaseData = [:]
@@ -2330,6 +2335,7 @@ final class WorkspaceViewModel {
             // base in place meant every later page regeneration (inline edit, revert,
             // reconcile) rebuilt from the pre-OCR scan — silently stripping the freshly
             // added text layer page by page as the user edited.
+            invalidatePageInspection(for: memberID)
             originalMemberPDFData[memberID] = data
             // Same rule for the object-editing lane: a member with a frozen object-edit
             // base must re-freeze to the new OCR'd bytes, or the next object edit
@@ -3077,27 +3083,46 @@ final class WorkspaceViewModel {
         document.workspace.pageOrder.first { $0.id == id }
     }
 
-    /// The detected object map for a page, cached per PageRef. Runs detection on the member's
-    /// CURRENT bytes (so the user selects the live state); digests are content-stable, so an op
-    /// created here still resolves against the member's `objectBaseData` at commit time.
+    /// The detected object map for a page, cached per PageRef. The full PDFium inspection is
+    /// shared with text analysis against canonical bytes, then committed absolute object ops are
+    /// projected over that snapshot so selection reflects the live state without a second scan.
     func objectMap(for pageRef: PageRef) -> PageObjectMap {
         if let cached = objectAnalysisCache[pageRef.id] { return cached }
         guard let lookup = memberPDF(for: pageRef),
               let localIdx = localIndex(ref: pageRef, memberIndex: lookup.documentIndex) else {
             return PageObjectMap(pageRefID: pageRef.id, objects: [])
         }
-        // `document.memberPDFData` is an on-demand export cache, not kept live-synced after
-        // every structural mutation (delete/duplicate/reorder don't touch it, only `loadedPDFs`
-        // does) — detecting against it right after one of those would read a stale page
-        // structure (wrong page count/order), silently finding nothing or the wrong object, or
-        // indexing out of bounds. `lookup.pdf` is the same live document the canvas renders, so
-        // serialize fresh from it; only fall back to the cache if that somehow fails.
-        guard let data = PDFSerializer.data(from: lookup.pdf) ?? document.memberPDFData[pageRef.memberDocId] else {
+        guard let data = originalMemberPDFData[pageRef.memberDocId]
+                ?? objectBaseData[pageRef.memberDocId]
+                ?? document.memberPDFData[pageRef.memberDocId] else {
             return PageObjectMap(pageRefID: pageRef.id, objects: [])
         }
-        let map = PDFObjectDetectionEngine.detect(pdfData: data, pageIndex: localIdx,
-                                                  pageRefID: pageRef.id, allowsEditing: canPerformMutatingAction())
-        objectAnalysisCache[pageRef.id] = map
+        let canonicalIndex = pageRef.sourcePageIndex >= 0 ? pageRef.sourcePageIndex : localIdx
+        let inspection = pageInspectionCache.result(
+            pdfData: data,
+            pageIndex: canonicalIndex,
+            pageRefID: pageRef.id,
+            revision: pageInspectionRevision(for: pageRef.memberDocId)
+        )
+        let canonicalMap = inspection.objectMap
+        let operations = document.workspace.objectEditStates
+            .filter { $0.pageRefID == pageRef.id }
+            .flatMap(\.operations)
+        let projectedMap = PDFObjectDetectionEngine.projecting(canonicalMap, operations: operations)
+        let liveRotation = CGFloat(lookup.pdf.page(at: localIdx)?.rotation ?? 0)
+        let rotationAwareMap = PDFObjectDetectionEngine.applyingPageRotation(
+            liveRotation,
+            to: projectedMap
+        )
+        let map = PDFObjectDetectionEngine.applyingEditingPermission(
+            canPerformMutatingAction(),
+            to: rotationAwareMap
+        )
+        // Global pressure refusal is retryable after another member revision is removed. Do not
+        // let the downstream cache turn that temporary fail-closed result into a permanent one.
+        if !inspection.wasRefused {
+            objectAnalysisCache[pageRef.id] = map
+        }
         return map
     }
 
@@ -3503,6 +3528,7 @@ final class WorkspaceViewModel {
               let loaded = loadedPDFs.first(where: { $0.0.id == memberID }) else { return }
         let liveBytes = PDFSerializer.data(from: loaded.1) ?? document.memberPDFData[memberID]
         guard let liveBytes else { return }
+        invalidatePageInspection(for: memberID)
         originalMemberPDFData[memberID] = liveBytes
         if objectBaseData[memberID] != nil {
             objectBaseData[memberID] = liveBytes
@@ -3543,6 +3569,7 @@ final class WorkspaceViewModel {
         }
         guard let realignedData = PDFSerializer.data(from: realigned) else { return }
 
+        invalidatePageInspection(for: memberID)
         originalMemberPDFData[memberID] = realignedData
         if objectBaseData[memberID] != nil {
             objectBaseData[memberID] = realignedData
@@ -6369,18 +6396,27 @@ final class WorkspaceViewModel {
         var total = 0
         // Iterate every page fully so `total` counts all matching blocks, not just those up
         // to the edited page — the count guard needs the whole-document total.
+        let inspectionRevision = pageInspectionRevision(for: member.id)
         for pagePosition in member.pageRefs.indices {
             let pageRefID = member.pageRefs[pagePosition]
             guard let pageRef = document.workspace.pageOrder.first(where: { $0.id == pageRefID }),
                   let basePage = originalBasePage(for: pageRef) else {
                 continue
             }
+            let analysisData = originalMemberPDFData[member.id] ?? document.memberPDFData[member.id] ?? Data()
+            let inspection = pageInspectionCache.result(
+                pdfData: analysisData,
+                pageIndex: pageRef.sourcePageIndex,
+                pageRefID: pageRef.id,
+                revision: inspectionRevision
+            )
             let blocks = textAnalysisEngine
                 .analyze(
-                    data: originalMemberPDFData[member.id] ?? document.memberPDFData[member.id] ?? Data(),
+                    data: analysisData,
                     pageIndex: pageRef.sourcePageIndex,
                     pageRefID: pageRef.id,
-                    fallbackPage: basePage
+                    fallbackPage: basePage,
+                    inspection: inspection
                 )
                 .blocks
                 .filter { normalizedSourceText($0.text) == normalizedNeedle }
@@ -7196,6 +7232,7 @@ final class WorkspaceViewModel {
             loadedPDFs.remove(at: lookup.loadedIndex)
             document.workspace.documents.remove(at: lookup.documentIndex)
             objectBaseData.removeValue(forKey: ref.memberDocId)
+            invalidatePageInspection(for: ref.memberDocId)
         } else {
             loadedPDFs[lookup.loadedIndex].0 = document.workspace.documents[lookup.documentIndex]
             // Deleting a page shifts every later page's local index within this member; a frozen
@@ -7244,6 +7281,7 @@ final class WorkspaceViewModel {
             document.memberPDFData.removeValue(forKey: id)
             document.sourcePayloads.removeValue(forKey: id)
             objectBaseData.removeValue(forKey: id)
+            invalidatePageInspection(for: id)
         }
         for loadedIndex in loadedPDFs.indices {
             let memberID = loadedPDFs[loadedIndex].0.id
@@ -7472,6 +7510,7 @@ final class WorkspaceViewModel {
             document.sourcePayloads.removeValue(forKey: removedID)
             objectBaseData.removeValue(forKey: removedID)
             originalMemberPDFData.removeValue(forKey: removedID)
+            invalidatePageInspection(for: removedID)
         }
         for loadedIndex in loadedPDFs.indices {
             let memberID = loadedPDFs[loadedIndex].0.id
@@ -7629,14 +7668,43 @@ final class WorkspaceViewModel {
         // deleted page's text (and bake erase patches sized to it).
         let data = originalMemberPDFData[memberID] ?? document.memberPDFData[memberID] ?? currentPDFData()[memberID] ?? Data()
         let pristineIndex = ref.sourcePageIndex >= 0 ? ref.sourcePageIndex : localIndex
+        let inspection = pageInspectionCache.result(
+            pdfData: data,
+            pageIndex: pristineIndex,
+            pageRefID: ref.id,
+            revision: pageInspectionRevision(for: memberID)
+        )
         let analysis = textAnalysisEngine.analyze(
             data: data,
             pageIndex: pristineIndex,
             pageRefID: ref.id,
-            fallbackPage: page
+            fallbackPage: page,
+            inspection: inspection
         )
-        textAnalysisCache[ref.id] = analysis
+        // A global admission refusal can become admissible after another member releases cache
+        // capacity. Preserve fail-closed behavior now without pinning the empty analysis forever.
+        if !inspection.wasRefused {
+            textAnalysisCache[ref.id] = analysis
+        }
         return analysis
+    }
+
+    private func pageInspectionRevision(for memberID: UUID) -> PDFPageObjectInspection.Revision {
+        if let existing = pageInspectionRevisions[memberID] { return existing }
+        let revision = PDFPageObjectInspection.Revision()
+        pageInspectionRevisions[memberID] = revision
+        return revision
+    }
+
+    private func invalidatePageInspection(for memberID: UUID? = nil) {
+        if let memberID {
+            if let revision = pageInspectionRevisions.removeValue(forKey: memberID) {
+                pageInspectionCache.remove(revision: revision)
+            }
+        } else {
+            pageInspectionRevisions.removeAll()
+            pageInspectionCache.removeAll()
+        }
     }
 
     private func memberPDF(for ref: PageRef) -> (documentIndex: Int, loadedIndex: Int, pdf: PDFDocument)? {

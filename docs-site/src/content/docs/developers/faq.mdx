@@ -22,7 +22,7 @@ PDFKit is the native, best-supported path for showing and composing pages. PDFiu
 
 Detected text is edited in place using PDFium's real glyph geometry, then re-composed. Scans have no text layer, so they need [OCR](/Orifold/edit/ocr/) first.
 
-Text and object edits on the same document share one deterministic replay path. Object operations are applied to canonical bytes first, text is re-composed over that result, and a combined bake stamp makes stale saved bytes self-heal without either lane overwriting the other.
+Text and object edits on the same document share one deterministic replay path. Object operations are applied to canonical bytes first; transparent text-only overlays are imported through PDFium without redrawing structural page content; qpdf preserves live annotations/form state; and a final PDFium `SaveAsCopy` writes the combined bake stamp. PDFKit-serialized live bytes can supply annotations/forms, but never replace the replay destination's page contents. Stale saved bytes can self-heal without either lane overwriting the other.
 
 <Details summary="The 'edit lands on top' history and how it was fixed">
 PDFKit's `dataRepresentation` re-serialization drops some text layers (Type3 / Skia-drawn glyphs). Before the fix, an edit could be placed over invisible surviving original text. Import now runs through a qpdf-preserving normalizer so the real text layer is retained, and edit placement is measured from PDFium's raw (unrotated) content-stream transforms rather than re-derived — which also fixed page-rotation vs. text-rotation conflation and a class of invisible/low-visibility text being leaked on export.

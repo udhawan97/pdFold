@@ -18,7 +18,7 @@ Orifold follows a unidirectional flow: SwiftUI views send intents to one observa
 | --- | --- |
 | SwiftUI app | Document window, sidebar, canvas, annotation toolbar, search, inspector, password prompts, export controls, empty-state Recently Viewed shelf, language switcher |
 | Workspace state | Imported documents, page order, text/object edit operations, canonical replay bases, undo snapshots, comments, tags, signatures, form summaries, decorations, recent-file history |
-| PDF services | PDFKit display/composition, one-pass PDFium page inspection, deterministic text+object replay, PDFium structural object editing/image compression/validation/glyph geometry, qpdf repair/AES-256/sanitize/structural validation, Vision OCR, form flattening, decoration baking |
+| PDF services | PDFKit display/composition, versioned shared PDFium page inspection, deterministic text+object replay, PDFium structural object editing/image compression/validation/glyph geometry, qpdf repair/AES-256/sanitize/structural validation, Vision OCR, form flattening, decoration baking |
 | Signing | CMS/PAdES signature construction, PKCS#12 · Keychain · self-signed identities, certificate trust evaluation, RFC-3161 timestamping |
 | Local storage | Saved PDF data, workspace metadata, source payloads, comments, signatures, page edit state |
 | Release tooling | One-line installer, package builder, Desktop update launcher, uninstaller, GitHub Actions release asset, validation tests |
@@ -49,13 +49,13 @@ Export is a sequence, not a single call: **flatten** annotations and form answer
 
 <Details summary="Committed text and object edits replay through one member-atomic path">
 
-`WorkspaceEditReplayEngine` takes canonical member bytes plus the committed text and object operations. It applies structural object changes first, re-composes text over that result, restores live rotations and annotations on every page, writes a combined bake stamp, and serializes once. Load/export reconciliation uses the same path, so stale bytes self-heal without one editing lane reverting the other.
+`WorkspaceEditReplayEngine` takes canonical member bytes plus the committed text and object operations. It applies structural object changes first, imports transparent text-edit overlays as Form XObjects, grafts live annotations/form state with qpdf, and finishes rotations plus combined bake stamps through PDFium `SaveAsCopy`. PDFKit may serialize the live view as an annotation/form source, but those bytes are never used as the replay destination's page-content base. Load/export reconciliation uses the same path, so stale bytes self-heal without one editing lane reverting the other.
 
 </Details>
 
-<Details summary="Page-object consumers share one bounded PDFium enumeration">
+<Details summary="Page-object consumers share one versioned PDFium inspection snapshot">
 
-`PDFPageObjectInspection` walks a page's PDFium objects once and projects three views: text render-mode regions, `PageGraphicsIndex` rule lines, and the editable `PageObjectMap`. Text analysis and object detection delegate to that shared safety cap and degradation policy instead of maintaining independent page-object loops.
+`PDFPageObjectInspection` walks an admitted page's PDFium objects once and projects three views: text render-mode regions, `PageGraphicsIndex` rule lines, and the editable `PageObjectMap`. The workspace assigns canonical member bytes a revision token and retains each admitted PageRef for that revision, so text and object consumers reuse one snapshot even after visiting many pages. Per-revision and process-wide page/projection-cost ceilings fail closed rather than evicting and rescanning accepted snapshots; replacing canonical bytes invalidates the token. Permission and live page rotation are projected without rescanning.
 
 </Details>
 

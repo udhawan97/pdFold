@@ -90,6 +90,259 @@ final class PageGraphicsIndexTests: XCTestCase {
         )
     }
 
+    func testInspectionCacheSharesOneSnapshotUntilMemberRevisionIsInvalidated() {
+        let firstData = Data("first revision".utf8)
+        let secondData = Data("second revision".utf8)
+        let pageRefID = UUID()
+        var inspections = 0
+        let cache = PDFPageObjectInspection.Cache { _, _, refID, _ in
+            inspections += 1
+            return PDFPageObjectInspection.Result(
+                renderModeRegions: [],
+                graphics: .empty,
+                objectMap: PageObjectMap(pageRefID: refID, objects: []),
+                rawObjectCount: 0,
+                enumeratedObjectCount: 0
+            )
+        }
+        let firstRevision = PDFPageObjectInspection.Revision()
+
+        _ = cache.result(pdfData: firstData, pageIndex: 0, pageRefID: pageRefID, revision: firstRevision)
+        _ = cache.result(pdfData: firstData, pageIndex: 0, pageRefID: pageRefID, revision: firstRevision)
+        XCTAssertEqual(inspections, 1, "text and object projections should reuse the byte-identical snapshot")
+
+        cache.remove(revision: firstRevision)
+        _ = cache.result(
+            pdfData: secondData,
+            pageIndex: 0,
+            pageRefID: pageRefID,
+            revision: PDFPageObjectInspection.Revision()
+        )
+        XCTAssertEqual(inspections, 2, "new member bytes must produce a new inspection revision")
+    }
+
+    func testInspectionCacheFailsClosedAtPageAndProjectionBudgetsWithoutRescanning() {
+        var inspections = 0
+        let cache = PDFPageObjectInspection.Cache(
+            maxRetainedPages: 2,
+            maxRetainedProjectionUnits: 2
+        ) { _, _, refID, _ in
+            inspections += 1
+            return PDFPageObjectInspection.Result(
+                renderModeRegions: [
+                    .init(bounds: CGRect(x: 0, y: 0, width: 1, height: 1), mode: 0)
+                ],
+                graphics: .empty,
+                objectMap: PageObjectMap(pageRefID: refID, objects: []),
+                rawObjectCount: 1,
+                enumeratedObjectCount: 1
+            )
+        }
+        let revision = PDFPageObjectInspection.Revision()
+        let firstRef = UUID()
+        let secondRef = UUID()
+        let refusedRef = UUID()
+
+        _ = cache.result(pdfData: Data(), pageIndex: 0, pageRefID: firstRef, revision: revision)
+        _ = cache.result(pdfData: Data(), pageIndex: 1, pageRefID: secondRef, revision: revision)
+        let refused = cache.result(
+            pdfData: Data(),
+            pageIndex: 2,
+            pageRefID: refusedRef,
+            revision: revision
+        )
+        _ = cache.result(pdfData: Data(), pageIndex: 2, pageRefID: refusedRef, revision: revision)
+
+        XCTAssertEqual(inspections, 2, "budget refusal must not evict and rescan earlier pages")
+        XCTAssertTrue(refused.objectMap.didTruncateScan)
+        XCTAssertTrue(refused.graphics.didTruncateScan)
+
+        _ = cache.result(
+            pdfData: Data(),
+            pageIndex: 0,
+            pageRefID: UUID(),
+            revision: PDFPageObjectInspection.Revision()
+        )
+        XCTAssertEqual(inspections, 3, "one revision reaching its page budget must not poison another revision")
+
+        var costInspections = 0
+        let costLimited = PDFPageObjectInspection.Cache(
+            maxRetainedPages: 4,
+            maxRetainedProjectionUnits: 1
+        ) { _, _, refID, _ in
+            costInspections += 1
+            return PDFPageObjectInspection.Result(
+                renderModeRegions: [
+                    .init(bounds: .zero, mode: 0),
+                    .init(bounds: .zero, mode: 0)
+                ],
+                graphics: .empty,
+                objectMap: PageObjectMap(pageRefID: refID, objects: []),
+                rawObjectCount: 2,
+                enumeratedObjectCount: 2
+            )
+        }
+        let costRevision = PDFPageObjectInspection.Revision()
+        let costRef = UUID()
+        let limited = costLimited.result(
+            pdfData: Data(),
+            pageIndex: 0,
+            pageRefID: costRef,
+            revision: costRevision
+        )
+        _ = costLimited.result(
+            pdfData: Data(),
+            pageIndex: 0,
+            pageRefID: costRef,
+            revision: costRevision
+        )
+        XCTAssertEqual(costInspections, 1, "a cost-limited snapshot must remain cached")
+        XCTAssertTrue(limited.objectMap.didTruncateScan)
+        XCTAssertTrue(limited.renderModeRegions.isEmpty)
+    }
+
+    func testRefusedInspectionDisablesTextEditingInsteadOfFallingBackToPDFKit() throws {
+        let data = EditingFixturePDFBuilder.underlinedParagraph(text: "Do not expose this edit")
+        let page = try XCTUnwrap(PDFDocument(data: data)?.page(at: 0))
+        var graphics = PageGraphicsIndex.empty
+        graphics.didTruncateScan = true
+        let pageRefID = UUID()
+        let refused = PDFPageObjectInspection.Result(
+            renderModeRegions: [],
+            graphics: graphics,
+            objectMap: PageObjectMap(
+                pageRefID: pageRefID,
+                objects: [],
+                didTruncateScan: true,
+                rawObjectCount: 1
+            ),
+            rawObjectCount: 1,
+            enumeratedObjectCount: 0,
+            wasRefused: true
+        )
+
+        let analysis = PDFTextAnalysisEngine().analyze(
+            data: data,
+            pageIndex: 0,
+            pageRefID: pageRefID,
+            fallbackPage: page,
+            inspection: refused
+        )
+
+        XCTAssertTrue(analysis.blocks.isEmpty, "cache refusal must not become directly editable PDFKit text")
+        XCTAssertTrue(analysis.graphics.didTruncateScan)
+    }
+
+    func testGlobalInspectionBudgetRetriesRefusedRevisionAfterCapacityReturns() {
+        var inspections = 0
+        let cache = PDFPageObjectInspection.Cache(
+            maxRetainedPages: 2,
+            maxRetainedProjectionUnits: 4,
+            maxTotalRetainedPages: 1,
+            maxTotalRetainedProjectionUnits: 4
+        ) { _, _, refID, _ in
+            inspections += 1
+            return PDFPageObjectInspection.Result(
+                renderModeRegions: [
+                    .init(bounds: .zero, mode: 0)
+                ],
+                graphics: .empty,
+                objectMap: PageObjectMap(pageRefID: refID, objects: []),
+                rawObjectCount: 1,
+                enumeratedObjectCount: 1
+            )
+        }
+        let firstRevision = PDFPageObjectInspection.Revision()
+        let waitingRevision = PDFPageObjectInspection.Revision()
+        let waitingRef = UUID()
+
+        _ = cache.result(
+            pdfData: Data(),
+            pageIndex: 0,
+            pageRefID: UUID(),
+            revision: firstRevision
+        )
+        let refused = cache.result(
+            pdfData: Data(),
+            pageIndex: 0,
+            pageRefID: waitingRef,
+            revision: waitingRevision
+        )
+        _ = cache.result(
+            pdfData: Data(),
+            pageIndex: 0,
+            pageRefID: waitingRef,
+            revision: waitingRevision
+        )
+        XCTAssertEqual(inspections, 1, "global-cap refusal must not scan repeatedly")
+        XCTAssertTrue(refused.wasRefused)
+
+        let otherWaitingRevision = PDFPageObjectInspection.Revision()
+        let otherWaitingRef = UUID()
+        _ = cache.result(
+            pdfData: Data(),
+            pageIndex: 0,
+            pageRefID: otherWaitingRef,
+            revision: otherWaitingRevision
+        )
+        cache.remove(revision: waitingRevision)
+        _ = cache.result(
+            pdfData: Data(),
+            pageIndex: 0,
+            pageRefID: otherWaitingRef,
+            revision: otherWaitingRevision
+        )
+        XCTAssertEqual(inspections, 1, "removing one refused revision did not release capacity")
+
+        cache.remove(revision: firstRevision)
+        let admitted = cache.result(
+            pdfData: Data(),
+            pageIndex: 0,
+            pageRefID: waitingRef,
+            revision: waitingRevision
+        )
+        XCTAssertEqual(inspections, 2, "a refused revision should retry after accepted capacity is released")
+        XCTAssertFalse(admitted.wasRefused)
+
+        var costInspections = 0
+        let costCache = PDFPageObjectInspection.Cache(
+            maxRetainedPages: 2,
+            maxRetainedProjectionUnits: 4,
+            maxTotalRetainedPages: 4,
+            maxTotalRetainedProjectionUnits: 1
+        ) { _, _, refID, _ in
+            costInspections += 1
+            return PDFPageObjectInspection.Result(
+                renderModeRegions: [.init(bounds: .zero, mode: 0)],
+                graphics: .empty,
+                objectMap: PageObjectMap(pageRefID: refID, objects: []),
+                rawObjectCount: 1,
+                enumeratedObjectCount: 1
+            )
+        }
+        let costOwner = PDFPageObjectInspection.Revision()
+        let costWaiter = PDFPageObjectInspection.Revision()
+        let costWaiterRef = UUID()
+        _ = costCache.result(
+            pdfData: Data(), pageIndex: 0, pageRefID: UUID(), revision: costOwner
+        )
+        let costRefused = costCache.result(
+            pdfData: Data(), pageIndex: 0, pageRefID: costWaiterRef, revision: costWaiter
+        )
+        _ = costCache.result(
+            pdfData: Data(), pageIndex: 0, pageRefID: costWaiterRef, revision: costWaiter
+        )
+        XCTAssertEqual(costInspections, 2)
+        XCTAssertTrue(costRefused.wasRefused)
+
+        costCache.remove(revision: costOwner)
+        let costAdmitted = costCache.result(
+            pdfData: Data(), pageIndex: 0, pageRefID: costWaiterRef, revision: costWaiter
+        )
+        XCTAssertEqual(costInspections, 3)
+        XCTAssertFalse(costAdmitted.wasRefused)
+    }
+
     /// Underline survives a commit: after editing the underlined name, the regenerated page
     /// still renders an underline stroke, and the committed op carries underline + stroke bounds.
     func testUnderlineSurvivesEditCommit() throws {

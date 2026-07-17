@@ -90,6 +90,47 @@ final class ObjectDetectionTests: XCTestCase {
                        "structuralDigest must be stable across identical detection passes")
     }
 
+    func testLegacyPersistedPathDigestRemainsResolvable() throws {
+        let pageRefID = UUID()
+        let map = PDFObjectDetectionEngine.detect(
+            pdfData: makeFixture(),
+            pageIndex: 0,
+            pageRefID: pageRefID
+        )
+        let line = try XCTUnwrap(map.objects.first { $0.objectType == .line })
+        let legacyDigest: UInt64 = 16_098_004_530_599_235_064
+        XCTAssertEqual(line.stableKey.structuralDigest, legacyDigest)
+
+        var newTransform = line.transform
+        newTransform.e += 12
+        let persistedKey = PDFObjectStableKey(
+            pageRefID: pageRefID,
+            structuralDigest: legacyDigest,
+            quantizedBoundsHint: line.stableKey.quantizedBoundsHint,
+            zOrderHint: line.zOrder,
+            typeHint: line.objectType.rawValue
+        )
+        let operation = ObjectEditOperation(
+            type: .objectTransform,
+            documentID: UUID(),
+            pageRefID: pageRefID,
+            sourceObjectKey: persistedKey,
+            objectType: line.objectType,
+            editability: line.editability,
+            originalBoundsPdf: line.boundsPdf,
+            newBoundsPdf: line.boundsPdf.offsetBy(dx: 12, dy: 0),
+            originalTransform: line.transform,
+            newTransform: newTransform,
+            pageRotation: Int(line.pageRotation),
+            originalZIndex: line.zOrder,
+            newZIndex: line.zOrder,
+            replacementStrategy: .pdfiumStructural
+        )
+        let projected = PDFObjectDetectionEngine.projecting(map, operations: [operation])
+        let moved = try XCTUnwrap(projected.objects.first { $0.stableKey.structuralDigest == legacyDigest })
+        XCTAssertEqual(moved.boundsPdf.minX, line.boundsPdf.minX + 12, accuracy: 0.01)
+    }
+
     // Test #30 — permission-restricted document: every object locked, no crash.
     func testPermissionRestrictedLocksEverything() {
         let map = PDFObjectDetectionEngine.detect(pdfData: makeFixture(), pageIndex: 0, pageRefID: UUID(), allowsEditing: false)

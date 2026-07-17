@@ -18,6 +18,199 @@ enum PDFPageObjectInspection {
         var objectMap: PageObjectMap
         var rawObjectCount: Int
         var enumeratedObjectCount: Int
+        /// True when cache admission refused the page to preserve its hard memory ceilings.
+        /// Consumers must fail closed rather than treating missing safety projections as proof
+        /// that content is editable.
+        var wasRefused = false
+    }
+
+    /// Caller-owned member revision token. A workspace creates one token for canonical member
+    /// bytes, reuses it across every page, and explicitly invalidates it only when those canonical
+    /// bytes change. This avoids hashing an entire large member on every page lookup.
+    struct Revision: Hashable {
+        fileprivate let id = UUID()
+    }
+
+    /// Snapshot cache shared by text and object consumers. It retains every admitted PageRef for
+    /// a member revision until that revision is explicitly invalidated. Explicit page/projection
+    /// budgets fail closed for later pages instead of evicting snapshots and silently rescanning.
+    final class Cache {
+        typealias Inspector = (Data, Int, UUID, Bool) -> Result
+
+        static let defaultMaxRetainedPages = 512
+        static let defaultMaxRetainedProjectionUnits = 250_000
+        static let defaultMaxTotalRetainedPages = 1_024
+        static let defaultMaxTotalRetainedProjectionUnits = 500_000
+
+        private struct Key: Hashable {
+            var revision: Revision
+            var pageIndex: Int
+            var pageRefID: UUID
+        }
+
+        private let inspector: Inspector
+        private let maxRetainedPages: Int
+        private let maxRetainedProjectionUnits: Int
+        private let maxTotalRetainedPages: Int
+        private let maxTotalRetainedProjectionUnits: Int
+        private let lock = NSLock()
+        private var results: [Key: Result] = [:]
+        private var retainedProjectionUnitsByRevision: [Revision: Int] = [:]
+        private var totalRetainedProjectionUnits = 0
+        private var saturatedRevisions = Set<Revision>()
+        /// Revisions refused only because another revision currently owns global capacity.
+        /// They are retryable after any removal; unlike accepted results, no scan is evicted.
+        private var globallyRefusedRevisions = Set<Revision>()
+
+        init(
+            maxRetainedPages: Int = defaultMaxRetainedPages,
+            maxRetainedProjectionUnits: Int = defaultMaxRetainedProjectionUnits,
+            maxTotalRetainedPages: Int = defaultMaxTotalRetainedPages,
+            maxTotalRetainedProjectionUnits: Int = defaultMaxTotalRetainedProjectionUnits,
+            inspector: @escaping Inspector = { data, index, refID, allowsEditing in
+                PDFPageObjectInspection.inspect(
+                    pdfData: data,
+                    pageIndex: index,
+                    pageRefID: refID,
+                    allowsEditing: allowsEditing
+                )
+            }
+        ) {
+            precondition(
+                maxRetainedPages > 0 && maxRetainedProjectionUnits > 0
+                    && maxTotalRetainedPages > 0 && maxTotalRetainedProjectionUnits > 0
+            )
+            self.maxRetainedPages = maxRetainedPages
+            self.maxRetainedProjectionUnits = maxRetainedProjectionUnits
+            self.maxTotalRetainedPages = maxTotalRetainedPages
+            self.maxTotalRetainedProjectionUnits = maxTotalRetainedProjectionUnits
+            self.inspector = inspector
+        }
+
+        func result(
+            pdfData: Data,
+            pageIndex: Int,
+            pageRefID: UUID,
+            revision: Revision
+        ) -> Result {
+            let key = Key(
+                revision: revision,
+                pageIndex: pageIndex,
+                pageRefID: pageRefID
+            )
+            lock.lock()
+            defer { lock.unlock() }
+            if let cached = results[key] {
+                return cached
+            }
+            guard !globallyRefusedRevisions.contains(revision) else {
+                return limitedResult(pageRefID: pageRefID)
+            }
+            let retainedPageCount = results.keys.lazy.filter { $0.revision == revision }.count
+            guard !saturatedRevisions.contains(revision), retainedPageCount < maxRetainedPages else {
+                saturatedRevisions.insert(revision)
+                return limitedResult(pageRefID: pageRefID)
+            }
+            guard results.count < maxTotalRetainedPages else {
+                globallyRefusedRevisions.insert(revision)
+                return limitedResult(pageRefID: pageRefID)
+            }
+            // Permission state is a cheap projection over the object map and must not create a
+            // second physical scan of identical member bytes.
+            let inspected = inspector(pdfData, pageIndex, pageRefID, true)
+            let cost = projectionCost(of: inspected)
+            let retainedProjectionUnits = retainedProjectionUnitsByRevision[revision, default: 0]
+            guard retainedProjectionUnits + cost <= maxRetainedProjectionUnits else {
+                let limited = limitedResult(
+                    pageRefID: pageRefID,
+                    rawObjectCount: inspected.rawObjectCount,
+                    enumeratedObjectCount: inspected.enumeratedObjectCount
+                )
+                results[key] = limited
+                saturatedRevisions.insert(revision)
+                return limited
+            }
+            guard totalRetainedProjectionUnits + cost <= maxTotalRetainedProjectionUnits else {
+                if cost > maxTotalRetainedProjectionUnits {
+                    let limited = limitedResult(
+                        pageRefID: pageRefID,
+                        rawObjectCount: inspected.rawObjectCount,
+                        enumeratedObjectCount: inspected.enumeratedObjectCount
+                    )
+                    results[key] = limited
+                    saturatedRevisions.insert(revision)
+                    return limited
+                }
+                globallyRefusedRevisions.insert(revision)
+                return limitedResult(
+                    pageRefID: pageRefID,
+                    rawObjectCount: inspected.rawObjectCount,
+                    enumeratedObjectCount: inspected.enumeratedObjectCount
+                )
+            }
+            results[key] = inspected
+            retainedProjectionUnitsByRevision[revision] = retainedProjectionUnits + cost
+            totalRetainedProjectionUnits += cost
+            return inspected
+        }
+
+        func remove(revision: Revision) {
+            lock.lock()
+            let removedKeys = results.keys.filter { $0.revision == revision }
+            for key in removedKeys {
+                if let removed = results.removeValue(forKey: key) {
+                    totalRetainedProjectionUnits -= projectionCost(of: removed)
+                }
+            }
+            retainedProjectionUnitsByRevision.removeValue(forKey: revision)
+            saturatedRevisions.remove(revision)
+            globallyRefusedRevisions.remove(revision)
+            if !removedKeys.isEmpty {
+                // Only releasing an admitted result changes global capacity. Invalidating some
+                // other refused revision must not make every waiter repeat a doomed inspection.
+                globallyRefusedRevisions.removeAll()
+            }
+            lock.unlock()
+        }
+
+        func removeAll() {
+            lock.lock()
+            results.removeAll()
+            retainedProjectionUnitsByRevision.removeAll()
+            totalRetainedProjectionUnits = 0
+            saturatedRevisions.removeAll()
+            globallyRefusedRevisions.removeAll()
+            lock.unlock()
+        }
+
+        private func projectionCost(of result: Result) -> Int {
+            result.renderModeRegions.count
+                + result.graphics.horizontalRules.count
+                + result.graphics.verticalRules.count
+                + result.objectMap.objects.count
+        }
+
+        private func limitedResult(
+            pageRefID: UUID,
+            rawObjectCount: Int = 0,
+            enumeratedObjectCount: Int = 0
+        ) -> Result {
+            var graphics = PageGraphicsIndex.empty
+            graphics.didTruncateScan = true
+            return Result(
+                renderModeRegions: [],
+                graphics: graphics,
+                objectMap: PageObjectMap(
+                    pageRefID: pageRefID,
+                    objects: [],
+                    didTruncateScan: true,
+                    rawObjectCount: rawObjectCount
+                ),
+                rawObjectCount: rawObjectCount,
+                enumeratedObjectCount: enumeratedObjectCount,
+                wasRefused: true
+            )
+        }
     }
 
     static func inspect(
