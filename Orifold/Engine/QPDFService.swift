@@ -288,7 +288,11 @@ enum QPDFService {
     /// Opens `data` as a qpdf instance (with automatic recovery attempted),
     /// runs `body`, and guarantees cleanup. `body` returns `nil` to signal
     /// the operation could not be completed; the qpdf handle is always freed.
-    private static func withQPDF<T>(
+    ///
+    /// `internal` (not `private`) so sibling engine services in this module --
+    /// e.g. `PDFMetadataService` -- can reuse the exact open/recover/cleanup
+    /// lifecycle instead of writing a second one.
+    static func withQPDF<T>(
         _ data: Data,
         description: String,
         password: String? = nil,
