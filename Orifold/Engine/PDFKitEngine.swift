@@ -679,12 +679,178 @@ enum DocumentImportConverter {
 
     private static func loadMarkdown(from data: Data, baseURL: URL?) throws -> NSAttributedString {
         let string = try decodeText(data)
-        do {
-            let attributed = try AttributedString(markdown: string, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full), baseURL: baseURL)
-            return NSAttributedString(attributed)
-        } catch {
-            return try loadPlainText(from: data)
+        if let rendered = markdownAttributedString(from: string, baseURL: baseURL) {
+            return rendered
         }
+        return try loadPlainText(from: data)
+    }
+
+    /// Strips HTML comments, parses `.full` markdown, and typesets it (see
+    /// `typesetMarkdown`). Returns `nil` when the text can't be parsed as markdown, so
+    /// `loadMarkdown` can fall back to plain-text rendering. Internal (not private) so the
+    /// typesetting regression suite can assert on the laid-out `NSAttributedString`
+    /// directly, without depending on flaky PDF text re-extraction.
+    static func markdownAttributedString(from string: String, baseURL: URL?) -> NSAttributedString? {
+        // Strip HTML comments (`<!-- … -->`) before parsing: `.full` markdown keeps them
+        // as visible text runs, so an authoring/provenance note would otherwise render
+        // straight into the page. Comments carry no document content.
+        let withoutComments = string.replacingOccurrences(
+            of: "<!--[\\s\\S]*?-->", with: "", options: .regularExpression
+        )
+        guard let attributed = try? AttributedString(
+            markdown: withoutComments,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full),
+            baseURL: baseURL
+        ) else {
+            return nil
+        }
+        return typesetMarkdown(attributed)
+    }
+
+    /// Block-structure classification recovered from a run's `PresentationIntent`,
+    /// used to pick fonts and paragraph spacing when typesetting markdown.
+    private enum MarkdownBlockKind {
+        case heading(level: Int)
+        case listItem(ordinal: Int?)
+        case blockQuote
+        case codeBlock
+        case body
+    }
+
+    /// Lays out a parsed markdown `AttributedString` into an `NSAttributedString` the PDF
+    /// text renderer can actually paginate and style.
+    ///
+    /// `AttributedString(markdown:, interpretedSyntax: .full)` records block structure
+    /// (headings, paragraphs, lists) as `PresentationIntent` attributes and drops the
+    /// literal newlines *between* blocks. AppKit's layout system ignores
+    /// `PresentationIntent` entirely, so bridging straight through
+    /// `NSAttributedString(attributed)` collapses every block into a single run: adjacent
+    /// paragraphs' words fuse with no separator ("…Bag of Rice.One day…") and headings
+    /// render at body size. This walks the runs, re-inserts a paragraph break at each
+    /// block boundary, and assigns fonts by block kind and inline emphasis so imported
+    /// markdown reads as a real document.
+    ///
+    /// Fonts are explicitly *named* (Georgia family), never `NSFont.systemFont`: the system
+    /// face embeds into the generated PDF under a private PostScript name (".SFNS-…") that
+    /// `NSFont(name:)` later refuses to resolve, which would break reopening this text in
+    /// the inline editor — the same trap the plain-text path sidesteps by pinning Menlo.
+    /// A FIXED black color (not the dynamic `NSColor.textColor`) keeps text dark even when
+    /// the import runs while the app is in dark mode, so it can't bake near-white glyphs
+    /// onto the white page.
+    private static func typesetMarkdown(_ attributed: AttributedString) -> NSAttributedString {
+        let bodySize: CGFloat = 12
+
+        let bodyStyle = NSMutableParagraphStyle()
+        bodyStyle.lineSpacing = 3
+        bodyStyle.paragraphSpacing = 10
+        bodyStyle.lineBreakMode = .byWordWrapping
+        let headingStyle = NSMutableParagraphStyle()
+        headingStyle.paragraphSpacingBefore = 16
+        headingStyle.paragraphSpacing = 6
+        headingStyle.lineBreakMode = .byWordWrapping
+
+        func font(bold: Bool, italic: Bool, size: CGFloat) -> NSFont {
+            let name: String
+            switch (bold, italic) {
+            case (true, true): name = "Georgia-BoldItalic"
+            case (true, false): name = "Georgia-Bold"
+            case (false, true): name = "Georgia-Italic"
+            case (false, false): name = "Georgia"
+            }
+            return NSFont(name: name, size: size)
+                ?? NSFont(name: "Georgia", size: size)
+                ?? .systemFont(ofSize: size)
+        }
+
+        func classify(_ intent: PresentationIntent?) -> MarkdownBlockKind {
+            guard let intent else { return .body }
+            for component in intent.components {
+                if case .header(let level) = component.kind { return .heading(level: level) }
+                if case .codeBlock = component.kind { return .codeBlock }
+            }
+            for component in intent.components {
+                if case .listItem(let ordinal) = component.kind {
+                    let ordered = intent.components.contains { if case .orderedList = $0.kind { return true }; return false }
+                    return .listItem(ordinal: ordered ? ordinal : nil)
+                }
+                if case .blockQuote = component.kind { return .blockQuote }
+            }
+            return .body
+        }
+
+        func baseSize(_ kind: MarkdownBlockKind) -> CGFloat {
+            switch kind {
+            case .heading(let level) where level <= 1: return 24
+            case .heading(let level) where level == 2: return 17
+            case .heading: return 14
+            case .codeBlock: return 11
+            default: return bodySize
+            }
+        }
+
+        func paragraphStyle(_ kind: MarkdownBlockKind) -> NSParagraphStyle {
+            if case .heading = kind { return headingStyle }
+            return bodyStyle
+        }
+
+        func prefix(_ kind: MarkdownBlockKind) -> String {
+            if case .listItem(let ordinal) = kind {
+                if let ordinal { return "\(ordinal).  " }
+                return "•  "
+            }
+            return ""
+        }
+
+        let result = NSMutableAttributedString()
+        var lastIdentity: Int?
+        var isFirstBlock = true
+        var currentKind: MarkdownBlockKind = .body
+
+        for run in attributed.runs {
+            let intent = run.presentationIntent
+            // Runs without a block intent are structural (stripped-comment remnants,
+            // inter-block whitespace) — never rendered content in `.full` mode.
+            guard let intent else { continue }
+            let text = String(attributed[run.range].characters)
+            if text.isEmpty { continue }
+
+            let identity = intent.components.first?.identity
+            if identity != lastIdentity {
+                if !isFirstBlock {
+                    // Terminate the previous block; its paragraph style carries the
+                    // spacing that follows it.
+                    result.append(NSAttributedString(string: "\n", attributes: [
+                        .font: font(bold: false, italic: false, size: baseSize(currentKind)),
+                        .foregroundColor: NSColor.black,
+                        .paragraphStyle: paragraphStyle(currentKind)
+                    ]))
+                }
+                isFirstBlock = false
+                lastIdentity = identity
+                currentKind = classify(intent)
+                let marker = prefix(currentKind)
+                if !marker.isEmpty {
+                    result.append(NSAttributedString(string: marker, attributes: [
+                        .font: font(bold: false, italic: false, size: baseSize(currentKind)),
+                        .foregroundColor: NSColor.black,
+                        .paragraphStyle: paragraphStyle(currentKind)
+                    ]))
+                }
+            }
+
+            let inline = run.inlinePresentationIntent ?? []
+            let isHeading: Bool = { if case .heading = currentKind { return true }; return false }()
+            let bold = isHeading || inline.contains(.stronglyEmphasized)
+            let italic = inline.contains(.emphasized) || { if case .blockQuote = currentKind { return true }; return false }()
+            result.append(NSAttributedString(string: text, attributes: [
+                .font: font(bold: bold, italic: italic, size: baseSize(currentKind)),
+                .foregroundColor: NSColor.black,
+                .paragraphStyle: paragraphStyle(currentKind)
+            ]))
+        }
+
+        if result.length == 0 { return NSAttributedString(string: " ") }
+        return result
     }
 
     private static func loadPlainText(from data: Data) throws -> NSAttributedString {

@@ -1,6 +1,6 @@
 # Orifold Third-Party Notices
 
-Last updated: 2026-07-04
+Last updated: 2026-07-17
 
 This file is included in the Orifold app bundle and repository to provide
 license notices for third-party code distributed with the app.
@@ -29,6 +29,25 @@ libjpeg-turbo (v3.1.0, required by qpdf's JPEG passthrough filter). Both are
 built directly by this repository's own build process from their official
 upstream sources -- neither is a redistribution of a third party's prebuilt
 binary.
+
+## Bundled Sample Document
+
+Orifold bundles a sample/onboarding document, `Resources/SampleDocument.pdf`,
+shown from the empty state as "Open sample document."
+
+Its text is the fairy tale "My Lord Bag of Rice" from *Japanese Fairy Tales*
+by Yei Theodora Ozaki (1908). The work is in the public domain worldwide: it was
+published before 1929 (public domain in the United States) and its author died in
+1932, more than 70 years ago (public domain in life-plus-70 jurisdictions). No
+rights are reserved and no attribution is legally required; the attribution shown
+in the document is a courtesy.
+
+The source text was obtained from Project Gutenberg. Because Orifold redistributes
+it outside the Project Gutenberg License, all Project Gutenberg license headers,
+footers, and trademark references have been removed, as that license requires. The
+Project Gutenberg trademark is not used. The cleaned, typeset markdown source lives
+at `scripts/generate-sample-document.md`; the PDF is generated from it through
+Orifold's own markdown import pipeline.
 
 ## Other Linked Third-Party Packages
 
