@@ -5,6 +5,9 @@
 # macOS Finder metadata
 .DS_Store
 
+# Session bookkeeping (Claude .remember buffer/history) — not product source
+.remember/
+
 ## User settings
 xcuserdata/
 
