@@ -2320,14 +2320,16 @@ final class NoteEditorViewController: NSViewController {
         done.controlSize = .large
         done.keyEquivalent = "\r"
         done.contentTintColor = .dsAccentNS
-        done.frame = CGRect(x: editorWidth - 88 - 12, y: 10, width: 88, height: 28)
+        let doneWidth = max(88, ceil(done.fittingSize.width))
+        done.frame = CGRect(x: editorWidth - doneWidth - 12, y: 10, width: doneWidth, height: 28)
         footer.addSubview(done)
 
         let cancel = NSButton(title: L10n.string("readingCanvas.freeTextEditor.cancel.button"), target: self, action: #selector(cancel))
         cancel.bezelStyle = .rounded
         cancel.controlSize = .large
         cancel.keyEquivalent = "\u{1b}"
-        cancel.frame = CGRect(x: editorWidth - 88 - 12 - 80, y: 10, width: 72, height: 28)
+        let cancelWidth = max(72, ceil(cancel.fittingSize.width))
+        cancel.frame = CGRect(x: done.frame.minX - cancelWidth - 8, y: 10, width: cancelWidth, height: 28)
         footer.addSubview(cancel)
         container.addSubview(footer)
 
@@ -3250,7 +3252,7 @@ final class NoteEditorViewController: NSViewController {
         matchFormatButton.bezelStyle = .rounded
         matchFormatButton.font = .systemFont(ofSize: 11)
         matchFormatButton.toolTip = L10n.string("readingCanvas.formatting.matchFormat.tooltip")
-        cursor.place(matchFormatButton, width: Self.measuredButtonWidth(title: matchFormatButton.title, font: matchFormatButton.font ?? .systemFont(ofSize: 11), minimum: 52), gapAfter: 3)
+        cursor.place(matchFormatButton, width: Self.fittingButtonWidth(matchFormatButton, minimum: 52), gapAfter: 3)
 
         copyFormatButton.target = self
         copyFormatButton.action = #selector(copyNearbyFormat)
@@ -3260,7 +3262,7 @@ final class NoteEditorViewController: NSViewController {
         copyFormatButton.bezelStyle = .rounded
         copyFormatButton.font = .systemFont(ofSize: 11)
         copyFormatButton.toolTip = L10n.string("readingCanvas.formatting.copyFormat.tooltip")
-        cursor.place(copyFormatButton, width: Self.measuredButtonWidth(title: copyFormatButton.title, font: copyFormatButton.font ?? .systemFont(ofSize: 11), minimum: 48), gapAfter: 3)
+        cursor.place(copyFormatButton, width: Self.fittingButtonWidth(copyFormatButton, minimum: 48), gapAfter: 3)
 
         applyFormatButton.target = self
         applyFormatButton.action = #selector(applyCopiedFormat)
@@ -3270,7 +3272,7 @@ final class NoteEditorViewController: NSViewController {
         applyFormatButton.bezelStyle = .rounded
         applyFormatButton.font = .systemFont(ofSize: 11)
         applyFormatButton.toolTip = L10n.string("readingCanvas.formatting.pasteFormat.tooltip")
-        cursor.place(applyFormatButton, width: Self.measuredButtonWidth(title: applyFormatButton.title, font: applyFormatButton.font ?? .systemFont(ofSize: 11), minimum: 50), gapAfter: 3)
+        cursor.place(applyFormatButton, width: Self.fittingButtonWidth(applyFormatButton, minimum: 50), gapAfter: 3)
 
         restoreFormatButton.target = self
         restoreFormatButton.action = #selector(restoreOriginalFormat)
@@ -3280,7 +3282,7 @@ final class NoteEditorViewController: NSViewController {
         restoreFormatButton.bezelStyle = .rounded
         restoreFormatButton.font = .systemFont(ofSize: 11)
         restoreFormatButton.toolTip = L10n.string("readingCanvas.formatting.resetFormat.tooltip")
-        cursor.place(restoreFormatButton, width: Self.measuredButtonWidth(title: restoreFormatButton.title, font: restoreFormatButton.font ?? .systemFont(ofSize: 11), minimum: 50))
+        cursor.place(restoreFormatButton, width: Self.fittingButtonWidth(restoreFormatButton, minimum: 50))
 
         // Build the commit/cancel/delete group but DO NOT place it inline: record it so
         // `layoutActionGroup(inWidth:)` can pin it to the toolbar's right edge, keeping it
@@ -3318,7 +3320,7 @@ final class NoteEditorViewController: NSViewController {
         cancel.font = .systemFont(ofSize: 11)
         cancel.toolTip = L10n.string("readingCanvas.formatting.discardEdit.tooltip")
         toolbar.addSubview(cancel)
-        actionGroupItems.append((cancel, Self.measuredButtonWidth(title: cancel.title, font: cancel.font ?? .systemFont(ofSize: 11), minimum: 58), 8))
+        actionGroupItems.append((cancel, Self.fittingButtonWidth(cancel, minimum: 58), 8))
 
         let done = NSButton(title: L10n.string("readingCanvas.formatting.doneEdit.button"), target: self, action: #selector(commitButton))
         done.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: L10n.string("readingCanvas.formatting.doneEdit.accessibilityDescription"))
@@ -3329,8 +3331,7 @@ final class NoteEditorViewController: NSViewController {
         done.keyEquivalent = "\r"
         done.toolTip = L10n.string("readingCanvas.formatting.saveEdit.tooltip")
         toolbar.addSubview(done)
-        // Extra padding accounts for the leading checkmark icon this button also shows.
-        actionGroupItems.append((done, Self.measuredButtonWidth(title: done.title, font: done.font ?? .systemFont(ofSize: 11, weight: .semibold), minimum: 62, horizontalPadding: 34), 6))
+        actionGroupItems.append((done, Self.fittingButtonWidth(done, minimum: 62), 6))
 
         actionGroupWidth = actionGroupItems.reduce(0) { $0 + $1.gapBefore + $1.width }
         // Full intrinsic width: left/format group + a divider gap + the action group.
@@ -4373,6 +4374,10 @@ final class NoteEditorViewController: NSViewController {
     static func measuredButtonWidth(title: String, font: NSFont, minimum: CGFloat, horizontalPadding: CGFloat = 16) -> CGFloat {
         let measured = (title as NSString).size(withAttributes: [.font: font]).width
         return max(minimum, ceil(measured) + horizontalPadding)
+    }
+
+    private static func fittingButtonWidth(_ button: NSButton, minimum: CGFloat) -> CGFloat {
+        max(minimum, ceil(button.fittingSize.width))
     }
 
     static func editingFamilyName(for font: NSFont, fallback: String) -> String {

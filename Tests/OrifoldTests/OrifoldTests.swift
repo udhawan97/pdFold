@@ -3901,6 +3901,35 @@ final class InlineTextEditPlacementTests: XCTestCase {
         XCTAssertTrue(hitTest(fixture.overlay, at: donePoint, reaches: done), "Done must still be reachable once the format controls wrap")
     }
 
+    func testInlineEditorKeepsActionTitlesReadableAfterCanvasShrinks() throws {
+        let fixture = try makeInlineEditorFixture(
+            text: "Editable paragraph text near the page edge",
+            pdfViewFrame: CGRect(x: 0, y: 0, width: 1_800, height: 900)
+        )
+
+        fixture.pdfView.setFrameSize(NSSize(width: 980, height: 900))
+        fixture.pdfView.layoutSubtreeIfNeeded()
+
+        let buttons = try [
+            inlineEditorButton(in: fixture.overlay, identifier: "inlineEditor.matchNearbyFormat"),
+            inlineEditorButton(in: fixture.overlay, identifier: "inlineEditor.copyNearbyFormat"),
+            inlineEditorButton(in: fixture.overlay, identifier: "inlineEditor.applyCopiedFormat"),
+            inlineEditorButton(in: fixture.overlay, identifier: "inlineEditor.restoreOriginalFormat"),
+            findSubview(in: fixture.overlay) { (button: NSButton) in button.title == "Cancel" },
+            findSubview(in: fixture.overlay) { (button: NSButton) in button.title == "Done" }
+        ].enumerated().map { index, button in
+            try XCTUnwrap(button, "Inline-editor action \(index) not found in view hierarchy")
+        }
+
+        for button in buttons {
+            XCTAssertGreaterThanOrEqual(
+                button.bounds.width + 0.5,
+                button.fittingSize.width,
+                "\(button.title) must remain fully readable after a live canvas resize"
+            )
+        }
+    }
+
     /// Stress-test finding: the row-wrapping fix (`layoutFormatControls`) only solves
     /// controls not FITTING in the available toolbar width — it does nothing about a
     /// control being individually too NARROW for its own (locale-dependent) title.
@@ -6945,6 +6974,46 @@ final class WorkspaceViewModelTests: XCTestCase {
         XCTAssertTrue(page.annotations.contains(annotation))
         XCTAssertEqual(changeCount, 1)
         XCTAssertTrue(didClose)
+    }
+
+    func testNoteEditorActionTitlesFitInEveryShippedLanguage() throws {
+        let storedLanguage = UserDefaults.standard.string(forKey: LanguageManager.storageKey)
+        defer {
+            if let storedLanguage {
+                UserDefaults.standard.set(storedLanguage, forKey: LanguageManager.storageKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: LanguageManager.storageKey)
+            }
+        }
+
+        for language in SupportedLanguage.allCases where language != .system {
+            UserDefaults.standard.set(language.rawValue, forKey: LanguageManager.storageKey)
+            let annotation = PDFAnnotation(
+                bounds: CGRect(x: 20, y: 20, width: 120, height: 32),
+                forType: .freeText,
+                withProperties: nil
+            )
+            let controller = NoteEditorViewController(annotation: annotation)
+            controller.loadViewIfNeeded()
+
+            for key in [
+                "readingCanvas.freeTextEditor.cancel.button",
+                "readingCanvas.freeTextEditor.done.button"
+            ] {
+                let title = L10n.string(forKey: key)
+                let button = try XCTUnwrap(
+                    findSubview(in: controller.view) { (button: NSButton) in
+                        button.title == title
+                    },
+                    "Missing \(key) for \(language.rawValue)"
+                )
+                XCTAssertGreaterThanOrEqual(
+                    button.bounds.width + 0.5,
+                    button.fittingSize.width,
+                    "\(key) must remain fully readable in \(language.rawValue)"
+                )
+            }
+        }
     }
 
     func testAddTextBoxRejectsMalformedPagePoint() throws {
