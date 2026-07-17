@@ -408,6 +408,13 @@ final class WorkspaceViewModel {
     @ObservationIgnored private var activeSearchID = UUID()
     @ObservationIgnored private var pendingSearchResults: [PDFSelection] = []
     @ObservationIgnored private(set) var searchResultsQuery = ""
+
+    /// Lazily-built read-aloud controller (Feature C). Constructed on first access from the
+    /// main actor (its own isolation), so it's never created off-main and never for documents
+    /// that are never spoken. `@ObservationIgnored` because it's a self-contained
+    /// `ObservableObject` the UI observes directly — Observation shouldn't track the reference.
+    @ObservationIgnored private var _readAloud: ReadAloudController?
+
     /// Raw PDF bytes captured ONCE when each member is first loaded or attached.
     /// Never mutated during editing — used as the immutable base for page regeneration
     /// so multiple edits on the same page always start from the original content.
@@ -5134,6 +5141,52 @@ final class WorkspaceViewModel {
     private func jumpToSearchResult(_ index: Int) {
         guard index >= 0, index < searchResults.count else { return }
         NotificationCenter.default.post(name: .orifoldJumpToSelection, object: searchResults[index])
+    }
+
+    // MARK: - Read aloud (Feature C)
+
+    /// The read-aloud controller for this workspace, created on first use. It reads directly
+    /// from `combinedPDF` (indices are composed-document indices, banners included) and skips
+    /// pages with no speakable text, so boundary banners and image-only pages are passed over.
+    @MainActor
+    var readAloud: ReadAloudController {
+        if let _readAloud { return _readAloud }
+        let controller = ReadAloudController(
+            synthesizer: AVSpeechSynthesizerAdapter(),
+            pageTextProvider: { [weak self] index in self?.readAloudPageText(at: index) },
+            pageCount: { [weak self] in self?.combinedPDF.pageCount ?? 0 }
+        )
+        _readAloud = controller
+        return controller
+    }
+
+    /// Start reading, or stop if already active — the single entry point the toolbar/menu bind
+    /// to so one control both starts and stops.
+    @MainActor
+    func toggleReadAloud() {
+        if readAloud.isActive {
+            readAloud.stop()
+        } else {
+            startReadAloudFromCurrentPage()
+        }
+    }
+
+    @MainActor
+    func startReadAloudFromCurrentPage() {
+        // `currentPageNumber` is a workspace (banner-excluded) page number; map it to the
+        // composed-document index the controller reads. Fall back to the top of the document.
+        let startIndex = combinedPageIndex(forWorkspacePageNumber: max(1, currentPageNumber)) ?? 0
+        readAloud.start(fromPage: startIndex)
+    }
+
+    /// Page text for read-aloud. Uses `attributedString?.string` (NOT `.string`, which
+    /// interleaves characters on the CI SDK — see the read-aloud plan). Boundary banners have
+    /// no document text and are skipped outright.
+    private func readAloudPageText(at index: Int) -> String? {
+        guard index >= 0, index < combinedPDF.pageCount,
+              let page = combinedPDF.page(at: index),
+              !(page is BoundaryPage) else { return nil }
+        return page.attributedString?.string
     }
 
     // MARK: - Find & Replace

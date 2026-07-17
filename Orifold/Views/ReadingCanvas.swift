@@ -1,5 +1,6 @@
 import SwiftUI
 import PDFKit
+import Combine
 
 // MARK: - Reading canvas shell (PDF + zoom/page bar)
 
@@ -503,6 +504,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
 
         context.coordinator.pdfView = view
         context.coordinator.observePDFViewBounds(view)
+        context.coordinator.observeReadAloudHighlight()
         context.coordinator.setupInkOverlay()
         context.coordinator.setupSignatureOverlay()
         context.coordinator.setupCommentRegionOverlay()
@@ -540,6 +542,11 @@ struct PDFViewRepresentable: NSViewRepresentable {
         private let decorationOverlays = NSHashTable<PageDecorationOverlayView>.weakObjects()
         private weak var observedClipView: NSClipView?
         var interactionSession: CanvasInteractionSession
+        // Read-aloud follow-along highlight (Feature C): subscribe to the controller's spoken
+        // span and mirror it as a PDF selection. `lastReadAloudPageIndex` gates auto-scroll so
+        // the canvas jumps only when speech crosses onto a new page, not on every word.
+        private var readAloudHighlightCancellable: AnyCancellable?
+        private var lastReadAloudPageIndex: Int?
 
         init(viewModel: WorkspaceViewModel) {
             self.viewModel = viewModel
@@ -570,6 +577,43 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 name: NSView.boundsDidChangeNotification,
                 object: clipView
             )
+        }
+
+        /// Bridges the read-aloud controller's spoken span onto the canvas as a live PDF
+        /// selection (Feature C). The controller and its state machine are already unit-tested;
+        /// this bridge stays intentionally thin — map span → `PDFSelection`, show it, and scroll
+        /// only when speech moves to a new page.
+        @MainActor
+        func observeReadAloudHighlight() {
+            readAloudHighlightCancellable = viewModel.readAloud.$highlight
+                .receive(on: RunLoop.main)
+                .sink { [weak self] highlight in
+                    // `.receive(on: RunLoop.main)` guarantees main-thread delivery, so it's safe
+                    // to assume main-actor isolation for the UI-touching apply step.
+                    MainActor.assumeIsolated {
+                        self?.applyReadAloudHighlight(highlight)
+                    }
+                }
+        }
+
+        @MainActor
+        private func applyReadAloudHighlight(_ highlight: (pageIndex: Int, rangeInPage: NSRange)?) {
+            guard let pdfView, let document = pdfView.document else { return }
+            guard let highlight else {
+                // Speech stopped/finished — drop the follow-along selection.
+                pdfView.clearSelection()
+                lastReadAloudPageIndex = nil
+                return
+            }
+            guard highlight.pageIndex < document.pageCount,
+                  let page = document.page(at: highlight.pageIndex),
+                  let selection = page.selection(for: highlight.rangeInPage) else { return }
+            pdfView.setCurrentSelection(selection, animate: false)
+            // Auto-scroll on page change only, so within-page word tracking doesn't yank the view.
+            if lastReadAloudPageIndex != highlight.pageIndex {
+                pdfView.go(to: selection)
+                lastReadAloudPageIndex = highlight.pageIndex
+            }
         }
 
         func finishInlineEditingIfNeeded() {
