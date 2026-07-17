@@ -54,4 +54,45 @@ enum BakeStamp {
         }
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
+
+    /// Hashes both committed editing lanes for a page. Text-only stamps retain their
+    /// historical value so existing workspaces do not need a gratuitous one-time rebake.
+    static func hash(textOperations: [PDFTextEditOperation], objectOperations: [ObjectEditOperation]) -> String {
+        guard !objectOperations.isEmpty else { return hash(for: textOperations) }
+        let text = textOperations.sorted { $0.id.uuidString < $1.id.uuidString }
+        let objects = objectOperations.sorted { $0.id.uuidString < $1.id.uuidString }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let textData = try? encoder.encode(text),
+              let objectData = try? encoder.encode(objects) else {
+            return "unencodable-\(textOperations.count)-\(objectOperations.count)"
+        }
+        var canonical = Data("orifold-combined-edit-v1\n".utf8)
+        canonical.append(textData)
+        canonical.append(0)
+        canonical.append(objectData)
+        return SHA256.hash(data: canonical).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Writes an invisible stamp annotation for the exact operation set baked into a page.
+    static func attach(_ hash: String, to page: PDFPage) {
+        let annotation = PDFAnnotation(
+            bounds: CGRect(x: -10, y: -10, width: 1, height: 1),
+            forType: .freeText,
+            withProperties: nil
+        )
+        annotation.color = .clear
+        annotation.fontColor = .clear
+        annotation.contents = nil
+        annotation.setValue(hash, forAnnotationKey: PDFAnnotationKey(rawValue: annotationKey))
+        page.addAnnotation(annotation)
+    }
+
+    /// Returns the first Orifold bake stamp carried by `page`.
+    static func value(on page: PDFPage) -> String? {
+        page.annotations.lazy.compactMap { annotation -> String? in
+            guard isStamp(annotation) else { return nil }
+            return annotation.value(forAnnotationKey: PDFAnnotationKey(rawValue: annotationKey)) as? String
+        }.first
+    }
 }

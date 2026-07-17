@@ -10,13 +10,17 @@ Orifold composes several local engines behind protocol seams, each doing the job
 
 Apple's native framework owns `PDFView`, `PDFDocument`, `PDFPage`, `PDFAnnotation`, selection, search, printing, and workspace page ownership. It's the UI and document engine everything else supports.
 
-## PDFium — image compression, validation & glyph geometry
+## PDFium — page inspection, object editing, compression & text geometry
 
-A supplemental local backend behind `PDFProcessingEngine`, vendored at `Packages/PDFiumBinary` as a prebuilt XCFramework (MIT, built from Chromium's PDFium). It does three jobs:
+A supplemental local backend vendored at `Packages/PDFiumBinary` as a prebuilt XCFramework (MIT, built from Chromium's PDFium). It does five jobs:
 
+- **Shared page inspection** — one bounded object walk derives text render modes, thin-rule graphics, and editable image/shape/object metadata.
+- **Structural object editing** — moving, resizing, restacking, and deleting page objects by mutating the real content stream, followed by a color-preserving regenerate/save pass.
 - **Image compression** — downsampling and re-encoding embedded images during a compression pass.
 - **Import validation** — a non-blocking smoke check; if PDFium is unavailable or rejects a file PDFKit can open, the PDFKit import path still proceeds. PDFium never blocks an import PDFKit is willing to handle.
 - **Glyph geometry** — reporting the raw affine transforms of text runs so in-place text editing lands in exactly the right place.
+
+Committed text and object operations are materialized by `WorkspaceEditReplayEngine` from one canonical member base. PDFium applies the object lane; PDFKit/CoreGraphics re-composes the text lane over it; a combined per-page stamp lets reopen/export reconciliation detect stale bytes and replay both together.
 
 ## qpdf — repair, encryption, sanitize, validation
 

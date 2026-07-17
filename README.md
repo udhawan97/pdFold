@@ -98,7 +98,7 @@ Everything below runs on your Mac. The cloud was not consulted.
 | **Read & search** | Native PDF canvas, page indicator, inspector, workspace-wide search, password unlock prompts, distraction-free Reader Mode, Night Mode with Gentle/Paper/Amber presets |
 | **Recently viewed** | An empty-state shelf of the last files you opened, with locally cached thumbnails — nothing about it leaves the machine |
 | **Annotate** | Highlight, notes, ink, underline, strikeout, text boxes, and in-place editing of detected PDF text |
-| **Object editing** *(beta)* | The Select tool clicks a real graphic on the page — image, logo, line, or shape — then moves, resizes, restacks (Bring to Front / Send to Back), or deletes it; edits are written into the file's actual content and survive save, reopen, and export, with full undo/redo |
+| **Object editing** *(beta)* | The Select tool clicks a real graphic on the page — image, logo, line, or shape — then moves, resizes, restacks (Bring to Front / Send to Back), or deletes it; object and inline-text edits compose safely on the same document, survive save/reopen/export, and share full undo/redo |
 | **Signatures** | Draw and place signatures, or produce standards-based PAdES digital signatures with Keychain and `.p12` identities — verifiable anywhere PAdES is understood |
 | **Forms** | Detect PDF form fields, edit answers, reset forms, lock answers during export |
 | **Scans & OCR** | Local Vision OCR makes scans searchable; recognized text survives export |
@@ -230,9 +230,9 @@ metadata stripped before flat PDF export.
 | | |
 | --- | --- |
 | **Language** | Swift 5.9+, 100% SwiftUI interface |
-| **Codebase** | 104 Swift source files in the app, ~44,000 lines |
-| **Tests** | 700+ tests gating every release |
-| **PDF engines** | PDFKit (composition) · PDFium (image compression, text geometry) · qpdf (repair, AES-256, sanitize, structural validation) · Vision (OCR) |
+| **Codebase** | 107 Swift source files in the app, ~44,400 lines |
+| **Tests** | 742 tests gating every release |
+| **PDF engines** | PDFKit (display/composition) · PDFium (shared page inspection, structural object editing, image compression, text geometry) · qpdf (repair, AES-256, sanitize, structural validation) · Vision (OCR) |
 | **Architecture** | Unidirectional flow: views → one observable view model → protocol-seamed local engines → staged export pipeline |
 | **Distribution** | GitHub Actions builds a universal (Apple Silicon + Intel) app and packages a signed-capable DMG (`scripts/make-dmg.sh`) plus the release zip and a checksummed `manifest.json`; installer, Homebrew cask, and uninstaller ship from this repo |
 

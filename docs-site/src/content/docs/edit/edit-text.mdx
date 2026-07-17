@@ -35,6 +35,10 @@ import Card from '../../../components/Card.astro';
 	Complex layouts (multi-column text, text wrapped around images) may not detect cleanly. If a line won't activate for editing, try [adding a new text box](/Orifold/edit/text-boxes/) over it instead.
 </Callout>
 
+<Callout variant="note">
+	Inline text edits can coexist with [object edits](/Orifold/edit/edit-objects/) in the same document. Orifold regenerates both operation sets together, including after save and reopen.
+</Callout>
+
 <PetTip who="ori">
 	Ori's note: a scan is a picture of text, not text. Run [OCR](/Orifold/edit/ocr/) first — then the recognized text activates for editing just like any other.
 </PetTip>

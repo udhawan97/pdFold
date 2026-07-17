@@ -69,6 +69,27 @@ final class PageGraphicsIndexTests: XCTestCase {
         XCTAssertFalse(heading?.text.contains("Region") ?? false, "heading must not merge across the table's top rule into the header row")
     }
 
+    func testSharedPageObjectInspectionProducesAllDerivedViews() throws {
+        let data = EditingFixturePDFBuilder.underlinedParagraph(text: "Shared inspection")
+        let pageRefID = UUID()
+        let inspection = PDFPageObjectInspection.inspect(
+            pdfData: data,
+            pageIndex: 0,
+            pageRefID: pageRefID
+        )
+
+        XCTAssertGreaterThan(inspection.rawObjectCount, 0)
+        XCTAssertEqual(inspection.objectMap.rawObjectCount, inspection.rawObjectCount)
+        XCTAssertEqual(inspection.objectMap.pageRefID, pageRefID)
+        XCTAssertFalse(inspection.renderModeRegions.isEmpty, "text objects should project render-mode regions")
+        XCTAssertFalse(inspection.graphics.horizontalRules.isEmpty, "path objects should project rule graphics")
+        XCTAssertEqual(
+            inspection.enumeratedObjectCount,
+            min(inspection.rawObjectCount, PDFPageObjectInspection.maxObjectsScan),
+            "the snapshot should report the one bounded enumeration that fed every projection"
+        )
+    }
+
     /// Underline survives a commit: after editing the underlined name, the regenerated page
     /// still renders an underline stroke, and the committed op carries underline + stroke bounds.
     func testUnderlineSurvivesEditCommit() throws {

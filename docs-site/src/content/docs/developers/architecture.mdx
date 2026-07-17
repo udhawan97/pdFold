@@ -17,8 +17,8 @@ Orifold follows a unidirectional flow: SwiftUI views send intents to one observa
 | Layer | Responsibility |
 | --- | --- |
 | SwiftUI app | Document window, sidebar, canvas, annotation toolbar, search, inspector, password prompts, export controls, empty-state Recently Viewed shelf, language switcher |
-| Workspace state | Imported documents, page order, undo snapshots, comments, tags, signatures, form summaries, decorations, recent-file history |
-| PDF services | PDFKit composition, PDFium image compression / validation / glyph geometry, qpdf repair/AES-256/sanitize/structural validation, Vision OCR, form flattening, decoration baking |
+| Workspace state | Imported documents, page order, text/object edit operations, canonical replay bases, undo snapshots, comments, tags, signatures, form summaries, decorations, recent-file history |
+| PDF services | PDFKit display/composition, one-pass PDFium page inspection, deterministic text+object replay, PDFium structural object editing/image compression/validation/glyph geometry, qpdf repair/AES-256/sanitize/structural validation, Vision OCR, form flattening, decoration baking |
 | Signing | CMS/PAdES signature construction, PKCS#12 · Keychain · self-signed identities, certificate trust evaluation, RFC-3161 timestamping |
 | Local storage | Saved PDF data, workspace metadata, source payloads, comments, signatures, page edit state |
 | Release tooling | One-line installer, package builder, Desktop update launcher, uninstaller, GitHub Actions release asset, validation tests |
@@ -44,6 +44,24 @@ Tests/             Test suites run in the release gate
 <Details summary="The staged export pipeline runs in a fixed order, and validation gates the write">
 
 Export is a sequence, not a single call: **flatten** annotations and form answers → **bake** decorations (stamps, watermarks, Bates labels, page numbers) → **compress** (optional image downsampling + lossless qpdf repack) → **sanitize** (optional strip of auto-run actions, JavaScript, embedded files, metadata) → **encrypt** (optional AES-256) → **structural validation**. The final qpdf structural check gates the write: if the artifact isn't sound, it never reaches disk. This ordering is deliberate — flattening before decoration burn-in means nothing can be silently edited after the fact.
+
+</Details>
+
+<Details summary="Committed text and object edits replay through one member-atomic path">
+
+`WorkspaceEditReplayEngine` takes canonical member bytes plus the committed text and object operations. It applies structural object changes first, re-composes text over that result, restores live rotations and annotations on every page, writes a combined bake stamp, and serializes once. Load/export reconciliation uses the same path, so stale bytes self-heal without one editing lane reverting the other.
+
+</Details>
+
+<Details summary="Page-object consumers share one bounded PDFium enumeration">
+
+`PDFPageObjectInspection` walks a page's PDFium objects once and projects three views: text render-mode regions, `PageGraphicsIndex` rule lines, and the editable `PageObjectMap`. Text analysis and object detection delegate to that shared safety cap and degradation policy instead of maintaining independent page-object loops.
+
+</Details>
+
+<Details summary="Canvas event ordering is a state-machine contract">
+
+`CanvasInteractionSession` turns tool changes, Delete/Escape, geometry changes, and object mutations into ordered actions. The AppKit coordinator interprets those actions, keeping undo-manager alignment, document swaps, selection cleanup, and overlay refresh order in one testable place.
 
 </Details>
 

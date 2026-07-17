@@ -66,6 +66,37 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         return data as Data
     }
 
+    private func makeMixedEditingFixture() -> Data {
+        let data = NSMutableData()
+        var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let ctx = CGContext(consumer: CGDataConsumer(data: data as CFMutableData)!, mediaBox: &mediaBox, nil)!
+        ctx.beginPDFPage(nil)
+        ctx.setFillColor(NSColor.white.cgColor); ctx.fill(mediaBox)
+        let img = CGContext(data: nil, width: 24, height: 24, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        img.setFillColor(NSColor.systemRed.cgColor); img.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+        ctx.draw(img.makeImage()!, in: imagePDF)
+        let attributed = NSAttributedString(
+            string: "Original mixed editing text",
+            attributes: [.font: NSFont(name: "Helvetica", size: 14) ?? .systemFont(ofSize: 14),
+                         .foregroundColor: NSColor.black]
+        )
+        let line = CTLineCreateWithAttributedString(attributed)
+        ctx.textPosition = CGPoint(x: 72, y: 700)
+        CTLineDraw(line, ctx)
+        ctx.endPDFPage(); ctx.closePDF()
+        return data as Data
+    }
+
+    private func makeTwoPageFixture() throws -> Data {
+        let source = try XCTUnwrap(PDFDocument(data: makeFixture()))
+        let page = try XCTUnwrap(source.page(at: 0))
+        let document = PDFDocument()
+        document.insert(try XCTUnwrap(page.copy() as? PDFPage), at: 0)
+        document.insert(try XCTUnwrap(page.copy() as? PDFPage), at: 1)
+        return try XCTUnwrap(document.dataRepresentation())
+    }
+
     private func transformOp(_ o: DetectedObject, ref: PageRef, member: UUID, dx: CGFloat, dy: CGFloat) -> ObjectEditOperation {
         var newT = o.transform; newT.e += dx; newT.f += dy
         return ObjectEditOperation(type: .objectTransform, documentID: member, pageRefID: ref.id,
@@ -291,10 +322,9 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         XCTAssertGreaterThan(try XCTUnwrap(after), before, "the shape should have risen above the text layer")
     }
 
-    // Regression (audit CRITICAL): text + object edits on the same member must NOT silently
-    // clobber each other. When a member already has a text edit, an object edit on it is refused
-    // (no silent data loss); the reverse direction is guarded by the same helper in applyInlineTextEdit.
-    func testCrossLaneObjectEditRefusedWhenMemberHasTextEdits() throws {
+    // Deep replay contract: text + object operations on the same member compose from one
+    // canonical base. Committing either lane must regenerate both, never refuse or clobber one.
+    func testCrossLaneObjectEditReplaysWithMemberTextEdits() throws {
         let vm = try makeViewModel()
         let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
         let member = ref.memberDocId
@@ -310,13 +340,121 @@ final class ObjectEditWorkspaceTests: XCTestCase {
         XCTAssertTrue(vm.memberHasTextEdits(member))
 
         let baselineImage = try XCTUnwrap(imageBounds(in: vm.document.memberPDFData[member]))
-        // The object edit must be REFUSED, leaving both lanes untouched.
-        XCTAssertFalse(vm.applyObjectEdit([transformOp(image, ref: ref, member: member, dx: 40, dy: -15)]),
-                       "object edit must be refused when the member has text edits")
-        XCTAssertFalse(vm.hasObjectEdits, "refused object edit must not record any object op")
-        XCTAssertTrue(near(try XCTUnwrap(imageBounds(in: vm.document.memberPDFData[member])), baselineImage, tol: 1),
-                      "member bytes changed despite the object edit being refused")
-        XCTAssertTrue(vm.memberHasTextEdits(member), "text edit was clobbered")
+        XCTAssertTrue(vm.applyObjectEdit([transformOp(image, ref: ref, member: member, dx: 40, dy: -15)]),
+                      "object edit should compose with the member's committed text operations")
+        XCTAssertTrue(vm.hasObjectEdits, "object operation was not retained")
+        XCTAssertTrue(vm.memberHasTextEdits(member), "text operation was clobbered")
+
+        let replayedData = try XCTUnwrap(vm.document.memberPDFData[member])
+        XCTAssertTrue(near(try XCTUnwrap(imageBounds(in: replayedData)), baselineImage.offsetBy(dx: 40, dy: -15), tol: 3),
+                      "object transform was not present in the replayed bytes")
+        XCTAssertTrue(PDFDocument(data: replayedData)?.page(at: 0)?.string?.contains("hello") == true,
+                      "text replacement was not present in the same replayed bytes")
+
+        let liveImage = try XCTUnwrap(vm.objectMap(for: ref).objects.first { $0.objectType == .imageXObject })
+        XCTAssertTrue(vm.applyObjectEdit([transformOp(liveImage, ref: ref, member: member, dx: 10, dy: -5)]),
+                      "a later edit should rebind to the already-transformed object")
+        XCTAssertTrue(
+            near(
+                try XCTUnwrap(imageBounds(in: vm.document.memberPDFData[member])),
+                liveImage.boundsPdf.offsetBy(dx: 10, dy: -5),
+                tol: 4
+            ),
+            "the later operation became an unresolved duplicate instead of extending the canonical transform"
+        )
+    }
+
+    func testCrossLaneTextEditReplaysWithMemberObjectEdits() throws {
+        let vm = try makeViewModel(data: makeMixedEditingFixture())
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let member = ref.memberDocId
+        let image = try XCTUnwrap(vm.objectMap(for: ref).objects.first { $0.objectType == .imageXObject })
+        XCTAssertTrue(vm.applyObjectEdit([transformOp(image, ref: ref, member: member, dx: 35, dy: -12)]))
+
+        let currentData = try XCTUnwrap(vm.document.memberPDFData[member])
+        let page = try XCTUnwrap(vm.loadedPDFs.first?.1.page(at: 0))
+        let analysis = PDFTextAnalysisEngine().analyze(
+            data: currentData,
+            pageIndex: 0,
+            pageRefID: ref.id,
+            fallbackPage: page
+        )
+        let block = try XCTUnwrap(analysis.blocks.first { $0.text.contains("Original mixed") })
+        let target = try XCTUnwrap(vm.editableTextBlock(
+            at: CGPoint(x: block.bounds.midX, y: block.bounds.midY),
+            on: page,
+            in: vm.combinedPDF
+        ))
+        XCTAssertTrue(vm.applyInlineTextEdit(
+            pageRef: target.pageRef,
+            sourceBlock: target.block,
+            replacementText: "Replayed mixed editing text",
+            editedBounds: target.block.bounds,
+            fontName: target.block.fontName,
+            fontSize: target.block.fontSize,
+            textColor: .black,
+            alignment: .left
+        ))
+
+        let replayedData = try XCTUnwrap(vm.document.memberPDFData[member])
+        XCTAssertTrue(near(try XCTUnwrap(imageBounds(in: replayedData)), imagePDF.offsetBy(dx: 35, dy: -12), tol: 4),
+                      "committing text lost the earlier object transform")
+        XCTAssertTrue(PDFDocument(data: replayedData)?.page(at: 0)?.string?.contains("Replayed mixed editing text") == true,
+                      "committing text did not materialize the replacement")
+        XCTAssertEqual(vm.reconcileCommittedEditsWithLoadedPages(), 0,
+                       "a fresh combined replay should carry a current two-lane stamp")
+
+        let stampedPage = try XCTUnwrap(vm.loadedPDFs.first?.1.page(at: 0))
+        for annotation in stampedPage.annotations where BakeStamp.isStamp(annotation) {
+            stampedPage.removeAnnotation(annotation)
+        }
+        XCTAssertGreaterThan(vm.reconcileCommittedEditsWithLoadedPages(), 0,
+                             "removing a combined stamp should force member replay")
+        let healedData = try XCTUnwrap(vm.document.memberPDFData[member])
+        XCTAssertTrue(near(try XCTUnwrap(imageBounds(in: healedData)), imagePDF.offsetBy(dx: 35, dy: -12), tol: 4),
+                      "self-healing lost the object lane")
+        XCTAssertTrue(PDFDocument(data: healedData)?.page(at: 0)?.string?.contains("Replayed mixed editing text") == true,
+                      "self-healing lost the text lane")
+    }
+
+    func testMemberReplayPreservesAnnotationsOnUneditedSiblingPages() throws {
+        let vm = try makeViewModel(data: makeTwoPageFixture())
+        let refs = vm.document.workspace.pageOrder
+        XCTAssertEqual(refs.count, 2)
+        let firstRef = refs[0]
+        let member = firstRef.memberDocId
+        let secondPage = try XCTUnwrap(vm.loadedPDFs.first?.1.page(at: 1))
+        let note = try XCTUnwrap(vm.addNote(at: CGPoint(x: 80, y: 80), on: secondPage))
+        note.contents = "keep sibling note"
+
+        let image = try XCTUnwrap(vm.objectMap(for: firstRef).objects.first { $0.objectType == .imageXObject })
+        XCTAssertTrue(vm.applyObjectEdit([transformOp(image, ref: firstRef, member: member, dx: 20, dy: -10)]))
+
+        let replayedSibling = try XCTUnwrap(vm.loadedPDFs.first?.1.page(at: 1))
+        XCTAssertTrue(
+            replayedSibling.annotations.contains { $0.contents == "keep sibling note" },
+            "member replay discarded an annotation on an untouched sibling page"
+        )
+    }
+
+    func testUnresolvedObjectReplayLeavesLiveMemberBytesUntouched() throws {
+        let vm = try makeViewModel()
+        let ref = try XCTUnwrap(vm.document.workspace.pageOrder.first)
+        let member = ref.memberDocId
+        let image = try XCTUnwrap(vm.objectMap(for: ref).objects.first { $0.objectType == .imageXObject })
+        var unresolved = transformOp(image, ref: ref, member: member, dx: 25, dy: -10)
+        unresolved.sourceObjectKey.structuralDigest &+= 1
+        vm.document.workspace.objectEditStates = [
+            PageObjectEditState(pageRefID: ref.id, operations: [unresolved])
+        ]
+        let liveBytes = try XCTUnwrap(vm.document.memberPDFData[member])
+
+        XCTAssertEqual(vm.reconcileCommittedEditsWithLoadedPages(), 0)
+        XCTAssertEqual(
+            vm.document.memberPDFData[member],
+            liveBytes,
+            "a partial replay must not replace the last known-good live member bytes"
+        )
     }
 
     // objectMap caches per pageRef and returns the same identities on repeat calls.

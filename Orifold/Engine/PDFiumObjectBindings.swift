@@ -58,6 +58,7 @@ func poe_GetBounds(_ obj: OpaquePointer?, _ l: UnsafeMutablePointer<Float>?, _ b
 @_silgen_name("FPDFPageObj_GetMatrix") func poe_GetMatrix(_ obj: OpaquePointer?, _ matrix: UnsafeMutablePointer<POEFSMatrix>?) -> Int32
 @_silgen_name("FPDFPageObj_SetMatrix") func poe_SetMatrix(_ obj: OpaquePointer?, _ matrix: UnsafePointer<POEFSMatrix>?) -> Int32
 @_silgen_name("FPDFPageObj_GetClipPath") func poe_GetClipPath(_ obj: OpaquePointer?) -> OpaquePointer?
+@_silgen_name("FPDFTextObj_GetTextRenderMode") func poe_GetTextRenderMode(_ textObject: OpaquePointer?) -> Int32
 
 // MARK: - Path geometry
 @_silgen_name("FPDFPath_CountSegments") func poe_PathCountSegments(_ path: OpaquePointer?) -> Int32

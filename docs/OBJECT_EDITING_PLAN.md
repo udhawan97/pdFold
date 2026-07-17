@@ -1,13 +1,15 @@
 # Orifold — Professional Object Editing System
 
-**Status:** Planning (for a later Sonnet implementation agent). No code written yet.
-**Audience:** The implementing agent (Sonnet). This document is the single source of truth for the feature.
+**Status:** Implemented through the current object-editing beta; this document now records the binding architecture and deferred scope.
+**Audience:** Contributors maintaining or extending object editing. This document is the single source of truth for the feature's architectural constraints and deferred scope.
 **Scope:** Select, move, resize, rotate, delete, duplicate, align, layer, and restyle visual objects inside PDFs — lines, arrows, rectangles, ellipses, borders, table/grid lines, images, icons, logos, signatures/stamps, drawn shapes, vector paths, annotation objects, form widgets, decorative artifacts, grouped objects, Form XObject instances, and flattened elements (fallback-only).
 **Constraint:** Orifold stays **local-first, free, and open-source**. No network, no telemetry, no new paid dependency. All processing runs through the already-bundled PDFKit / PDFium / qpdf.
 
 ---
 
 ## 0. How to read this plan (and the one fact that changes everything)
+
+Sections 0–17 preserve the implementation plan and its original audit baseline. Read the dated results in §0.2 and the current module map in §0.3 before treating an original gap or future-tense statement as current behavior.
 
 This plan was assembled from a full architecture audit of the current code plus five design workstreams. **Where the workstreams disagreed, this document states one canonical answer.** Do not re-introduce the alternatives. The reconciliations (object identity, the editability enum, the operation struct, cache naming, delete-engine primacy, Form-XObject semantics) are recorded in **Appendix A** — read it before writing any model code, or three incompatible object systems will be built against the same on-disk schema.
 
@@ -24,9 +26,9 @@ This plan was assembled from a full architecture audit of the current code plus 
 - Clip & form fields: `FPDFPageObj_GetClipPath`, `FPDFPage_HasFormFieldAtPoint`, `FPDFPage_FormFieldZOrderAtPoint`
 - Commit + save: `FPDFPage_GenerateContent`, `FPDF_SaveAsCopy`
 
-Crucially, `Orifold/Engine/PDFCompressionService.swift` **already runs the full `enumerate → mutate image bitmap → FPDFPage_GenerateContent → FPDF_SaveAsCopy` loop** (`PDFCompressionService.swift:201-256`), binding PDFium symbols with `@_silgen_name` (no C header needed) and using the alias trick (`@_silgen_name("FPDF_LoadPage")`, `:6-7`) to avoid duplicate-symbol link errors. **This is the exact template the object system extends.** The consequence: genuine content-stream object editing — move/resize/rotate/restyle/delete that mutates the real bytes with **no ghost and no leak** — is a *linked, partially-proven* capability, not a wish. Only the additional symbols (path/transform/style/remove) are undeclared in Swift today; they must be declared from scratch via `@_silgen_name`, and the binary is confirmed to export them.
+Crucially, `Orifold/Engine/PDFCompressionService.swift` **already ran the full `enumerate → mutate image bitmap → FPDFPage_GenerateContent → FPDF_SaveAsCopy` loop** (`PDFCompressionService.swift:201-256`), binding PDFium symbols with `@_silgen_name` (no C header needed) and using the alias trick (`@_silgen_name("FPDF_LoadPage")`, `:6-7`) to avoid duplicate-symbol link errors. **This was the template used to build the object system.** At plan time, the additional path/transform/style/remove symbols were not yet declared in Swift; they are now centralized in `PDFiumObjectBindings.swift` and used by the shipped structural editing path.
 
-**The one make-or-break unknown** is whether `FPDFPage_GenerateContent` — which re-emits the *entire* page content stream from PDFium's in-memory model — round-trips real-world pages without perturbing untouched text/vector content, and whether object identity survives that round-trip. **Phase 0 exists to prove this before any UI is built.** If Phase 0 fails, the structural lane narrows to annotations + images and the rest falls back to disclosed cover-and-redraw. Everything downstream is contingent on the Phase 0 gate.
+**The make-or-break unknown at plan time** was whether `FPDFPage_GenerateContent` — which re-emits the *entire* page content stream from PDFium's in-memory model — round-tripped real-world pages without perturbing untouched text/vector content, and whether object identity survived that round-trip. Phase 0 proved the structural lane and uncovered the mandatory color-preservation pass; see §0.2 for the recorded result.
 
 ---
 
@@ -64,11 +66,21 @@ The Phase-0 spike is **built, run, and GREEN** as a permanent test: `Tests/Orifo
 - **Rasterization caveat:** in a headless test process **PDFKit renders `SaveAsCopy` output unreliably** (all-black); use **PDFium's own `FPDF_RenderPageBitmap`** for any pixel assertion on produced bytes (BGRx buffer, top-left origin). Text *extraction* via PDFKit `attributedString` is fine.
 - **GATE VERDICT: GO.** The "PDFium structural rewrite is Lane-A primary" architecture stands; no narrowing to annotations+images is required. Proceed to Phase 1.
 
+## 0.3 Architecture deepening update (2026-07-16)
+
+Three previously binding integration requirements are now concrete modules:
+
+- **One page-object pass:** `PDFPageObjectInspection` owns the bounded PDFium enumeration and derives render-mode regions, `PageGraphicsIndex`, and `PageObjectMap`. `PDFTextAnalysisEngine` and `PDFObjectDetectionEngine` delegate to it.
+- **One edit replay path:** `WorkspaceEditReplayEngine` materializes object operations and text operations from the same canonical member bytes, preserves live rotations/annotations across every page, adds a combined bake stamp, and serializes once. `reconcileCommittedEditsWithLoadedPages()` is member-atomic and replays both lanes after divergence. Pristine bytes persist for members edited through either lane.
+- **One canvas ordering contract:** `CanvasInteractionSession` plans Delete/Escape/tool/document/geometry sequences; the AppKit coordinator interprets those actions so undo alignment, mutations, document swaps, selection cleanup, and overlay refreshes keep a tested order.
+
+Permanent regression coverage includes both mixed-edit directions, forced divergence/self-healing, later object re-binding, untouched-sibling annotation preservation, all shared inspection projections, and canvas action ordering.
+
 ---
 
-## 1. Current Architecture Audit
+## 1. Original Architecture Audit (historical baseline)
 
-Ground truth from reading the code. Every claim carries a `file:line`.
+Ground truth from the pre-implementation code review. Every claim carries its original `file:line`; current architecture changes are summarized in §0.3.
 
 ### 1.1 Page rendering & the canvas
 - **There is no custom bitmap canvas.** The page is displayed by Apple **PDFKit** `PDFView` (subclass `OrifoldPDFView`, `ReadingCanvas.swift:1190`) wrapped in `PDFViewRepresentable: NSViewRepresentable` (`ReadingCanvas.swift:349`), `displayMode = .singlePageContinuous`, `autoScales = true` (`:354-476`). PDFKit internally rasterizes each `PDFPage` at the current `scaleFactor`; Orifold never produces a `CGImage` for on-canvas display.
@@ -879,7 +891,7 @@ Done when every box is checked, each backed by a §11 test:
 
 ## 14. Deliverable
 
-The deliverable is **this document** — `docs/OBJECT_EDITING_PLAN.md` — a self-contained implementation plan for the Sonnet agent, covering architecture findings (§1), object model/data structures (§3), editability classification (§4), hit-testing (§5), UX (§6–§7), lifecycle + export (§8–§9), edge cases (§10), testing matrix (§11), verification loops (§12), acceptance (§13), risks (§15), phased steps (§16), and prioritization (§17). The canonical reconciliation decisions in **Appendix A** are part of the deliverable and must be honored so multiple implementers build one object system, not three. No code is written yet.
+This document remains the binding architecture record for the implemented beta and its deferred scope. It covers architecture findings (§1), object model/data structures (§3), editability classification (§4), hit-testing (§5), UX (§6–§7), lifecycle + export (§8–§9), edge cases (§10), testing matrix (§11), verification loops (§12), acceptance (§13), risks (§15), phased steps (§16), and prioritization (§17). The canonical reconciliation decisions in **Appendix A** still govern future work so later phases extend one object system rather than introducing parallel ones.
 
 ---
 

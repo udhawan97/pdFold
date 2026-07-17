@@ -85,41 +85,8 @@ private func FPDFText_GetStrokeColor(
 @_silgen_name("FPDFText_IsGenerated")
 private func FPDFText_IsGenerated(_ textPage: OpaquePointer?, _ index: Int32) -> Int32
 
-@_silgen_name("FPDFPage_CountObjects")
-private func FPDFPage_CountObjects(_ page: OpaquePointer?) -> Int32
-
-@_silgen_name("FPDFPage_GetObject")
-private func FPDFPage_GetObject(_ page: OpaquePointer?, _ index: Int32) -> OpaquePointer?
-
-@_silgen_name("FPDFPageObj_GetType")
-private func FPDFPageObj_GetType(_ pageObject: OpaquePointer?) -> Int32
-
-@_silgen_name("FPDFPageObj_GetBounds")
-private func FPDFPageObj_GetBounds(
-    _ pageObject: OpaquePointer?,
-    _ left: UnsafeMutablePointer<Float>?,
-    _ bottom: UnsafeMutablePointer<Float>?,
-    _ right: UnsafeMutablePointer<Float>?,
-    _ top: UnsafeMutablePointer<Float>?
-) -> Int32
-
-@_silgen_name("FPDFTextObj_GetTextRenderMode")
-private func FPDFTextObj_GetTextRenderMode(_ textObject: OpaquePointer?) -> Int32
-
-/// PDFium's `FPDF_PAGEOBJ_TEXT` page-object type constant.
-private let kPDFPageObjectTypeText: Int32 = 1
-
-/// PDFium's `FPDF_PAGEOBJ_PATH` page-object type constant — stroked/filled vector paths,
-/// which is where table rules, cell separators, and text underlines live.
-private let kPDFPageObjectTypePath: Int32 = 2
-
 /// PDFium's `FPDF_TEXTRENDERMODE_INVISIBLE` (PDF spec `Tr 3`) constant.
 private let kPDFTextRenderModeInvisible: Int32 = 3
-
-/// Safety cap on how many page objects the graphics-index scan will inspect, so a
-/// pathological vector-art page (tens of thousands of tiny path objects) can't stall text
-/// analysis. Beyond this the scan stops and marks the index truncated.
-private let kMaxGraphicsScanObjects: Int32 = 6000
 
 /// PDF font-descriptor `/Flags` bit for an italic/oblique face (bit 7, value 64). Set even
 /// when the embedded font's PostScript name carries no "Italic"/"Oblique" token, so it is
@@ -186,70 +153,10 @@ final class PDFTextAnalysisEngine {
         var renderMode: Int32?
     }
 
-    /// One text page-object's declared bounds and PDF render mode (`Tr`), used to look up
-    /// which render mode applies to a given glyph. PDFium's char-level text API (used for
-    /// everything else in this file) has no render-mode accessor of its own — only the
-    /// page-object API does — so this is a separate pass matched back to glyphs by bounds.
-    private struct RenderModeRegion {
-        var bounds: CGRect
-        var mode: Int32
-    }
-
-    private func renderModeRegions(page: OpaquePointer?) -> [RenderModeRegion] {
-        let count = FPDFPage_CountObjects(page)
-        guard count > 0 else { return [] }
-        var regions: [RenderModeRegion] = []
-        regions.reserveCapacity(Int(count))
-        for index in 0..<count {
-            guard let object = FPDFPage_GetObject(page, index),
-                  FPDFPageObj_GetType(object) == kPDFPageObjectTypeText else { continue }
-            var left: Float = 0
-            var bottom: Float = 0
-            var right: Float = 0
-            var top: Float = 0
-            guard FPDFPageObj_GetBounds(object, &left, &bottom, &right, &top) != 0,
-                  right > left, top > bottom else { continue }
-            let mode = FPDFTextObj_GetTextRenderMode(object)
-            regions.append(RenderModeRegion(
-                bounds: CGRect(x: CGFloat(left), y: CGFloat(bottom), width: CGFloat(right - left), height: CGFloat(top - bottom)),
-                mode: mode
-            ))
-        }
-        return regions
-    }
-
-    /// Scans the page's PATH objects and classifies the thin ones into horizontal/vertical
-    /// rules (see `PageGraphicsIndex`). Bounds-only, capped for safety. Called once per page
-    /// during PDFium analysis; the page pointer is the same one already open for text.
-    private func graphicsIndex(page: OpaquePointer?) -> PageGraphicsIndex {
-        let count = FPDFPage_CountObjects(page)
-        guard count > 0 else { return .empty }
-        var index = PageGraphicsIndex()
-        let limit = min(count, kMaxGraphicsScanObjects)
-        if count > kMaxGraphicsScanObjects {
-            index.didTruncateScan = true
-            NSLog("[Orifold] PageGraphicsIndex: page has %d objects, scanning first %d for rules.", count, kMaxGraphicsScanObjects)
-        }
-        for objectIndex in 0..<limit {
-            guard let object = FPDFPage_GetObject(page, objectIndex),
-                  FPDFPageObj_GetType(object) == kPDFPageObjectTypePath else { continue }
-            var left: Float = 0
-            var bottom: Float = 0
-            var right: Float = 0
-            var top: Float = 0
-            guard FPDFPageObj_GetBounds(object, &left, &bottom, &right, &top) != 0 else { continue }
-            let rect = CGRect(x: CGFloat(left), y: CGFloat(bottom), width: CGFloat(right - left), height: CGFloat(top - bottom))
-            if let rule = PageGraphicsIndex.classify(bounds: rect) {
-                index.add(rule)
-            }
-        }
-        return index
-    }
-
     /// The render mode of whichever region's bounds most tightly contain `bounds`'s center —
     /// "most tightly" (smallest matching region) so a small glyph inside a larger overlapping
     /// text object resolves to its own object's mode rather than an unrelated bigger one.
-    private func renderMode(for bounds: CGRect, in regions: [RenderModeRegion]) -> Int32? {
+    private func renderMode(for bounds: CGRect, in regions: [PDFPageObjectInspection.RenderModeRegion]) -> Int32? {
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
         return regions
             .filter { $0.bounds.insetBy(dx: -0.5, dy: -0.5).contains(center) }
@@ -332,8 +239,13 @@ final class PDFTextAnalysisEngine {
             let count = Int(FPDFText_CountChars(textPage))
             guard count > 0 else { return PDFTextPageAnalysis(pageRefID: pageRefID, blocks: []) }
 
-            let regions = renderModeRegions(page: page)
-            let graphics = graphicsIndex(page: page)
+            let inspection = PDFPageObjectInspection.inspect(
+                openPage: page,
+                pageRefID: pageRefID ?? UUID(),
+                allowsEditing: false
+            )
+            let regions = inspection.renderModeRegions
+            let graphics = inspection.graphics
             var samples: [CharacterSample] = []
             samples.reserveCapacity(count)
             for index in 0..<count {

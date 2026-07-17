@@ -26,47 +26,12 @@ struct PDFObjectDetectionEngine {
     /// (permission-restricted / signed) forces every object to `lockedOrPermissionRestricted`.
     static func detect(pdfData: Data, pageIndex: Int, pageRefID: UUID,
                        allowsEditing: Bool = true) -> PageObjectMap {
-        guard !pdfData.isEmpty, pdfData.count <= Int(Int32.max) else {
-            return PageObjectMap(pageRefID: pageRefID, objects: [])
-        }
-        pdfiumLock.lock()
-        defer { pdfiumLock.unlock() }
-        FPDF_InitLibrary()
-        defer { FPDF_DestroyLibrary() }
-
-        return pdfData.withUnsafeBytes { raw -> PageObjectMap in
-            guard let base = raw.baseAddress,
-                  let doc = FPDF_LoadMemDocument(base, Int32(pdfData.count), nil) else {
-                return PageObjectMap(pageRefID: pageRefID, objects: [])
-            }
-            defer { FPDF_CloseDocument(doc) }
-            guard pageIndex >= 0, pageIndex < Int(FPDF_GetPageCount(doc)),
-                  let page = poe_LoadPage(doc, Int32(pageIndex)) else {
-                return PageObjectMap(pageRefID: pageRefID, objects: [])
-            }
-            defer { poe_ClosePage(page) }
-
-            let pageRotation = CGFloat(((poe_GetPageRotation(page) % 4) + 4) % 4) * 90
-            let pageArea = max(1, poe_GetPageWidth(page) * poe_GetPageHeight(page))
-            let rawCount = Int(poe_CountObjects(page))
-            let truncated = rawCount > maxObjectsScan
-            let count = min(rawCount, maxObjectsScan)
-
-            var objects: [DetectedObject] = []
-            objects.reserveCapacity(count)
-            for i in 0..<count {
-                guard let obj = poe_GetObject(page, Int32(i)) else { continue }
-                let type = poe_GetType(obj)
-                guard type != POEObjType.text else { continue }   // text belongs to the text lane
-                if let detected = build(obj: obj, zOrder: i, type: type, pageRefID: pageRefID,
-                                        pageRotation: pageRotation, pageArea: pageArea,
-                                        allowsEditing: allowsEditing) {
-                    objects.append(detected)
-                }
-            }
-            return PageObjectMap(pageRefID: pageRefID, objects: objects, didTruncateScan: truncated,
-                                 rawObjectCount: rawCount)
-        }
+        PDFPageObjectInspection.inspect(
+            pdfData: pdfData,
+            pageIndex: pageIndex,
+            pageRefID: pageRefID,
+            allowsEditing: allowsEditing
+        ).objectMap
     }
 
     // MARK: - Per-object inspection (shared with PDFObjectEditEngine's resolver)
@@ -181,8 +146,8 @@ struct PDFObjectDetectionEngine {
 
     // MARK: - Per-object build (detection-pass wrapping over `inspect`)
 
-    private static func build(obj: OpaquePointer?, zOrder: Int, type: Int32, pageRefID: UUID,
-                              pageRotation: CGFloat, pageArea: Double, allowsEditing: Bool) -> DetectedObject? {
+    static func build(obj: OpaquePointer?, zOrder: Int, type: Int32, pageRefID: UUID,
+                      pageRotation: CGFloat, pageArea: Double, allowsEditing: Bool) -> DetectedObject? {
         guard let o = inspect(obj: obj, pageArea: pageArea) else { return nil }
 
         let stableKey = PDFObjectStableKey(

@@ -12,15 +12,17 @@ Short answers first; open a section for depth.
 
 ## How does Orifold render PDFs?
 
-PDFKit owns display and composition (`PDFView`, `PDFDocument`, `PDFPage`, selection, search, print). PDFium is a secondary engine for image-level work, import validation, and glyph geometry.
+PDFKit owns display and composition (`PDFView`, `PDFDocument`, `PDFPage`, selection, search, print). PDFium is a secondary engine for page-object inspection/editing, image-level work, import validation, and glyph geometry.
 
 <Details summary="Why two rendering engines instead of one">
-PDFKit is the native, best-supported path for showing and composing pages. PDFium is reached only where PDFKit is the wrong tool: downsampling embedded images during compression, a non-blocking validation smoke check on import, and reporting the actual affine transforms of text glyphs for in-place editing. PDFium never blocks an import PDFKit is willing to open.
+PDFKit is the native, best-supported path for showing and composing pages. PDFium is reached where PDFKit is the wrong tool: enumerating content-stream objects, structurally moving/deleting graphics, downsampling embedded images, running a non-blocking import smoke check, and reporting actual text-glyph transforms. PDFium never blocks an import PDFKit is willing to open.
 </Details>
 
 ## How does text editing work?
 
 Detected text is edited in place using PDFium's real glyph geometry, then re-composed. Scans have no text layer, so they need [OCR](/Orifold/edit/ocr/) first.
+
+Text and object edits on the same document share one deterministic replay path. Object operations are applied to canonical bytes first, text is re-composed over that result, and a combined bake stamp makes stale saved bytes self-heal without either lane overwriting the other.
 
 <Details summary="The 'edit lands on top' history and how it was fixed">
 PDFKit's `dataRepresentation` re-serialization drops some text layers (Type3 / Skia-drawn glyphs). Before the fix, an edit could be placed over invisible surviving original text. Import now runs through a qpdf-preserving normalizer so the real text layer is retained, and edit placement is measured from PDFium's raw (unrotated) content-stream transforms rather than re-derived — which also fixed page-rotation vs. text-rotation conflation and a class of invisible/low-visibility text being leaked on export.

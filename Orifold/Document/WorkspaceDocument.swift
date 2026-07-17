@@ -338,13 +338,21 @@ final class WorkspaceDocument: ReferenceFileDocument {
         // Persist pristine bytes ONLY for members that actually have committed edit
         // operations — that's the only case regeneration ever needs a base, and it keeps
         // the metadata payload from doubling for the (common) unedited workspace.
-        let membersWithEdits = Set(
+        let membersWithTextEdits = Set(
             snapshot.workspace.pageEditStates
                 .filter { !$0.operations.isEmpty }
                 .compactMap { state in
                     snapshot.workspace.pageOrder.first(where: { $0.id == state.pageRefID })?.memberDocId
                 }
         )
+        let membersWithObjectEdits = Set(
+            snapshot.workspace.objectEditStates
+                .filter { !$0.operations.isEmpty }
+                .compactMap { state in
+                    snapshot.workspace.pageOrder.first(where: { $0.id == state.pageRefID })?.memberDocId
+                }
+        )
+        let membersWithEdits = membersWithTextEdits.union(membersWithObjectEdits)
         let editableOriginalMemberPDFData = options.embedsEditableWorkspaceState
             ? snapshot.originalMemberPDFData.filter { membersWithEdits.contains($0.key) }
             : [:]

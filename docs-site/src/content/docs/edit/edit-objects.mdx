@@ -35,8 +35,8 @@ Not every mark on a page is a separate, editable object — some are fused into 
 - **Detected but limited:** reused graphics (edits affect just the one copy), form fields (reposition/remove only), and gradients (shown for reference).
 - **Not separately editable:** scanned or flattened pages, where the whole thing is one image — move or replace the whole image, but the marks inside a scan can't be picked apart.
 
-<Callout variant="warning">
-	Two things you can't combine yet: **object editing and inline text editing on the same document**. If a document already has text edits, the Select tool will ask you to finish or undo them first (and vice versa) — this keeps either kind of edit from overwriting the other. **Rotated pages** are also not editable yet; the object stays selectable but can't be moved.
+<Callout variant="note">
+	You can combine **object editing and inline text editing in the same document**. Orifold replays both kinds of operation together from one clean base, so changing text does not put a moved graphic back and moving a graphic does not discard edited text. **Rotated pages** are still not object-editable yet; the object stays selectable but can't be moved.
 </Callout>
 
 <Callout variant="note">

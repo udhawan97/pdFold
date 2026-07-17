@@ -383,9 +383,8 @@ final class WorkspaceViewModel {
     private let textAnalysisEngine = PDFTextAnalysisEngine()
     private var textAnalysisCache: [UUID: PDFTextPageAnalysis] = [:]
     // Object editing (docs/OBJECT_EDITING_PLAN.md §3.5/§8). Detection map cached per PageRef;
-    // `objectBaseData` freezes each member's bytes at its first object edit of the session, so
-    // regenerations apply the full op set to a stable base (no double-apply) while preserving
-    // any text bakes that were already in those bytes.
+    // `objectBaseData` is the canonical per-member replay base. Both text and object operations
+    // are derived from it by WorkspaceEditReplayEngine, so neither lane can bake over the other.
     private var objectAnalysisCache: [UUID: PageObjectMap] = [:]
     private var objectBaseData: [UUID: Data] = [:]
     private var pendingSigningIdentity: (any SigningIdentity)?
@@ -1339,6 +1338,9 @@ final class WorkspaceViewModel {
         var signatureIdentities: [UUID: any SigningIdentity]
         var pageRotations: [UUID: Int]
         var pdfData: [UUID: Data]
+        /// Canonical member bases must travel with page structure. Member-atomic replay indexes
+        /// operations into these bytes, so restoring one without the other can target a neighbor.
+        var originalMemberPDFData: [UUID: Data]
         var sourcePayloads: [UUID: SourceDocumentPayload]
         /// Captured together with `pdfData` because the two must move as a unit: the PDF
         /// bytes contain the BAKED result of these operations. Restoring bytes from one
@@ -1378,6 +1380,7 @@ final class WorkspaceViewModel {
             signatureIdentities: signingIdentitiesByPlacementID,
             pageRotations: currentPageRotations(),
             pdfData: currentPDFData(),
+            originalMemberPDFData: originalMemberPDFData,
             sourcePayloads: document.sourcePayloads,
             pageEditStates: document.workspace.pageEditStates,
             objectEditStates: document.workspace.objectEditStates,
@@ -1405,6 +1408,7 @@ final class WorkspaceViewModel {
         document.workspace.decorations = snapshot.decorations
         signingIdentitiesByPlacementID = snapshot.signatureIdentities
         document.memberPDFData = snapshot.pdfData
+        originalMemberPDFData = snapshot.originalMemberPDFData
         document.sourcePayloads = snapshot.sourcePayloads
         document.workspace.pageEditStates = snapshot.pageEditStates
         document.workspace.objectEditStates = snapshot.objectEditStates
@@ -2936,12 +2940,6 @@ final class WorkspaceViewModel {
         didRestoreOriginalStyle: Bool = false
     ) -> Bool {
         guard canPerformMutatingAction() else { return false }
-        // v1 SAFETY (see applyObjectEdit): text and object edits on the same member don't compose;
-        // refuse a text edit on a member that already carries object edits rather than dropping them.
-        if memberHasObjectEdits(pageRef.memberDocId) {
-            showEditMessage(L10n.string("object.error.mixedEditsUnsupported"), isError: true)
-            return false
-        }
         guard let basePage = originalBasePage(for: pageRef) else {
             showEditMessage(L10n.string("error.pageEdit.cannotAccessOriginal"), isError: true)
             return false
@@ -3022,8 +3020,7 @@ final class WorkspaceViewModel {
         } else {
             document.workspace.pageEditStates.append(PageEditState(pageRefID: pageRef.id, operations: [operation]))
         }
-        let operations = document.workspace.pageEditStates.first(where: { $0.pageRefID == pageRef.id })?.operations ?? []
-        guard regenerateEditedPage(pageRef: pageRef, operations: operations) else {
+        guard regenerateEditedPage(pageRef: pageRef) else {
             document.workspace.pageEditStates = previousSnapshot.editStates
             showEditMessage(L10n.string("error.pageEdit.regenerateFailed"), isError: true)
             return false
@@ -3060,67 +3057,17 @@ final class WorkspaceViewModel {
         return basePage
     }
 
-    /// Rebuilds the live page for `pageRef` from its pristine original, applying
-    /// `operations` (empty = restore the original page), while carrying over rotation
-    /// and any annotations the user already placed on the current page. Serializes the
-    /// member PDF and reloads it fresh so PDFKit cannot reuse stale render caches.
-    private func regenerateEditedPage(pageRef: PageRef, operations: [PDFTextEditOperation]) -> Bool {
-        guard let lookup = memberPDF(for: pageRef),
-              let localIdx = localIndex(ref: pageRef, memberIndex: lookup.documentIndex),
-              let basePage = originalBasePage(for: pageRef),
-              let regenerated = PDFEditedPageRenderer.regeneratedPage(from: basePage, applying: operations) else {
-            return false
-        }
-
-        let currentPage = lookup.pdf.page(at: localIdx)
-        let preservedRotation = currentPage?.rotation ?? regenerated.rotation
-        // Carry forward the existing page's annotations EXCEPT any prior bake stamp — a fresh
-        // stamp for exactly the operations being baked is added below, and preserving the old
-        // one would leave two stamps (the stale one first, so reconcile would read it and
-        // needlessly regenerate every load).
-        let preservedAnnotations = (currentPage?.annotations ?? []).filter { !BakeStamp.isStamp($0) }
-        lookup.pdf.removePage(at: localIdx)
-        regenerated.rotation = preservedRotation
-        lookup.pdf.insert(regenerated, at: localIdx)
-        preservedAnnotations.forEach { regenerated.addAnnotation($0) }
-        Self.attachBakeStamp(BakeStamp.hash(for: operations), to: regenerated)
-        textAnalysisCache.removeValue(forKey: pageRef.id)
-
-        let serialized = PDFSerializer.data(from: lookup.pdf)
-        if let serialized, let freshPDF = PDFDocument(data: serialized) {
-            document.memberPDFData[pageRef.memberDocId] = serialized
-            loadedPDFs[lookup.documentIndex] = (loadedPDFs[lookup.documentIndex].0, freshPDF)
-        } else {
-            NSLog("[Orifold] Warning: could not reload fresh PDF after inline edit on page %@; using mutated document in place.", pageRef.id.uuidString)
-            if let serialized {
-                document.memberPDFData[pageRef.memberDocId] = serialized
-            }
-        }
-        return true
-    }
-
-    /// Writes the bake stamp for `hash` as an invisible, off-page annotation. Mirrors the
-    /// `/OrifoldWorkspaceComments` metadata annotation: `.clear`, 1×1, positioned off the
-    /// media box so it never renders. Sanitize strips it; the reconciler reads it.
-    private static func attachBakeStamp(_ hash: String, to page: PDFPage) {
-        let annotation = PDFAnnotation(bounds: CGRect(x: -10, y: -10, width: 1, height: 1), forType: .freeText, withProperties: nil)
-        annotation.color = .clear
-        annotation.fontColor = .clear
-        annotation.contents = nil
-        annotation.setValue(hash, forAnnotationKey: PDFAnnotationKey(rawValue: BakeStamp.annotationKey))
-        page.addAnnotation(annotation)
+    /// Rebuilds the containing member through the shared two-lane replay module. The
+    /// explicit page id keeps revert-to-empty operations in the replay even after their
+    /// PageEditState has been removed.
+    private func regenerateEditedPage(pageRef: PageRef) -> Bool {
+        replayCommittedEdits(for: pageRef.memberDocId, forcingPageRefIDs: [pageRef.id])
     }
 
     /// The bake stamp currently on a page, or nil if the page has never been stamped (legacy
     /// bytes, or a third-party rewrite that dropped the annotation).
     private static func bakeStamp(on page: PDFPage) -> String? {
-        for annotation in page.annotations {
-            if BakeStamp.isStamp(annotation),
-               let value = annotation.value(forAnnotationKey: PDFAnnotationKey(rawValue: BakeStamp.annotationKey)) as? String {
-                return value
-            }
-        }
-        return nil
+        BakeStamp.value(on: page)
     }
 
     // MARK: - Object editing (docs/OBJECT_EDITING_PLAN.md §5/§8)
@@ -3184,22 +3131,13 @@ final class WorkspaceViewModel {
         let affectedMembers = Set(operations.compactMap { workspacePageRef($0.pageRefID)?.memberDocId })
         guard !affectedMembers.isEmpty else { return false }
 
-        // v1 SAFETY: object and inline-text edits regenerate a member's bytes from independent
-        // bases and don't compose yet (plan §0.1.4). Committing an object edit on a member that
-        // already has text edits would silently drop those text edits — refuse instead.
-        if affectedMembers.contains(where: { memberHasTextEdits($0) }) {
-            showEditMessage(L10n.string("object.error.mixedEditsUnsupported"), isError: true)
-            return false
-        }
-
         let snapshot = captureInlineTextEditSnapshot()
 
-        // Freeze each affected member's object base on its first edit of the session. Any
-        // previously-persisted ops for that member are already baked into these base bytes
-        // (from a prior session/export), so drop them to avoid re-applying them (double).
+        // Freeze the canonical pre-edit base on the first object edit. Persisted object ops are
+        // retained and replayed from this base; dropping them here used to make reopen + re-edit
+        // silently forget earlier operations.
         for memberID in affectedMembers where objectBaseData[memberID] == nil {
-            objectBaseData[memberID] = document.memberPDFData[memberID]
-            document.workspace.objectEditStates.removeAll { workspacePageRef($0.pageRefID)?.memberDocId == memberID }
+            objectBaseData[memberID] = originalMemberPDFData[memberID] ?? document.memberPDFData[memberID]
         }
 
         operations.forEach { upsertObjectEditOperation($0) }
@@ -3238,32 +3176,64 @@ final class WorkspaceViewModel {
         return true
     }
 
-    /// Regenerate a member's bytes by applying ALL its committed object ops to its frozen base.
-    /// Empty op set restores the base. Returns false only on a hard engine failure.
+    /// Compatibility adapter for object-edit callers; the shared replay engine owns both lanes.
     private func regenerateObjectEditedMember(_ memberID: UUID) -> Bool {
-        guard let baseData = objectBaseData[memberID],
-              let mi = document.workspace.documents.firstIndex(where: { $0.id == memberID }) else { return false }
+        replayCommittedEdits(for: memberID)
+    }
 
-        var opsByPage: [Int: [ObjectEditOperation]] = [:]
-        for state in document.workspace.objectEditStates where !state.operations.isEmpty {
-            guard let ref = workspacePageRef(state.pageRefID), ref.memberDocId == memberID,
-                  let pageIdx = localIndex(ref: ref, memberIndex: mi) else { continue }
-            opsByPage[pageIdx, default: []].append(contentsOf: state.operations)
-        }
+    /// Adapts workspace identities and state into the replay engine's compact per-member input.
+    /// This is the only path that materializes committed text/object operations into live bytes.
+    private func replayCommittedEdits(
+        for memberID: UUID,
+        forcingPageRefIDs: Set<UUID> = []
+    ) -> Bool {
+        guard let memberIndex = document.workspace.documents.firstIndex(where: { $0.id == memberID }),
+              let baseData = objectBaseData[memberID]
+                ?? originalMemberPDFData[memberID]
+                ?? document.memberPDFData[memberID] else { return false }
 
-        let newData: Data
-        if opsByPage.isEmpty {
-            newData = baseData
-        } else {
-            guard let result = PDFObjectEditEngine.apply(operationsByPage: opsByPage, toMember: baseData) else { return false }
-            newData = result.data
+        let textByPage = document.workspace.pageEditStates.reduce(
+            into: [UUID: [PDFTextEditOperation]]()
+        ) { result, state in
+            result[state.pageRefID, default: []].append(contentsOf: state.operations)
         }
+        let objectsByPage = document.workspace.objectEditStates.reduce(
+            into: [UUID: [ObjectEditOperation]]()
+        ) { result, state in
+            result[state.pageRefID, default: []].append(contentsOf: state.operations)
+        }
+        let editedRefIDs = Set(textByPage.keys)
+            .union(objectsByPage.keys)
+            .union(forcingPageRefIDs)
+        let pages = editedRefIDs.compactMap { refID -> WorkspaceEditReplayEngine.PageReplay? in
+            guard let ref = workspacePageRef(refID), ref.memberDocId == memberID,
+                  let pageIndex = localIndex(ref: ref, memberIndex: memberIndex) else { return nil }
+            return WorkspaceEditReplayEngine.PageReplay(
+                pageIndex: pageIndex,
+                textOperations: textByPage[refID] ?? [],
+                objectOperations: objectsByPage[refID] ?? []
+            )
+        }
+        let currentData = loadedPDFs.first(where: { $0.0.id == memberID })
+            .flatMap { PDFSerializer.data(from: $0.1) }
+            ?? document.memberPDFData[memberID]
+        guard let result = WorkspaceEditReplayEngine.replay(
+            baseData: baseData,
+            currentData: currentData,
+            pages: pages
+        ) else { return false }
+        guard result.unresolvedObjectOperationIDs.isEmpty else {
+            NSLog(
+                "[Orifold] Warning: refusing partial member replay because %ld object operation(s) could not be rebound.",
+                result.unresolvedObjectOperationIDs.count
+            )
+            return false
+        }
+        guard let freshPDF = PDFDocument(data: result.data),
+              let loadedIndex = loadedPDFs.firstIndex(where: { $0.0.id == memberID }) else { return false }
 
-        document.memberPDFData[memberID] = newData
-        if let li = loadedPDFs.firstIndex(where: { $0.0.id == memberID }), let pdf = PDFDocument(data: newData) {
-            loadedPDFs[li] = (loadedPDFs[li].0, pdf)
-        }
-        // Object edits can move/delete a rule an underline/table decision relied on → refresh text.
+        document.memberPDFData[memberID] = result.data
+        loadedPDFs[loadedIndex] = (loadedPDFs[loadedIndex].0, freshPDF)
         objectAnalysisCache.removeAll()
         textAnalysisCache.removeAll()
         return true
@@ -3504,13 +3474,18 @@ final class WorkspaceViewModel {
 
     // MARK: - Committed edit ↔ page byte reconciliation
 
-    /// Pristine (pre-edit) bytes for every member that currently has committed inline
-    /// text edit operations — what the save path persists so future sessions can always
-    /// regenerate `f(pristine, operations)` exactly.
+    /// Canonical pre-edit bytes for every member with committed text or object operations.
+    /// Saving both lanes against the same base makes replay deterministic after reopen.
     private func pristineDataForMembersWithCommittedEdits() -> [UUID: Data] {
         var result: [UUID: Data] = [:]
-        for state in document.workspace.pageEditStates where !state.operations.isEmpty {
-            guard let ref = document.workspace.pageOrder.first(where: { $0.id == state.pageRefID }),
+        let editedPageRefIDs = document.workspace.pageEditStates
+            .filter { !$0.operations.isEmpty }
+            .map(\.pageRefID)
+            + document.workspace.objectEditStates
+            .filter { !$0.operations.isEmpty }
+            .map(\.pageRefID)
+        for pageRefID in editedPageRefIDs {
+            guard let ref = document.workspace.pageOrder.first(where: { $0.id == pageRefID }),
                   result[ref.memberDocId] == nil,
                   let pristine = originalMemberPDFData[ref.memberDocId] else { continue }
             result[ref.memberDocId] = pristine
@@ -3521,13 +3496,19 @@ final class WorkspaceViewModel {
     /// Adopts a member's CURRENT live bytes as its new pristine base and renormalizes its
     /// refs' `sourcePageIndex` to the live layout. Used when a structural operation makes
     /// the old pristine mapping unrepresentable (cross-member page moves). Any baked edit
-    /// in the member becomes part of the pristine background from this point on.
+    /// in the member becomes part of the pristine background from this point on; object ops
+    /// are therefore retired so a later replay cannot apply their transforms twice.
     private func rebasePristineToLiveBytes(memberID: UUID) {
         guard let memberIndex = document.workspace.documents.firstIndex(where: { $0.id == memberID }),
               let loaded = loadedPDFs.first(where: { $0.0.id == memberID }) else { return }
         let liveBytes = PDFSerializer.data(from: loaded.1) ?? document.memberPDFData[memberID]
         guard let liveBytes else { return }
         originalMemberPDFData[memberID] = liveBytes
+        if objectBaseData[memberID] != nil {
+            objectBaseData[memberID] = liveBytes
+        }
+        let pageRefIDs = Set(document.workspace.documents[memberIndex].pageRefs)
+        document.workspace.objectEditStates.removeAll { pageRefIDs.contains($0.pageRefID) }
         for (localIdx, refID) in document.workspace.documents[memberIndex].pageRefs.enumerated() {
             if let orderIdx = document.workspace.pageOrder.firstIndex(where: { $0.id == refID }),
                document.workspace.pageOrder[orderIdx].sourcePageIndex != localIdx {
@@ -3536,36 +3517,51 @@ final class WorkspaceViewModel {
         }
         for refID in document.workspace.documents[memberIndex].pageRefs {
             textAnalysisCache.removeValue(forKey: refID)
-        }
-    }
-
-    /// Same problem as `rebasePristineToLiveBytes`, for the object-editing lane. `objectBaseData`
-    /// is frozen ONCE (at a member's first object edit) and every regenerate rebuilds the WHOLE
-    /// member from that frozen snapshot + replayed ops — it has no idea a page was since deleted,
-    /// duplicated, reordered, moved to another member, or rewritten by OCR. Left alone, the next
-    /// unrelated object edit anywhere in the member regenerates from the stale pre-change base and
-    /// silently reverts that structural change. Call this after any such mutation, once the member's
-    /// pages/bytes reflect the new structure: it re-freezes the base to the current live bytes (which
-    /// already have every past op's effect baked in) and drops the now-redundant ops, so nothing
-    /// gets replayed twice. A member with no frozen base yet is a no-op — nothing to keep in sync.
-    private func refreezeObjectBaseIfStale(memberID: UUID) {
-        guard objectBaseData[memberID] != nil,
-              let member = document.workspace.documents.first(where: { $0.id == memberID }),
-              let loaded = loadedPDFs.first(where: { $0.0.id == memberID }),
-              let liveBytes = PDFSerializer.data(from: loaded.1) else { return }
-        objectBaseData[memberID] = liveBytes
-        let pageRefIDs = Set(member.pageRefs)
-        document.workspace.objectEditStates.removeAll { pageRefIDs.contains($0.pageRefID) }
-        for refID in member.pageRefs {
             objectAnalysisCache.removeValue(forKey: refID)
         }
     }
 
-    /// Verifies that every page with committed edit operations actually SHOWS them in its
-    /// current bytes, regenerating the page from its pristine base when it doesn't. This is
-    /// the self-healing half of the "operations are the source of truth" contract: the ops
-    /// live in workspace state while the visible/exported result lives in `memberPDFData`,
-    /// and any historical divergence between the two (e.g. a file saved by an older build
+    /// Realigns a member's canonical replay bytes after a same-member delete, duplicate, or
+    /// reorder. The new base is assembled from the OLD pristine pages in the member's NEW ref
+    /// order, so committed text/object operations remain re-editable instead of becoming baked
+    /// background. Page refs are then normalized to the new base's local indexes.
+    private func realignCanonicalReplayBaseAfterStructuralChange(memberID: UUID) {
+        guard let memberIndex = document.workspace.documents.firstIndex(where: { $0.id == memberID }),
+              let canonicalData = originalMemberPDFData[memberID]
+                ?? objectBaseData[memberID]
+                ?? document.memberPDFData[memberID],
+              let canonicalPDF = PDFDocument(data: canonicalData) else { return }
+
+        let member = document.workspace.documents[memberIndex]
+        let realigned = PDFDocument()
+        for refID in member.pageRefs {
+            guard let ref = workspacePageRef(refID),
+                  ref.sourcePageIndex >= 0,
+                  let page = canonicalPDF.page(at: ref.sourcePageIndex),
+                  let copy = page.copy() as? PDFPage else { return }
+            realigned.insert(copy, at: realigned.pageCount)
+        }
+        guard let realignedData = PDFSerializer.data(from: realigned) else { return }
+
+        originalMemberPDFData[memberID] = realignedData
+        if objectBaseData[memberID] != nil {
+            objectBaseData[memberID] = realignedData
+        }
+        for (localIndex, refID) in member.pageRefs.enumerated() {
+            if let orderIndex = document.workspace.pageOrder.firstIndex(where: { $0.id == refID }) {
+                document.workspace.pageOrder[orderIndex].sourcePageIndex = localIndex
+            }
+            textAnalysisCache.removeValue(forKey: refID)
+            objectAnalysisCache.removeValue(forKey: refID)
+        }
+    }
+
+    /// Verifies that every page with committed text or object operations actually reflects
+    /// them in its current bytes. A stale page invalidates the containing member because replay
+    /// is intentionally member-atomic. Regenerating from the canonical base is the
+    /// self-healing half of the "operations are the source of truth" contract: the ops
+    /// live in workspace state while the visible result lives in `memberPDFData`, and any
+    /// historical divergence between the two (e.g. a file saved by an older build
     /// with ops but no bake) would otherwise persist forever — the editor "remembers" the
     /// edit while the page and every export silently miss it.
     ///
@@ -3577,30 +3573,60 @@ final class WorkspaceViewModel {
     /// were written, so regenerate.
     @discardableResult
     func reconcileCommittedEditsWithLoadedPages() -> Int {
+        let textByPage = document.workspace.pageEditStates.reduce(
+            into: [UUID: [PDFTextEditOperation]]()
+        ) { result, state in
+            result[state.pageRefID, default: []].append(contentsOf: state.operations)
+        }
+        let objectsByPage = document.workspace.objectEditStates.reduce(
+            into: [UUID: [ObjectEditOperation]]()
+        ) { result, state in
+            result[state.pageRefID, default: []].append(contentsOf: state.operations)
+        }
+        let editedPageRefIDs = Set(textByPage.keys).union(objectsByPage.keys)
+        var staleMembers: [UUID: Set<UUID>] = [:]
+        for pageRefID in editedPageRefIDs {
+            guard let ref = workspacePageRef(pageRefID) else { continue }
+            if pageBytesAreCurrent(
+                textOperations: textByPage[pageRefID] ?? [],
+                objectOperations: objectsByPage[pageRefID] ?? [],
+                ref: ref
+            ) { continue }
+            staleMembers[ref.memberDocId, default: []].insert(pageRefID)
+        }
+
         var regeneratedPages = 0
-        for state in document.workspace.pageEditStates where !state.operations.isEmpty {
-            guard let ref = document.workspace.pageOrder.first(where: { $0.id == state.pageRefID }) else { continue }
-            if pageBytesAreCurrent(for: state.operations, ref: ref) { continue }
-            if regenerateEditedPage(pageRef: ref, operations: state.operations) {
-                regeneratedPages += 1
+        for (memberID, stalePageRefIDs) in staleMembers {
+            if replayCommittedEdits(for: memberID) {
+                regeneratedPages += stalePageRefIDs.count
             } else {
-                NSLog("[Orifold] Warning: page %@ has committed text edits its bytes don't show, and regeneration failed — the edit remains invisible.", ref.id.uuidString)
+                NSLog(
+                    "[Orifold] Warning: member %@ has committed edits its bytes do not show, and replay failed.",
+                    memberID.uuidString
+                )
             }
         }
         return regeneratedPages
     }
 
-    /// True when a page's current bytes already reflect `operations`. Prefers the bake stamp;
-    /// falls back to text-presence only when the page carries no stamp.
-    private func pageBytesAreCurrent(for operations: [PDFTextEditOperation], ref: PageRef) -> Bool {
+    /// True when a page's current stamp reflects both lanes. The legacy text-presence fallback
+    /// remains valid only for text-only pages; object operations require deterministic replay.
+    private func pageBytesAreCurrent(
+        textOperations: [PDFTextEditOperation],
+        objectOperations: [ObjectEditOperation],
+        ref: PageRef
+    ) -> Bool {
         if let lookup = memberPDF(for: ref),
            let localIdx = localIndex(ref: ref, memberIndex: lookup.documentIndex),
            let page = lookup.pdf.page(at: localIdx),
            let stamp = Self.bakeStamp(on: page) {
-            return stamp == BakeStamp.hash(for: operations)
+            return stamp == BakeStamp.hash(
+                textOperations: textOperations,
+                objectOperations: objectOperations
+            )
         }
-        // No stamp on the page → legacy bytes: use the text-presence heuristic.
-        return pageVisiblyReflects(operations: operations, ref: ref)
+        guard objectOperations.isEmpty else { return false }
+        return pageVisiblyReflects(operations: textOperations, ref: ref)
     }
 
     /// True when the page's CURRENT bytes visibly contain every operation's replacement
@@ -3728,7 +3754,7 @@ final class WorkspaceViewModel {
         } else {
             document.workspace.pageEditStates[stateIndex].operations = remaining
         }
-        guard regenerateEditedPage(pageRef: pageRef, operations: remaining) else {
+        guard regenerateEditedPage(pageRef: pageRef) else {
             document.workspace.pageEditStates = previousSnapshot.editStates
             showEditMessage(L10n.string("error.pageEdit.restoreFailed"), isError: true)
             return false
@@ -3764,7 +3790,7 @@ final class WorkspaceViewModel {
         var failedPageRefIDs: [UUID] = []
         for state in states {
             guard let pageRef = document.workspace.pageOrder.first(where: { $0.id == state.pageRefID }) else { continue }
-            if !regenerateEditedPage(pageRef: pageRef, operations: []) {
+            if !regenerateEditedPage(pageRef: pageRef) {
                 failedPageRefIDs.append(state.pageRefID)
             }
         }
@@ -7174,7 +7200,7 @@ final class WorkspaceViewModel {
             loadedPDFs[lookup.loadedIndex].0 = document.workspace.documents[lookup.documentIndex]
             // Deleting a page shifts every later page's local index within this member; a frozen
             // object-edit base still has the old indices, so it must move to the post-delete bytes.
-            refreezeObjectBaseIfStale(memberID: ref.memberDocId)
+            realignCanonicalReplayBaseAfterStructuralChange(memberID: ref.memberDocId)
         }
         rebuild()
 
@@ -7229,7 +7255,7 @@ final class WorkspaceViewModel {
         // frozen object-edit base still has the old indices, so it must move to the post-delete
         // bytes (members dropped entirely above already had their base removed).
         for memberID in Set(orderedRefs.map(\.memberDocId)) {
-            refreezeObjectBaseIfStale(memberID: memberID)
+            realignCanonicalReplayBaseAfterStructuralChange(memberID: memberID)
         }
         rebuild()
         undoManager?.registerUndo(withTarget: self) { vm in
@@ -7300,14 +7326,24 @@ final class WorkspaceViewModel {
                 }
                 document.workspace.pageEditStates.append(PageEditState(pageRefID: duplicate.id, operations: clonedOps))
             }
+            if let sourceState = document.workspace.objectEditStates.first(where: { $0.pageRefID == ref.id }),
+               !sourceState.operations.isEmpty {
+                let clonedOperations = sourceState.operations.map { operation -> ObjectEditOperation in
+                    var clone = operation
+                    clone.id = UUID()
+                    clone.pageRefID = duplicate.id
+                    clone.sourceObjectKey.pageRefID = duplicate.id
+                    return clone
+                }
+                document.workspace.objectEditStates.append(
+                    PageObjectEditState(pageRefID: duplicate.id, operations: clonedOperations)
+                )
+            }
         }
-        // Same index-shift problem as delete/reorder, in the other direction: inserting a page
-        // shifts every later page's local index within the member, which a frozen object-edit
-        // base doesn't know about. Refreezing (rather than cloning ops onto the duplicate, as
-        // pageEditStates does above) bakes the duplicate's already-visible copied edit into the
-        // new base directly, matching `rebasePristineToLiveBytes`'s established trade-off.
+        // Inserting a page shifts every later local index. Rebuild the canonical base in the new
+        // ref order; both operation lanes were cloned above, so source and duplicate stay editable.
         for memberID in Set(orderedRefs.map(\.memberDocId)) {
-            refreezeObjectBaseIfStale(memberID: memberID)
+            realignCanonicalReplayBaseAfterStructuralChange(memberID: memberID)
         }
         rebuild()
         markWorkspaceModified()
@@ -7383,7 +7419,7 @@ final class WorkspaceViewModel {
         // always reflects the CURRENT page order. Reordering without refreezing would apply a
         // later object edit's ops (indexed by the new order) against the old order baked into
         // the frozen bytes — silently editing the wrong page.
-        refreezeObjectBaseIfStale(memberID: ref.memberDocId)
+        realignCanonicalReplayBaseAfterStructuralChange(memberID: ref.memberDocId)
         rebuild()
 
         undoManager?.registerUndo(withTarget: self) { vm in
@@ -7434,6 +7470,8 @@ final class WorkspaceViewModel {
             loadedPDFs.removeAll { $0.0.id == removedID }
             document.memberPDFData.removeValue(forKey: removedID)
             document.sourcePayloads.removeValue(forKey: removedID)
+            objectBaseData.removeValue(forKey: removedID)
+            originalMemberPDFData.removeValue(forKey: removedID)
         }
         for loadedIndex in loadedPDFs.indices {
             let memberID = loadedPDFs[loadedIndex].0.id
@@ -7453,8 +7491,6 @@ final class WorkspaceViewModel {
         // regenerating the wrong page's content entirely.
         rebasePristineToLiveBytes(memberID: targetRef.memberDocId)
         rebasePristineToLiveBytes(memberID: ref.memberDocId)
-        refreezeObjectBaseIfStale(memberID: targetRef.memberDocId)
-        refreezeObjectBaseIfStale(memberID: ref.memberDocId)
         if objectSelection?.pageRefID == movedRef.id {
             clearObjectSelection()
         }

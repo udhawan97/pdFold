@@ -379,21 +379,18 @@ struct PDFViewRepresentable: NSViewRepresentable {
         // Wire up delete key handler
         view.onDeleteKey = { [weak coordinator = context.coordinator] in
             guard let coordinator else { return }
-            if coordinator.viewModel.objectSelection != nil {
-                coordinator.alignUndoManagerToWindow()
-                _ = coordinator.viewModel.deleteSelectedObject()
-                coordinator.syncDocumentPreservingViewport(coordinator.pdfView, newDocument: coordinator.viewModel.combinedPDF)
-                coordinator.refreshObjectOverlay()
-            } else {
-                coordinator.viewModel.deleteSelectedAnnotation()
-                coordinator.refreshSignatureOverlay()
-            }
-            coordinator.refreshDecorationOverlays()
+            let selection: CanvasInteractionSession.Selection = coordinator.viewModel.objectSelection == nil
+                ? .annotation
+                : .object
+            coordinator.perform(coordinator.interactionSession.plan(for: .delete(selection: selection)))
         }
         view.onEscapeKey = { [weak coordinator = context.coordinator] in
-            guard let coordinator, coordinator.viewModel.objectSelection != nil else { return false }
-            coordinator.viewModel.clearObjectSelection()
-            coordinator.refreshObjectOverlay()
+            guard let coordinator else { return false }
+            let actions = coordinator.interactionSession.plan(
+                for: .escape(hasObjectSelection: coordinator.viewModel.objectSelection != nil)
+            )
+            guard !actions.isEmpty else { return false }
+            coordinator.perform(actions)
             return true
         }
         view.onTabKey = { [weak coordinator = context.coordinator] moveBackward in
@@ -513,29 +510,19 @@ struct PDFViewRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: OrifoldPDFView, context: Context) {
-        // Routed through the coordinator so a document swap triggered by undo/redo (which
-        // mutates `combinedPDF` directly, with no coordinator involvement) preserves the
-        // visible scroll position exactly like a direct inline-edit commit does — see
-        // `syncDocumentPreservingViewport`.
-        context.coordinator.syncDocumentPreservingViewport(nsView, newDocument: viewModel.combinedPDF)
         context.coordinator.viewModel = viewModel
+        context.coordinator.perform(
+            context.coordinator.interactionSession.plan(
+                for: .viewUpdate(
+                    tool: viewModel.currentTool,
+                    hasObjectSelection: viewModel.objectSelection != nil
+                )
+            )
+        )
         context.coordinator.inkOverlay.isHidden = (viewModel.currentTool != .ink)
         context.coordinator.inkOverlay.inkColor = viewModel.inkColor
         nsView.applyDocumentComfortSettings(viewModel.documentComfortSettings)
-        context.coordinator.refreshSignatureOverlay()
-        // Leaving the Select tool clears any object selection; otherwise keep the overlay in sync.
-        if viewModel.currentTool != .selectObject {
-            viewModel.clearObjectSelection()
-        }
-        context.coordinator.refreshObjectOverlay()
-        context.coordinator.refreshDecorationOverlays()
-        context.coordinator.refreshCommentOverlays()
         context.coordinator.updateCanvasBannerInset(viewModel.canvasBannerInset)
-        // Switching to a different tool (e.g. clicking Highlight) without clicking Done
-        // first must not silently drop whatever text is still being edited.
-        if viewModel.currentTool != .editText {
-            context.coordinator.finishInlineEditingIfNeeded()
-        }
     }
 
     // MARK: - Coordinator
@@ -552,9 +539,11 @@ struct PDFViewRepresentable: NSViewRepresentable {
         private var notePopover: NSPopover?
         private let decorationOverlays = NSHashTable<PageDecorationOverlayView>.weakObjects()
         private weak var observedClipView: NSClipView?
+        var interactionSession: CanvasInteractionSession
 
         init(viewModel: WorkspaceViewModel) {
             self.viewModel = viewModel
+            interactionSession = CanvasInteractionSession(initialTool: viewModel.currentTool)
         }
 
         deinit {
@@ -585,6 +574,44 @@ struct PDFViewRepresentable: NSViewRepresentable {
 
         func finishInlineEditingIfNeeded() {
             inlineEditor?.finishForHandoff()
+        }
+
+        /// Interprets the pure interaction plan. `objectMutation` is injected only for
+        /// move/resize/reorder operations whose payload belongs to the AppKit adapter.
+        @discardableResult
+        func perform(
+            _ actions: [CanvasInteractionSession.Action],
+            objectMutation: (() -> Bool)? = nil
+        ) -> Bool {
+            for action in actions {
+                switch action {
+                case .finishInlineEditing:
+                    finishInlineEditingIfNeeded()
+                case .alignUndoManager:
+                    alignUndoManagerToWindow()
+                case .deleteSelectedObject:
+                    _ = viewModel.deleteSelectedObject()
+                case .deleteSelectedAnnotation:
+                    viewModel.deleteSelectedAnnotation()
+                case .executeObjectMutation:
+                    guard objectMutation?() == true else { return false }
+                case .syncDocument:
+                    syncDocumentPreservingViewport(pdfView, newDocument: viewModel.combinedPDF)
+                case .clearObjectSelection:
+                    viewModel.clearObjectSelection()
+                case .refreshSignatureOverlay:
+                    refreshSignatureOverlay()
+                case .refreshObjectOverlay:
+                    refreshObjectOverlay()
+                case .refreshDecorationOverlays:
+                    refreshDecorationOverlays()
+                case .refreshCommentOverlays:
+                    refreshCommentOverlays()
+                case .repaintPDFView:
+                    pdfView?.setNeedsDisplay(pdfView?.bounds ?? .zero)
+                }
+            }
+            return true
         }
 
         func commitCurrentMarkupSelection() {
@@ -787,25 +814,19 @@ struct PDFViewRepresentable: NSViewRepresentable {
                 // During the drag (oldBounds == nil) just let the outline track the cursor — the
                 // heavy structural regenerate runs only on mouse-up (oldBounds != nil).
                 guard let oldBounds else { return proposedBounds }
-                self.alignUndoManagerToWindow()
-                let applied = self.viewModel.commitObjectBoundsChange(from: oldBounds, to: proposedBounds.standardized)
-                // The commit regenerates the member's bytes into a NEW PDFDocument instance
-                // (`viewModel.combinedPDF`); `setNeedsDisplay` alone just repaints whatever
-                // `pdfView.document` already points at — the OLD, pre-edit document — so the
-                // canvas never showed the move/resize even though the underlying bytes were
-                // correct. Swap the document in, same as every other regenerating mutation.
-                self.syncDocumentPreservingViewport(self.pdfView, newDocument: self.viewModel.combinedPDF)
-                self.refreshObjectOverlay()
-                self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
+                var applied = proposedBounds
+                self.perform(self.interactionSession.plan(for: .objectMutation)) {
+                    applied = self.viewModel.commitObjectBoundsChange(
+                        from: oldBounds,
+                        to: proposedBounds.standardized
+                    )
+                    return true
+                }
                 return applied
             }
             objectOverlay.onDelete = { [weak self] target in
                 guard let self, target.isContentObject else { return }
-                self.alignUndoManagerToWindow()
-                _ = self.viewModel.deleteSelectedObject()
-                self.syncDocumentPreservingViewport(self.pdfView, newDocument: self.viewModel.combinedPDF)
-                self.refreshObjectOverlay()
-                self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
+                self.perform(self.interactionSession.plan(for: .delete(selection: .object)))
             }
             objectOverlay.onBringToFront = { [weak self] target in
                 self?.commitObjectReorder(target, toFront: true)
@@ -820,14 +841,11 @@ struct PDFViewRepresentable: NSViewRepresentable {
         /// refresh the selection overlay so it tracks the object's new state.
         private func commitObjectReorder(_ target: PageObjectSelectionTarget, toFront: Bool) {
             guard target.isContentObject else { return }
-            self.alignUndoManagerToWindow()
-            let changed = toFront ? self.viewModel.bringSelectedObjectToFront() : self.viewModel.sendSelectedObjectToBack()
-            // A no-op reorder (object already at the requested extreme) regenerated nothing —
-            // don't swap the document or repaint for it.
-            guard changed else { return }
-            self.syncDocumentPreservingViewport(self.pdfView, newDocument: self.viewModel.combinedPDF)
-            self.refreshObjectOverlay()
-            self.pdfView?.setNeedsDisplay(self.pdfView?.bounds ?? .zero)
+            perform(interactionSession.plan(for: .objectMutation)) {
+                toFront
+                    ? self.viewModel.bringSelectedObjectToFront()
+                    : self.viewModel.sendSelectedObjectToBack()
+            }
         }
 
         func refreshObjectOverlay() {
@@ -1200,14 +1218,11 @@ struct PDFViewRepresentable: NSViewRepresentable {
             guard let pdfView, let doc = pdfView.document,
                   let page = pdfView.currentPage else { return }
             viewModel.currentPageNumber = viewModel.workspacePageNumber(for: page, in: doc)
-            refreshSignatureOverlay()
-            refreshCommentOverlays()
+            perform(interactionSession.plan(for: .pageChanged))
         }
 
         @objc func pdfViewGeometryChanged(_ notification: Notification) {
-            refreshSignatureOverlay()
-            refreshObjectOverlay()
-            refreshCommentOverlays()
+            perform(interactionSession.plan(for: .geometryChanged))
         }
 
         func setupInkOverlay() {
