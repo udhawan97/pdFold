@@ -138,4 +138,25 @@ final class PDFMetadataServiceTests: XCTestCase {
         XCTAssertEqual(meta.subject, "S")
         XCTAssertEqual(meta.keywords, "k1, k2")
     }
+
+    // The Info inspector re-seeds its text fields when `structureRevision`
+    // changes (InspectorInfoView observes it). Undo/redo of a metadata edit does
+    // NOT change activeDocumentID, so this counter is the only signal the fields
+    // can watch to refresh — assert it bumps on apply, undo, AND redo, or the
+    // inspector silently shows the pre-undo values after Cmd+Z / Cmd+Shift+Z.
+    func testStructureRevisionBumpsOnMetadataApplyUndoAndRedo() throws {
+        let vm = try makeViewModel(title: "Old Title")
+        let beforeApply = vm.structureRevision
+        XCTAssertTrue(vm.applyMetadataEdit(PDFDocumentMetadata(title: "New Title")))
+        let afterApply = vm.structureRevision
+        XCTAssertGreaterThan(afterApply, beforeApply, "apply should bump structureRevision so the inspector re-seeds")
+
+        let undo = try XCTUnwrap(vm.undoManager)
+        undo.undo()
+        let afterUndo = vm.structureRevision
+        XCTAssertGreaterThan(afterUndo, afterApply, "undo should bump structureRevision so the inspector re-seeds")
+
+        undo.redo()
+        XCTAssertGreaterThan(vm.structureRevision, afterUndo, "redo should bump structureRevision so the inspector re-seeds")
+    }
 }

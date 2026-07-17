@@ -184,6 +184,11 @@ private struct InspectorInfoView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { seedMetadataFields() }
         .onChange(of: viewModel.activeDocumentID) { _, _ in seedMetadataFields() }
+        // Undo/redo of a metadata edit reverts the model but leaves activeDocumentID
+        // unchanged, so re-seed on structureRevision (bumped by every rebuild, incl.
+        // the undo/redo of applyMetadataEdit) or the fields would show stale values
+        // and a re-Apply would re-commit them.
+        .onChange(of: viewModel.structureRevision) { _, _ in seedMetadataFields() }
     }
 
     private var metadataSection: some View {
