@@ -179,7 +179,7 @@ enum ShortcutRegistry {
         ),
         ShortcutSpec(
             id: "file.printNUp", category: .file,
-            labelKey: "appCommands.printNUp.button", chord: .printNUp
+            labelKey: "imposition.print.nup", chord: .printNUp
         ),
         ShortcutSpec(
             id: "file.closeWindow", category: .file,

@@ -1846,47 +1846,6 @@
         }
       }
     },
-    "appCommands.printNUp.button": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Print N-up…"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Imprimir varias por hoja…"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Imprimer N pages par feuille…"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "N-अप प्रिंट करें…"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "N-up印刷…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "多页打印…"
-          }
-        }
-      }
-    },
     "appCommands.redo.button": {
       "extractionState": "manual",
       "localizations": {
