@@ -1200,6 +1200,19 @@ final class WorkspaceViewModel {
 
     func rebuild() {
         cancelPendingSearch()
+        // Abort any in-flight read-aloud before the page set changes underneath it. A structural
+        // mutation (delete/insert/reorder/undo) reshuffles combinedPDF's indices, so the
+        // controller's snapshot — its chunk offsets and page index — would now point into the
+        // wrong page, landing the highlight out of bounds. Read-aloud is user-driven and only
+        // ever active on the main thread, where its (main-actor-isolated) controller lives; the
+        // main-thread guard skips the off-main rebuilds that background import/init perform (the
+        // controller is guaranteed inactive there) rather than trap in `assumeIsolated`.
+        // `_readAloud?` never forces the lazy controller into existence.
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                if let readAloud = _readAloud, readAloud.isActive { readAloud.stop() }
+            }
+        }
         combinedPDF = engine.concatenate(documents: loadedPDFs, includeBanners: true)
         pageCount = document.workspace.pageOrder.count
         normalizePageSelection()
@@ -5190,6 +5203,34 @@ final class WorkspaceViewModel {
         _readAloud = controller
         return controller
     }
+
+    #if DEBUG
+    /// Test seam: install a read-aloud controller backed by a caller-supplied synthesizer (a
+    /// fake, so no real audio device is touched) with optional canned page providers, wired
+    /// through this view model's real state mirror and stored as the live `_readAloud`. Lets
+    /// document-mutation auto-stop be verified deterministically, without depending on live
+    /// PDF text extraction.
+    @MainActor
+    @discardableResult
+    func installReadAloudControllerForTesting(
+        synthesizer: SpeechSynthesizing,
+        pageText: ((Int) -> String?)? = nil,
+        pageCount: (() -> Int)? = nil
+    ) -> ReadAloudController {
+        let controller = ReadAloudController(
+            synthesizer: synthesizer,
+            pageTextProvider: pageText ?? { [weak self] index in self?.readAloudPageText(at: index) },
+            pageCount: pageCount ?? { [weak self] in self?.combinedPDF.pageCount ?? 0 }
+        )
+        controller.rate = Float(readAloudRate.rawValue)
+        controller.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in self?.readAloudState = state }
+            .store(in: &readAloudCancellables)
+        _readAloud = controller
+        return controller
+    }
+    #endif
 
     /// Whether read-aloud is currently active (speaking or paused). Derived from the mirrored
     /// state, so reading it never forces the controller (and its synthesizer) into existence.
