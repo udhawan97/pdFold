@@ -410,11 +410,15 @@ final class WorkspaceViewModel {
     @ObservationIgnored private var pendingSearchResults: [PDFSelection] = []
     @ObservationIgnored private(set) var searchResultsQuery = ""
 
-    /// Lazily-built read-aloud controller (Feature C). Constructed on first access from the
-    /// main actor (its own isolation), so it's never created off-main and never for documents
-    /// that are never spoken. `@ObservationIgnored` because it's a self-contained
-    /// `ObservableObject`; its `state` is mirrored into `readAloudState` (below) so SwiftUI
-    /// views — which observe this `@Observable` view model, not the nested controller — react.
+    /// Read-aloud controller (Feature C), built on first access to the `readAloud` property.
+    /// In practice that happens when a `ReadingCanvas` is created and subscribes to the
+    /// controller's `$highlight` to mirror it as a selection — i.e. once per workspace window,
+    /// whether or not read-aloud is ever started, since the canvas needs the publisher wired up
+    /// front. Built on the main actor (its own isolation), so never off-main. Not a leak: every
+    /// back-reference the controller holds into this view model is weak. `@ObservationIgnored`
+    /// because it's a self-contained `ObservableObject`; its `state` is mirrored into
+    /// `readAloudState` (below) so SwiftUI views — which observe this `@Observable` view model,
+    /// not the nested controller — react.
     @ObservationIgnored private var _readAloud: ReadAloudController?
     @ObservationIgnored private var readAloudCancellables = Set<AnyCancellable>()
 
