@@ -841,7 +841,11 @@ struct PDFViewRepresentable: NSViewRepresentable {
                     viewModel.isShowingSignaturePalette = true
                 }
             case .stamp:
-                if viewModel.pendingStampOptions != nil {
+                if viewModel.pendingHankoOptions != nil {
+                    viewModel.placeHanko(at: pagePoint, on: page)
+                    refreshSignatureOverlay()
+                    refreshDecorationOverlays()
+                } else if viewModel.pendingStampOptions != nil {
                     viewModel.placeStamp(at: pagePoint, on: page)
                     refreshSignatureOverlay()
                     refreshDecorationOverlays()
@@ -1836,6 +1840,9 @@ final class PageDecorationOverlayView: NSView {
             case .stamp:
                 guard decoration.pageRefID == pageRef.id else { continue }
                 drawStamp(decoration, pageIndex: pageIndex, pageCount: pageCount)
+            case .hanko:
+                guard decoration.pageRefID == pageRef.id else { continue }
+                drawHanko(decoration)
             }
         }
     }
@@ -1920,6 +1927,26 @@ final class PageDecorationOverlayView: NSView {
                 height: size.height + 2
             ),
             withAttributes: attributes
+        )
+    }
+
+    /// Live on-canvas preview of a placed hanko seal — the same vector `HankoRenderer.draw`
+    /// the exporter bakes, so what the user sees is what ships. This overlay view is
+    /// `isFlipped == false` (y-up), matching the glyph outlines' native orientation, so no
+    /// coordinate flip is needed.
+    private func drawHanko(_ decoration: PageDecoration) {
+        guard let pageRect = decoration.rect,
+              let rect = pageRectToOverlayRect(pageRect)?.standardized,
+              rect.width > 4,
+              rect.height > 4,
+              let context = NSGraphicsContext.current?.cgContext else { return }
+        let value = decoration.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        let ink = HankoConfig.defaultInk.copy(alpha: CGFloat(decoration.opacity)) ?? HankoConfig.defaultInk
+        try? HankoRenderer.draw(
+            HankoConfig(shape: decoration.hankoShape, text: value, inkColor: ink),
+            in: rect,
+            context: context
         )
     }
 

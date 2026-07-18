@@ -15,6 +15,7 @@ struct PageDecoration: Codable, Identifiable, Equatable {
         case pageNumber
         case bates
         case stamp
+        case hanko
     }
 
     var id: UUID
@@ -28,9 +29,11 @@ struct PageDecoration: Codable, Identifiable, Equatable {
     var fontSize: CGFloat
     var opacity: Double
     var swatch: PageDecorationSwatch
+    /// Border shape of a `.hanko` seal; ignored by every other kind.
+    var hankoShape: HankoShape
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, isEnabled, text, prefix, startNumber, pageRefID, rect, fontSize, opacity, swatch
+        case id, kind, isEnabled, text, prefix, startNumber, pageRefID, rect, fontSize, opacity, swatch, hankoShape
     }
 
     init(id: UUID = UUID(),
@@ -43,7 +46,8 @@ struct PageDecoration: Codable, Identifiable, Equatable {
          rect: CGRect? = nil,
          fontSize: CGFloat = 12,
          opacity: Double = 1,
-         swatch: PageDecorationSwatch = .accent) {
+         swatch: PageDecorationSwatch = .accent,
+         hankoShape: HankoShape = .circle) {
         self.id = id
         self.kind = kind
         self.isEnabled = isEnabled
@@ -55,6 +59,7 @@ struct PageDecoration: Codable, Identifiable, Equatable {
         self.fontSize = fontSize
         self.opacity = opacity
         self.swatch = swatch
+        self.hankoShape = hankoShape
     }
 
     init(from decoder: Decoder) throws {
@@ -70,10 +75,19 @@ struct PageDecoration: Codable, Identifiable, Equatable {
         fontSize = try c.decodeIfPresent(CGFloat.self, forKey: .fontSize) ?? 12
         opacity = try c.decodeIfPresent(Double.self, forKey: .opacity) ?? 1
         swatch = try c.decodeIfPresent(PageDecorationSwatch.self, forKey: .swatch) ?? .accent
+        // Migration-safe: documents saved before the hanko studio shipped have no
+        // `hankoShape`, so default it rather than failing to decode the whole workspace.
+        hankoShape = try c.decodeIfPresent(HankoShape.self, forKey: .hankoShape) ?? .circle
     }
 }
 
 extension PageDecoration {
+    /// Seals are the free-floating, rect-anchored decorations a user drops onto a page and
+    /// can then select, drag, resize, or delete — text stamps and hanko alike. The
+    /// selection/hit-test/move/remove plumbing keys off this rather than `.stamp` so a
+    /// placed hanko behaves exactly like a stamp.
+    var isSeal: Bool { kind == .stamp || kind == .hanko }
+
     static func watermark() -> PageDecoration {
         PageDecoration(kind: .watermark, text: L10n.string("decoration.defaultWatermark"), fontSize: 64, opacity: 0.16, swatch: .tertiary)
     }
@@ -88,5 +102,11 @@ extension PageDecoration {
 
     static func stamp(text: String, swatch: PageDecorationSwatch, pageRefID: UUID, rect: CGRect) -> PageDecoration {
         PageDecoration(kind: .stamp, text: text, pageRefID: pageRefID, rect: rect, fontSize: 22, opacity: 0.88, swatch: swatch)
+    }
+
+    /// A procedural hanko seal: `text` holds the 1–4 characters carved into it, `hankoShape`
+    /// the border. Rendered in shu-iro vermillion by `HankoRenderer` (not `swatch`).
+    static func hanko(text: String, shape: HankoShape, pageRefID: UUID, rect: CGRect) -> PageDecoration {
+        PageDecoration(kind: .hanko, text: text, pageRefID: pageRefID, rect: rect, fontSize: 22, opacity: 1, swatch: .coral, hankoShape: shape)
     }
 }

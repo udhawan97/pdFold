@@ -295,6 +295,7 @@ final class WorkspaceViewModel {
     var pendingSignatureData: Data? = nil
     var pendingSignatureOptions: PendingSignaturePlacementOptions? = nil
     var pendingStampOptions: PendingStampPlacementOptions? = nil
+    var pendingHankoOptions: PendingHankoPlacementOptions? = nil
     var selectedStampDecorationID: UUID? = nil {
         didSet { if selectedStampDecorationID != nil { objectSelection = nil } }
     }
@@ -561,6 +562,11 @@ final class WorkspaceViewModel {
     struct PendingStampPlacementOptions: Equatable {
         var text: String
         var swatch: PageDecorationSwatch
+    }
+
+    struct PendingHankoPlacementOptions: Equatable {
+        var text: String
+        var shape: HankoShape
     }
 
     struct PDFNoteComment: Identifiable {
@@ -1912,7 +1918,7 @@ final class WorkspaceViewModel {
         guard !removedPageRefIDs.isEmpty else { return }
         let removedStampIDs = Set(
             document.workspace.decorations.compactMap { decoration -> UUID? in
-                guard decoration.kind == .stamp,
+                guard decoration.isSeal,
                       let pageRefID = decoration.pageRefID,
                       removedPageRefIDs.contains(pageRefID) else {
                     return nil
@@ -2685,6 +2691,8 @@ final class WorkspaceViewModel {
             return .bates()
         case .stamp:
             return PageDecoration(kind: .stamp)
+        case .hanko:
+            return PageDecoration(kind: .hanko)
         }
     }
 
@@ -2696,7 +2704,7 @@ final class WorkspaceViewModel {
             return L10n.string("undo.changePageNumbers")
         case .bates:
             return L10n.string("undo.changeBatesStamp")
-        case .stamp:
+        case .stamp, .hanko:
             return L10n.string("undo.changeStamp")
         }
     }
@@ -4443,6 +4451,22 @@ final class WorkspaceViewModel {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return }
         pendingStampOptions = PendingStampPlacementOptions(text: trimmedText, swatch: swatch)
+        pendingHankoOptions = nil
+        clearPendingSignaturePlacement()
+        currentTool = .stamp
+        isShowingSignaturePalette = false
+        isShowingStampPalette = false
+    }
+
+    /// Arms a hanko seal for click-to-place. Reuses the `.stamp` tool + canvas gesture (the
+    /// gesture checks `pendingHankoOptions` first), so a hanko lands on the next page click
+    /// exactly as a text stamp does.
+    func beginHankoPlacement(text: String, shape: HankoShape) {
+        guard canPerformMutatingAction() else { return }
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { return }
+        pendingHankoOptions = PendingHankoPlacementOptions(text: trimmedText, shape: shape)
+        pendingStampOptions = nil
         clearPendingSignaturePlacement()
         currentTool = .stamp
         isShowingSignaturePalette = false
@@ -4628,14 +4652,45 @@ final class WorkspaceViewModel {
         return decoration
     }
 
+    @discardableResult
+    func placeHanko(at pagePoint: CGPoint,
+                    on page: PDFPage,
+                    size: CGSize = CGSize(width: 96, height: 96)) -> PageDecoration? {
+        guard canPerformMutatingAction() else { return nil }
+        guard let options = pendingHankoOptions,
+              let refID = pageRefID(for: page) else { return nil }
+        let bounds = constrainedSignatureBounds(
+            CGRect(
+                x: pagePoint.x - size.width / 2,
+                y: pagePoint.y - size.height / 2,
+                width: size.width,
+                height: size.height
+            ),
+            on: page
+        )
+        let decoration = PageDecoration.hanko(
+            text: options.text,
+            shape: options.shape,
+            pageRefID: refID,
+            rect: bounds
+        )
+        var decorations = document.workspace.decorations
+        decorations.append(decoration)
+        selectedAnnotation = nil
+        selectedStampDecorationID = decoration.id
+        pendingHankoOptions = nil
+        replaceDecorations(decorations, actionName: "Place hanko")
+        return decoration
+    }
+
     func stampDecoration(id: UUID) -> PageDecoration? {
-        document.workspace.decorations.first { $0.id == id && $0.kind == .stamp }
+        document.workspace.decorations.first { $0.id == id && $0.isSeal }
     }
 
     func stampDecoration(at pagePoint: CGPoint, on page: PDFPage, in pdfDocument: PDFDocument?) -> PageDecoration? {
         guard let pageRef = pageRef(for: page, in: pdfDocument) else { return nil }
         return document.workspace.decorations.reversed().first { decoration in
-            guard decoration.kind == .stamp,
+            guard decoration.isSeal,
                   decoration.isEnabled,
                   decoration.pageRefID == pageRef.id,
                   let rect = decoration.rect?.insetBy(dx: -4, dy: -4) else {
@@ -4652,7 +4707,7 @@ final class WorkspaceViewModel {
 
     func removeStampDecoration(id: UUID) {
         var decorations = document.workspace.decorations
-        guard let index = decorations.firstIndex(where: { $0.id == id && $0.kind == .stamp }) else { return }
+        guard let index = decorations.firstIndex(where: { $0.id == id && $0.isSeal }) else { return }
         decorations.remove(at: index)
         selectedStampDecorationID = nil
         replaceDecorations(decorations, actionName: "Delete stamp")
@@ -4665,7 +4720,7 @@ final class WorkspaceViewModel {
                                registerUndoFrom oldBounds: CGRect? = nil) -> CGRect {
         let fallbackBounds = stampDecoration(id: decorationID)?.rect ?? proposedBounds
         guard canPerformMutatingAction() else { return fallbackBounds }
-        guard let index = document.workspace.decorations.firstIndex(where: { $0.id == decorationID && $0.kind == .stamp }) else {
+        guard let index = document.workspace.decorations.firstIndex(where: { $0.id == decorationID && $0.isSeal }) else {
             return fallbackBounds
         }
 

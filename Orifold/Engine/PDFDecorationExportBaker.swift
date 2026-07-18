@@ -90,7 +90,7 @@ enum PDFDecorationExportBaker {
                 guard !decoration.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw BakeError.invalidDecoration
                 }
-            case .stamp:
+            case .stamp, .hanko:
                 guard let pageRefID = decoration.pageRefID,
                       pageRefIDs.contains(pageRefID),
                       let rect = decoration.rect?.standardized,
@@ -125,7 +125,7 @@ enum PDFDecorationExportBaker {
 
     static func text(for decoration: PageDecoration, pageIndex: Int, pageCount: Int) -> String {
         switch decoration.kind {
-        case .watermark, .stamp:
+        case .watermark, .stamp, .hanko:
             return decoration.text
         case .pageNumber:
             return String(localized: "Page \(pageIndex + 1) of \(pageCount)", locale: L10n.currentLocale)
@@ -153,6 +153,9 @@ enum PDFDecorationExportBaker {
             case .stamp:
                 guard decoration.pageRefID == pageRefID else { continue }
                 drawStamp(decoration, pageIndex: pageIndex, pageCount: pageCount, in: context)
+            case .hanko:
+                guard decoration.pageRefID == pageRefID else { continue }
+                drawHanko(decoration, in: context)
             }
         }
     }
@@ -230,6 +233,24 @@ enum PDFDecorationExportBaker {
             height: size.height + 2
         )
         drawString(value, in: textRect, attributes: attributes, context: context)
+        context.restoreGState()
+    }
+
+    /// Bakes a hanko seal as *vector* content straight into the page's content stream via
+    /// `HankoRenderer` (border ring + outlined glyphs). It never creates a `PDFAnnotation`,
+    /// so — unlike the 2026-07-07 FreeText bake-stamp leak — there is no internal annotation
+    /// that could survive into the exported file; the only annotations carried forward are
+    /// the document's own, via `copyAnnotations`.
+    private static func drawHanko(_ decoration: PageDecoration, in context: CGContext) {
+        guard let rect = decoration.rect?.standardized,
+              rect.width > 4,
+              rect.height > 4 else { return }
+        let value = decoration.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        let ink = HankoConfig.defaultInk.copy(alpha: CGFloat(decoration.opacity)) ?? HankoConfig.defaultInk
+        let config = HankoConfig(shape: decoration.hankoShape, text: value, inkColor: ink)
+        context.saveGState()
+        try? HankoRenderer.draw(config, in: rect, context: context)
         context.restoreGState()
     }
 
