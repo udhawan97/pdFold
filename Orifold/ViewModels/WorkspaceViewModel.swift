@@ -2,6 +2,7 @@ import SwiftUI
 import PDFKit
 import AppKit
 import Combine
+import CoreServices
 import Observation
 import UniformTypeIdentifiers
 
@@ -2572,6 +2573,207 @@ final class WorkspaceViewModel {
         set(.subjectAttribute, metadata.subject)
         set(.keywordsAttribute, metadata.keywords)
         return attributes
+    }
+
+    // MARK: - Attachments
+
+    private struct MemberAttachmentsSnapshot {
+        var live: Data
+        var original: Data?
+        var objectBase: Data?
+    }
+
+    /// Every attachment on the currently-targeted member, for the Attachments
+    /// inspector tab. `nil` distinguishes "can't manage attachments" (no member,
+    /// or an encrypted member qpdf can't open) from `[]` ("readable, none yet") —
+    /// the tab disables add/remove and shows a hint on `nil`.
+    func activeMemberAttachments() -> [PDFAttachment]? {
+        guard let memberID = activeMetadataMemberID(),
+              let data = document.memberPDFData[memberID] else { return nil }
+        return try? AttachmentsService.list(in: data)
+    }
+
+    /// Adds the file at `fileURL` as an attachment on the active member, routed
+    /// through the preserved byte lane (live + pristine base + object base) with a
+    /// single named, atomic undo step — mirroring `applyMetadataEdit`. Attachments
+    /// are document-level, so no page re-render is needed; `rebuild()` only bumps
+    /// `structureRevision` so the inspector re-seeds its list.
+    @discardableResult
+    func addAttachment(_ fileURL: URL) -> Bool {
+        guard canPerformMutatingAction() else { return false }
+        guard let memberID = activeMetadataMemberID(),
+              let currentLive = document.memberPDFData[memberID] else { return false }
+        let fileData = SecurityScopedAccess.withAccess(to: fileURL) { url in
+            try? Data(contentsOf: url)
+        }
+        guard let fileData else {
+            showEditMessage(L10n.string("status.attachments.addFailed"), isError: true)
+            return false
+        }
+        let name = fileURL.lastPathComponent
+        let mimeType = attachmentMIMEType(for: fileURL)
+        return applyAttachmentsTransform(
+            to: memberID,
+            currentLive: currentLive,
+            actionNameKey: "undo.addAttachment",
+            failureKey: "status.attachments.addFailed"
+        ) { data in
+            try? AttachmentsService.add(fileData, name: name, mimeType: mimeType, to: data)
+        }
+    }
+
+    /// Removes the attachment whose name-tree key is `name` from the active member,
+    /// with a single named, atomic undo step.
+    @discardableResult
+    func removeAttachment(named name: String) -> Bool {
+        guard canPerformMutatingAction() else { return false }
+        guard let memberID = activeMetadataMemberID(),
+              let currentLive = document.memberPDFData[memberID] else { return false }
+        return applyAttachmentsTransform(
+            to: memberID,
+            currentLive: currentLive,
+            actionNameKey: "undo.removeAttachment",
+            failureKey: "status.attachments.removeFailed"
+        ) { data in
+            // The pristine/object bases may not carry this key (they diverge from
+            // live over an editing session); qpdf errors on removing a missing key,
+            // so no-op those lanes rather than failing the whole edit.
+            let present = (try? AttachmentsService.list(in: data))?.contains { $0.name == name } ?? false
+            guard present else { return data }
+            return try? AttachmentsService.remove(name, from: data)
+        }
+    }
+
+    /// Writes the decoded bytes of attachment `name` to `url`, tagging the result
+    /// with a quarantine attribute — the payload is untrusted content lifted out
+    /// of an arbitrary PDF, so it should trip Gatekeeper like any other download.
+    func extractAttachment(named name: String, to url: URL) {
+        guard let memberID = activeMetadataMemberID(),
+              let data = document.memberPDFData[memberID],
+              let bytes = try? AttachmentsService.extract(name, from: data) else {
+            showEditMessage(L10n.string("status.attachments.extractFailed"), isError: true)
+            return
+        }
+        do {
+            try bytes.write(to: url)
+            var mutableURL = url
+            var values = URLResourceValues()
+            values.quarantineProperties = [
+                kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String
+            ]
+            try? mutableURL.setResourceValues(values)
+        } catch {
+            showEditMessage(L10n.string("status.attachments.extractFailed"), isError: true)
+        }
+    }
+
+    private func attachmentMIMEType(for url: URL) -> String? {
+        UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+    }
+
+    /// Applies `transform` to the member's live bytes and, when present, its
+    /// pristine and object-edit bases (so a later edit replay can't resurrect the
+    /// old attachment set), then commits the swap with a recursive-inverse undo.
+    /// Any lane failing aborts the whole edit without mutating state.
+    @discardableResult
+    private func applyAttachmentsTransform(
+        to memberID: UUID,
+        currentLive: Data,
+        actionNameKey: String,
+        failureKey: String,
+        _ transform: (Data) -> Data?
+    ) -> Bool {
+        guard let newLive = transform(currentLive) else {
+            showEditMessage(L10n.string(forKey: failureKey), isError: true)
+            return false
+        }
+        var newOriginal: Data? = nil
+        if let original = originalMemberPDFData[memberID] {
+            guard let transformed = transform(original) else {
+                showEditMessage(L10n.string(forKey: failureKey), isError: true)
+                return false
+            }
+            newOriginal = transformed
+        }
+        var newObjectBase: Data? = nil
+        if let objectBase = objectBaseData[memberID] {
+            guard let transformed = transform(objectBase) else {
+                showEditMessage(L10n.string(forKey: failureKey), isError: true)
+                return false
+            }
+            newObjectBase = transformed
+        }
+
+        let previous = MemberAttachmentsSnapshot(
+            live: currentLive,
+            original: originalMemberPDFData[memberID],
+            objectBase: objectBaseData[memberID]
+        )
+        let next = MemberAttachmentsSnapshot(live: newLive, original: newOriginal, objectBase: newObjectBase)
+        applyMemberAttachmentsSnapshot(next, to: memberID, previous: previous, actionNameKey: actionNameKey)
+        return true
+    }
+
+    private func applyMemberAttachmentsSnapshot(
+        _ snapshot: MemberAttachmentsSnapshot,
+        to memberID: UUID,
+        previous: MemberAttachmentsSnapshot,
+        actionNameKey: String
+    ) {
+        document.memberPDFData[memberID] = snapshot.live
+        if let original = snapshot.original {
+            originalMemberPDFData[memberID] = original
+        }
+        if let objectBase = snapshot.objectBase {
+            objectBaseData[memberID] = objectBase
+        }
+        invalidatePageInspection(for: memberID)
+        rebuild()
+        markWorkspaceModified()
+        registerIsolatedUndo {
+            undoManager?.registerUndo(withTarget: self) { vm in
+                guard vm.canPerformUndoMutation() else { return }
+                vm.applyMemberAttachmentsSnapshot(previous, to: memberID, previous: snapshot, actionNameKey: actionNameKey)
+            }
+            undoManager?.setActionName(L10n.string(forKey: actionNameKey))
+        }
+    }
+
+    private struct CollectedAttachment {
+        let name: String
+        let data: Data
+        let mimeType: String?
+    }
+
+    /// Snapshots every member's attachments into decoded `(name, bytes, mime)`
+    /// tuples. Captured at the *start* of an export — before reconcile/replay,
+    /// which regenerate member bytes from the page-content lanes that don't carry
+    /// document-level embedded files — so the attachments survive to re-injection.
+    private func collectMemberAttachments() -> [CollectedAttachment] {
+        var collected: [CollectedAttachment] = []
+        for member in document.workspace.documents {
+            guard let data = document.memberPDFData[member.id],
+                  let attachments = try? AttachmentsService.list(in: data), !attachments.isEmpty else { continue }
+            for attachment in attachments {
+                guard let bytes = try? AttachmentsService.extract(attachment.name, from: data) else { continue }
+                collected.append(CollectedAttachment(name: attachment.name, data: bytes, mimeType: attachment.mimeType))
+            }
+        }
+        return collected
+    }
+
+    /// Re-grafts collected attachments onto assembled export bytes. `add` itself
+    /// disambiguates colliding keys, so attachments with the same name across
+    /// merged members land under distinct keys.
+    private func reinjectingAttachments(_ collected: [CollectedAttachment], into exportData: Data) -> Data {
+        guard !collected.isEmpty else { return exportData }
+        var result = exportData
+        for item in collected {
+            if let updated = try? AttachmentsService.add(item.data, name: item.name, mimeType: item.mimeType, to: result) {
+                result = updated
+            }
+        }
+        return result
     }
 
     // MARK: - Decorations
@@ -5919,6 +6121,11 @@ final class WorkspaceViewModel {
         if (options.encryption != nil || options.sanitization != nil), hasCryptographicSignaturePlacement {
             throw PDFEncryptionError.digitalSignatureConflict
         }
+        // Attachments live only in the member byte lane and are dropped by the
+        // PDFKit export assembly (and the compression/imposition passes). Capture
+        // them BEFORE reconcile/replay can regenerate member bytes from the
+        // page-content lanes, then re-graft them below.
+        let preservedAttachments = collectMemberAttachments()
         // Belt-and-braces against any in-session ops↔bytes divergence: exported bytes must
         // reflect every committed edit operation, so verify (and self-heal) right before
         // they leave the app rather than trusting accumulated state.
@@ -5950,7 +6157,11 @@ final class WorkspaceViewModel {
         } else {
             imposedData = reducedData
         }
-        let sanitizedData = try Self.sanitized(imposedData, options: options.sanitization)
+        // Re-graft attachments after every page-content pass (assembly, compression,
+        // imposition — all of which drop them) but before sanitize, which
+        // deliberately strips embedded files, and encryption, which preserves them.
+        let attachedData = reinjectingAttachments(preservedAttachments, into: imposedData)
+        let sanitizedData = try Self.sanitized(attachedData, options: options.sanitization)
         guard let encryption = options.encryption else { return sanitizedData }
         let encryptedData = try PDFEncryptionService.encryptedData(from: sanitizedData, options: encryption)
         if options.compressionPreset != nil {
