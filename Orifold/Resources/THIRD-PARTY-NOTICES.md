@@ -63,6 +63,11 @@ reflowing onto a mismatched system fallback:
 - **Caladea** (Regular/Bold/Italic/Bold Italic) -- metric-compatible with Cambria. SIL Open
   Font License 1.1.
 
+Orifold also bundles a Japanese mincho serif for the procedural hanko (印) seal studio:
+
+- **Shippori Mincho** (Regular) -- a mincho-style serif whose kanji are outlined to vector
+  paths for a carved-seal look. SIL Open Font License 1.1.
+
 Orifold also bundles the **Adobe Core-14 AFM** font-metric files under
 `Resources/Fonts/AFM/` (the Helvetica, Times, Courier, Symbol and ZapfDingbats families)
 to check glyph widths for the standard base fonts a PDF may reference without embedding.
@@ -412,6 +417,11 @@ Caladea:
 
     Copyright 2012 The Caladea Project Authors
     (https://github.com/huertatipografica/Caladea).
+
+Shippori Mincho:
+
+    Copyright 2021 The Shippori Mincho Project Authors
+    (https://github.com/fontdasu/ShipporiMincho).
 
 All of the above fonts are licensed under the SIL Open Font License, Version 1.1.
 

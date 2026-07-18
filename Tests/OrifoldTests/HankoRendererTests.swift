@@ -54,6 +54,23 @@ final class HankoRendererTests: XCTestCase {
         XCTAssertFalse(body.contains("/F1"), "appearance stream must not reference an external font")
     }
 
+    /// Feature F2: the bundled Shippori Mincho must be present and registered (not silently
+    /// falling back to a system face), and carry a genuinely rich outline for a CJK kanji.
+    /// `折` (fold) — the character behind the app's own name — is a many-segment mincho glyph.
+    func testBundledShipporiMinchoProvidesRichCJKOutline() throws {
+        FontRegistrar.registerBundledFonts()
+        let font = CTFontCreateWithName("ShipporiMincho-Regular" as CFString, 100, nil)
+        XCTAssertEqual(
+            CTFontCopyPostScriptName(font) as String, "ShipporiMincho-Regular",
+            "Shippori Mincho must be bundled + registered, not resolving to a system fallback"
+        )
+        let path = try XCTUnwrap(
+            CTFontCreatePathForGlyph(font, glyphID(for: "折", in: font), nil),
+            "Shippori Mincho must contain a 折 glyph"
+        )
+        XCTAssertGreaterThan(elementCount(of: path), 12, "expected a rich vector outline for 折")
+    }
+
     func testEmptyTextThrows() {
         XCTAssertThrowsError(
             try HankoRenderer.outlinePath(for: HankoConfig(shape: .square, text: "   "), in: bounds)
@@ -74,5 +91,14 @@ final class HankoRendererTests: XCTestCase {
         var count = 0
         path.applyWithBlock { _ in count += 1 }
         return count
+    }
+
+    private func glyphID(for character: String, in font: CTFont) -> CGGlyph {
+        let string = character as NSString
+        var characters = [UniChar](repeating: 0, count: string.length)
+        string.getCharacters(&characters)
+        var glyphs = [CGGlyph](repeating: 0, count: string.length)
+        CTFontGetGlyphsForCharacters(font, &characters, &glyphs, string.length)
+        return glyphs[0]
     }
 }
