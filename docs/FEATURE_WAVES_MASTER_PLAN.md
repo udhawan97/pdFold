@@ -23,13 +23,13 @@
 
 | Wave | Feature | Confidence | Status |
 |---|---|---|---|
-| 1 | Spell-check in inline editor | Med-High | ☐ |
-| 1 | Metadata viewer/editor | High | ☐ |
-| 1 | Read-aloud with follow-along | High | ☐ |
-| 1 | CC0 demo/onboarding document | Med-High | ☐ |
-| 2 | Font-substitution pack + Core-14 AFMs | High | ☐ |
-| 2 | Hanko stamp studio | Med-High | ☐ |
-| 2 | Barcode/QR insert + scan | High | ☐ |
+| 1 | Spell-check in inline editor | Med-High | ✅ |
+| 1 | Metadata viewer/editor | High | ✅ |
+| 1 | Read-aloud with follow-along | High | ✅ |
+| 1 | CC0 demo/onboarding document | Med-High | ✅ |
+| 2 | Font-substitution pack + Core-14 AFMs | High | ✅ |
+| 2 | Hanko stamp studio | Med-High | ✅ |
+| 2 | Barcode/QR insert + scan | High | ✅ |
 | 3 | Compression pack v2 (zopfli, mozjpeg, JBIG2) | Med-High | ☐ |
 | 3 | Attachments manager | Med-High | ☐ |
 | 3 | Booklet / N-up imposition | Med-High | ☐ |
