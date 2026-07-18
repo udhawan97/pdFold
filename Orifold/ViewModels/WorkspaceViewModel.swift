@@ -2462,9 +2462,11 @@ final class WorkspaceViewModel {
     // MARK: - Document metadata
 
     /// The member backing the currently-selected page, else the first member.
-    /// The Info tab is workspace-level, so "which document" follows the current
-    /// page selection.
-    private func activeMetadataMemberID() -> UUID? {
+    ///
+    /// Correct for per-member state like attachments: the export collects embedded
+    /// files from EVERY member, so each one's attachments reach the file and
+    /// following the page selection is what the user means.
+    private func activeAttachmentsMemberID() -> UUID? {
         if let selectedPageRefID,
            let ref = document.workspace.pageOrder.first(where: { $0.id == selectedPageRefID }) {
             return ref.memberDocId
@@ -2472,16 +2474,27 @@ final class WorkspaceViewModel {
         return document.workspace.documents.first?.id
     }
 
-    /// Identity of the member the metadata editor currently targets; the
-    /// Inspector re-seeds its fields when this changes (e.g. the user selects a
-    /// page belonging to a different document).
-    var activeDocumentID: UUID? { activeMetadataMemberID() }
+    /// The member whose document properties the exported file will actually carry.
+    ///
+    /// A merged PDF has exactly ONE `/Info` dictionary, so assembling several members
+    /// has to pick whose properties survive, and `concatenateForExport` adopts the
+    /// first member's. The Info tab therefore reads and writes THAT member rather than
+    /// following the page selection: targeting the selected member instead let a user
+    /// edit the title on page 5, watch it stick in the app, and export a file still
+    /// carrying member 1's title -- the edit discarded by the merge with no error.
+    private func metadataMemberID() -> UUID? {
+        document.workspace.documents.first?.id
+    }
+
+    /// Identity of the member the Inspector currently targets; its tabs re-seed when
+    /// this changes (e.g. the user selects a page belonging to a different document).
+    var activeDocumentID: UUID? { activeAttachmentsMemberID() }
 
     /// The Info-dict metadata of the member backing the currently-selected page,
     /// for seeding the Inspector editor. `nil` when there is no member or its
     /// bytes can't be read (e.g. an encrypted member with no stored password).
     func activeDocumentMetadata() -> PDFDocumentMetadata? {
-        guard let memberID = activeMetadataMemberID(),
+        guard let memberID = metadataMemberID(),
               let data = document.memberPDFData[memberID] else { return nil }
         return try? PDFMetadataService.read(from: data)
     }
@@ -2489,7 +2502,7 @@ final class WorkspaceViewModel {
     /// True when the active member also carries an XMP `/Metadata` stream, which
     /// may repeat stale Info values independently of the fields edited here.
     var activeDocumentHasXMPMetadata: Bool {
-        guard let memberID = activeMetadataMemberID(),
+        guard let memberID = metadataMemberID(),
               let data = document.memberPDFData[memberID] else { return false }
         return QPDFService.hasXMPMetadata(data)
     }
@@ -2510,7 +2523,7 @@ final class WorkspaceViewModel {
         // Unlike an attachment edit, this one also writes the PDFKit lane, so the
         // member must be loaded — without a live document there is nowhere to put
         // the `documentAttributes` half and export would silently lose the edit.
-        guard let memberID = activeMetadataMemberID(),
+        guard let memberID = metadataMemberID(),
               loadedPDFs.contains(where: { $0.0.id == memberID }),
               let currentLive = document.memberPDFData[memberID] else { return false }
 
@@ -2556,7 +2569,7 @@ final class WorkspaceViewModel {
     /// or an encrypted member qpdf can't open) from `[]` ("readable, none yet") —
     /// the tab disables add/remove and shows a hint on `nil`.
     func activeMemberAttachments() -> [PDFAttachment]? {
-        guard let memberID = activeMetadataMemberID(),
+        guard let memberID = activeAttachmentsMemberID(),
               let data = document.memberPDFData[memberID] else { return nil }
         return try? AttachmentsService.list(in: data)
     }
@@ -2569,7 +2582,7 @@ final class WorkspaceViewModel {
     @discardableResult
     func addAttachment(_ fileURL: URL) -> Bool {
         guard canPerformMutatingAction() else { return false }
-        guard let memberID = activeMetadataMemberID(),
+        guard let memberID = activeAttachmentsMemberID(),
               let currentLive = document.memberPDFData[memberID] else { return false }
         let fileData = SecurityScopedAccess.withAccess(to: fileURL) { url in
             try? Data(contentsOf: url)
@@ -2595,7 +2608,7 @@ final class WorkspaceViewModel {
     @discardableResult
     func removeAttachment(named name: String) -> Bool {
         guard canPerformMutatingAction() else { return false }
-        guard let memberID = activeMetadataMemberID(),
+        guard let memberID = activeAttachmentsMemberID(),
               let currentLive = document.memberPDFData[memberID] else { return false }
         return mutateMemberBytes(
             of: memberID,
@@ -2616,7 +2629,7 @@ final class WorkspaceViewModel {
     /// with a quarantine attribute — the payload is untrusted content lifted out
     /// of an arbitrary PDF, so it should trip Gatekeeper like any other download.
     func extractAttachment(named name: String, to url: URL) {
-        guard let memberID = activeMetadataMemberID(),
+        guard let memberID = activeAttachmentsMemberID(),
               let data = document.memberPDFData[memberID],
               let bytes = try? AttachmentsService.extract(name, from: data) else {
             showEditMessage(L10n.string("status.attachments.extractFailed"), isError: true)
