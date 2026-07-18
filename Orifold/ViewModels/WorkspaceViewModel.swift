@@ -8056,10 +8056,16 @@ final class WorkspaceViewModel {
 
     // MARK: - Print
 
-    func printWorkspace() {
+    /// Prints the workspace. When `imposition` is non-nil the exported bytes are imposed
+    /// (booklet / N-up) before printing -- imposition runs on the fully-baked export data, so baked
+    /// annotations survive into the flattened sheets, exactly as the export path does.
+    func printWorkspace(imposition: ImpositionLayout? = nil) {
         let printableDocument: PDFDocument
         do {
-            let data = try dataForPDFExport()
+            var data = try dataForPDFExport()
+            if let imposition {
+                data = try PDFImpositionEngine.impose(data, layout: imposition)
+            }
             guard let document = PDFDocument(data: data) else {
                 exportError = ExportError(message: L10n.string("error.export.preparePrinting"))
                 return

@@ -288,6 +288,7 @@ extension Notification.Name {
     static let orifoldJumpToAnnotation = Notification.Name("orifoldJumpToAnnotation")
     static let orifoldEditAnnotation   = Notification.Name("orifoldEditAnnotation")
     static let orifoldPrint           = Notification.Name("orifoldPrint")
+    static let orifoldPrintNUp         = Notification.Name("orifoldPrintNUp")
     static let orifoldCreateCommentFromSelection = Notification.Name("orifoldCreateCommentFromSelection")
     static let orifoldZoomIn          = Notification.Name("orifoldZoomIn")
     static let orifoldZoomOut         = Notification.Name("orifoldZoomOut")

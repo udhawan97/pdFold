@@ -1341,10 +1341,37 @@ private struct ComfortCardButtonStyle: ButtonStyle {
     }
 }
 
+/// Export-sheet imposition choices, mapped to the engine's `ImpositionLayout`. `.none` is the
+/// "leave pages as-is" default so the picker can present a first option that clears imposition.
+private enum ImpositionChoice: String, CaseIterable, Identifiable {
+    case none, twoUp, booklet, fourUp
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .none: return L10n.string("imposition.none")
+        case .twoUp: return L10n.string("imposition.twoUp")
+        case .booklet: return L10n.string("imposition.booklet")
+        case .fourUp: return L10n.string("imposition.fourUp")
+        }
+    }
+
+    var layout: ImpositionLayout? {
+        switch self {
+        case .none: return nil
+        case .twoUp: return .nUp(rows: 1, cols: 2)
+        case .booklet: return .booklet
+        case .fourUp: return .nUp(rows: 2, cols: 2)
+        }
+    }
+}
+
 private struct ExportSheet: View {
     @Bindable var viewModel: WorkspaceViewModel
     @Binding var isPresented: Bool
     @State private var selectedFormat: WorkspaceExportFormat = .pdf
+    @State private var imposition: ImpositionChoice = .none
     @State private var isProtectionExpanded = false
     @State private var protectWithPassword = false
     @State private var password = ""
@@ -1510,6 +1537,23 @@ private struct ExportSheet: View {
             .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.16), value: reduceFileSize)
 
             if selectedFormat == .pdf {
+                VStack(alignment: .leading, spacing: .dsSM) {
+                    Picker(L10n.string("imposition.label"), selection: $imposition) {
+                        ForEach(ImpositionChoice.allCases) { choice in
+                            Text(choice.label).tag(choice)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    if imposition != .none {
+                        Text(L10n.string("imposition.flattenNote.message"))
+                            .font(.dsCaption())
+                            .foregroundStyle(Color.dsTextTertiary)
+                    }
+                }
+            }
+
+            if selectedFormat == .pdf {
                 DisclosureGroup(isExpanded: $isSanitizeExpanded) {
                     VStack(alignment: .leading, spacing: .dsSM) {
                         Toggle(L10n.string("contentView.exportSheet.removeMetadata.toggle"), isOn: $removesMetadata)
@@ -1590,6 +1634,9 @@ private struct ExportSheet: View {
         }
         if selectedFormat == .pdf && sanitizeForSharing {
             options.sanitization = PDFSanitizationOptions(removesMetadata: removesMetadata)
+        }
+        if selectedFormat == .pdf, let layout = imposition.layout {
+            options.imposition = layout
         }
         if viewModel.exportWorkspace(as: selectedFormat, options: options) {
             isPresented = false

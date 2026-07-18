@@ -558,6 +558,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
             name: .orifoldPrint, object: nil)
         NotificationCenter.default.addObserver(
             context.coordinator,
+            selector: #selector(Coordinator.printNUpDocument(_:)),
+            name: .orifoldPrintNUp, object: nil)
+        NotificationCenter.default.addObserver(
+            context.coordinator,
             selector: #selector(Coordinator.createCommentFromSelection(_:)),
             name: .orifoldCreateCommentFromSelection, object: nil)
         NotificationCenter.default.addObserver(
@@ -1340,6 +1344,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
 
         @objc func printDocument(_ notification: Notification) {
             viewModel.printWorkspace()
+        }
+
+        @objc func printNUpDocument(_ notification: Notification) {
+            viewModel.printWorkspace(imposition: .nUp(rows: 1, cols: 2))
         }
 
         @objc func zoomIn(_ notification: Notification) {

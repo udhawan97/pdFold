@@ -37,6 +37,7 @@ struct AppCommands: Commands {
         CommandGroup(after: .saveItem) {
             DiscardCloseCommandButton(locale: locale)
             PrintCommandButton(locale: locale)
+            PrintNUpCommandButton(locale: locale)
         }
 
         CommandGroup(after: .toolbar) {
@@ -313,6 +314,20 @@ private struct PrintCommandButton: View {
             NotificationCenter.default.post(name: .orifoldPrint, object: nil)
         }
         .keyboardShortcut("p", modifiers: .command)
+        .disabled(viewModel == nil)
+    }
+}
+
+/// N-up (2-up) print variant: imposes the export bytes onto half-size grid sheets before printing.
+private struct PrintNUpCommandButton: View {
+    @FocusedValue(\.orifoldWorkspaceViewModel) private var viewModel
+    var locale: Locale
+
+    var body: some View {
+        Button(L10n.string("imposition.print.nup", locale: locale)) {
+            NotificationCenter.default.post(name: .orifoldPrintNUp, object: nil)
+        }
+        .keyboardShortcut("p", modifiers: [.command, .shift])
         .disabled(viewModel == nil)
     }
 }
