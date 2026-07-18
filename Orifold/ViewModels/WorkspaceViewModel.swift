@@ -2423,13 +2423,6 @@ final class WorkspaceViewModel {
 
     // MARK: - Document metadata
 
-    private struct MemberMetadataSnapshot {
-        var live: Data
-        var original: Data?
-        var objectBase: Data?
-        var attributes: [AnyHashable: Any]?
-    }
-
     /// The member backing the currently-selected page, else the first member.
     /// The Info tab is workspace-level, so "which document" follows the current
     /// page selection.
@@ -2476,83 +2469,26 @@ final class WorkspaceViewModel {
     @discardableResult
     func applyMetadataEdit(_ metadata: PDFDocumentMetadata) -> Bool {
         guard canPerformMutatingAction() else { return false }
+        // Unlike an attachment edit, this one also writes the PDFKit lane, so the
+        // member must be loaded — without a live document there is nowhere to put
+        // the `documentAttributes` half and export would silently lose the edit.
         guard let memberID = activeMetadataMemberID(),
-              let loadedIndex = loadedPDFs.firstIndex(where: { $0.0.id == memberID }),
+              loadedPDFs.contains(where: { $0.0.id == memberID }),
               let currentLive = document.memberPDFData[memberID] else { return false }
 
-        func transform(_ data: Data) -> Data? {
+        return mutateMemberBytes(
+            of: memberID,
+            currentLive: currentLive,
+            actionNameKey: "undo.editMetadata",
+            failureKey: "status.metadata.applyFailed",
+            options: MemberMutationOptions(
+                nextDocumentAttributes: { [self] base in
+                    documentAttributes(basedOn: base, applying: metadata)
+                },
+                invalidatesAnalysisCaches: true
+            )
+        ) { data in
             try? PDFMetadataService.write(metadata, to: data)
-        }
-
-        guard let newLive = transform(currentLive) else {
-            showEditMessage(L10n.string("status.metadata.applyFailed"), isError: true)
-            return false
-        }
-        // The replay bases (pristine + object base) carry NO baked edits, so
-        // transform them independently: re-adding metadata to the pristine base
-        // keeps a later edit replay from resurrecting the old metadata without
-        // double-applying the committed edits that `newLive` already bakes in.
-        var newOriginal: Data? = nil
-        if let original = originalMemberPDFData[memberID] {
-            guard let transformed = transform(original) else {
-                showEditMessage(L10n.string("status.metadata.applyFailed"), isError: true)
-                return false
-            }
-            newOriginal = transformed
-        }
-        var newObjectBase: Data? = nil
-        if let objectBase = objectBaseData[memberID] {
-            guard let transformed = transform(objectBase) else {
-                showEditMessage(L10n.string("status.metadata.applyFailed"), isError: true)
-                return false
-            }
-            newObjectBase = transformed
-        }
-
-        let previous = MemberMetadataSnapshot(
-            live: currentLive,
-            original: originalMemberPDFData[memberID],
-            objectBase: objectBaseData[memberID],
-            attributes: loadedPDFs[loadedIndex].1.documentAttributes
-        )
-        let next = MemberMetadataSnapshot(
-            live: newLive,
-            original: newOriginal,
-            objectBase: newObjectBase,
-            attributes: documentAttributes(basedOn: previous.attributes, applying: metadata)
-        )
-        applyMemberMetadataSnapshot(next, to: memberID, previous: previous)
-        return true
-    }
-
-    private func applyMemberMetadataSnapshot(
-        _ snapshot: MemberMetadataSnapshot,
-        to memberID: UUID,
-        previous: MemberMetadataSnapshot
-    ) {
-        document.memberPDFData[memberID] = snapshot.live
-        if let original = snapshot.original {
-            originalMemberPDFData[memberID] = original
-        }
-        if let objectBase = snapshot.objectBase {
-            objectBaseData[memberID] = objectBase
-        }
-        if let loadedIndex = loadedPDFs.firstIndex(where: { $0.0.id == memberID }) {
-            loadedPDFs[loadedIndex].1.documentAttributes = snapshot.attributes
-        }
-        invalidatePageInspection(for: memberID)
-        textAnalysisCache.removeAll()
-        objectAnalysisCache.removeAll()
-        rebuild()
-        markWorkspaceModified()
-        // Recursive inverse: each application registers the undo that restores the
-        // other state, so undo AND redo both work and each is its own atomic step.
-        registerIsolatedUndo {
-            undoManager?.registerUndo(withTarget: self) { vm in
-                guard vm.canPerformUndoMutation() else { return }
-                vm.applyMemberMetadataSnapshot(previous, to: memberID, previous: snapshot)
-            }
-            undoManager?.setActionName(L10n.string("undo.editMetadata"))
         }
     }
 
@@ -2576,12 +2512,6 @@ final class WorkspaceViewModel {
     }
 
     // MARK: - Attachments
-
-    private struct MemberAttachmentsSnapshot {
-        var live: Data
-        var original: Data?
-        var objectBase: Data?
-    }
 
     /// Every attachment on the currently-targeted member, for the Attachments
     /// inspector tab. `nil` distinguishes "can't manage attachments" (no member,
@@ -2612,8 +2542,8 @@ final class WorkspaceViewModel {
         }
         let name = fileURL.lastPathComponent
         let mimeType = attachmentMIMEType(for: fileURL)
-        return applyAttachmentsTransform(
-            to: memberID,
+        return mutateMemberBytes(
+            of: memberID,
             currentLive: currentLive,
             actionNameKey: "undo.addAttachment",
             failureKey: "status.attachments.addFailed"
@@ -2629,8 +2559,8 @@ final class WorkspaceViewModel {
         guard canPerformMutatingAction() else { return false }
         guard let memberID = activeMetadataMemberID(),
               let currentLive = document.memberPDFData[memberID] else { return false }
-        return applyAttachmentsTransform(
-            to: memberID,
+        return mutateMemberBytes(
+            of: memberID,
             currentLive: currentLive,
             actionNameKey: "undo.removeAttachment",
             failureKey: "status.attachments.removeFailed"
@@ -2671,54 +2601,98 @@ final class WorkspaceViewModel {
         UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
     }
 
+    // MARK: - Member byte mutation
+
+    /// Every lane one member-byte mutation swaps, captured so it can be restored
+    /// wholesale by undo. `original` and `objectBase` are nil when the member has
+    /// no such lane; `attributes` is meaningful only when the mutation declares
+    /// `nextDocumentAttributes`, and nil there legitimately means "this member had
+    /// no attributes", which undo must restore faithfully.
+    private struct MemberByteSnapshot {
+        var live: Data
+        var original: Data?
+        var objectBase: Data?
+        var attributes: [AnyHashable: Any]?
+    }
+
+    /// The lanes a mutation touches BEYOND the three byte lanes every mutation
+    /// swaps. Both are opt-in because the two callers genuinely differ, and the
+    /// difference is load-bearing rather than incidental:
+    ///
+    /// - `nextDocumentAttributes` — metadata must also land on the live PDFDocument
+    ///   because export re-serializes `loadedPDFs`, not the qpdf byte lane. Supply
+    ///   a closure mapping the member's current attributes to the edited ones.
+    ///   Attachment edits leave the PDFKit lane alone.
+    /// - `invalidatesAnalysisCaches` — metadata clears the text/object analysis
+    ///   caches, attachments does not. Both edits are document-level and change no
+    ///   page content, so the metadata clear looks like over-invalidation; it is
+    ///   preserved here rather than quietly dropped, because narrowing it is a
+    ///   behaviour change that deserves its own commit and its own test.
+    private struct MemberMutationOptions {
+        var nextDocumentAttributes: (([AnyHashable: Any]?) -> [AnyHashable: Any])?
+        var invalidatesAnalysisCaches: Bool = false
+    }
+
     /// Applies `transform` to the member's live bytes and, when present, its
-    /// pristine and object-edit bases (so a later edit replay can't resurrect the
-    /// old attachment set), then commits the swap with a recursive-inverse undo.
-    /// Any lane failing aborts the whole edit without mutating state.
+    /// pristine and object-edit bases, then commits the swap with a single
+    /// recursive-inverse undo step.
+    ///
+    /// The replay bases carry NO baked edits, so they are transformed
+    /// independently: re-applying the change to the pristine base keeps a later
+    /// edit replay from resurrecting the old state without double-applying the
+    /// committed edits the live bytes already bake in.
+    ///
+    /// Any lane failing aborts the whole edit having mutated nothing — every
+    /// transform runs and is validated before the first byte is written.
     @discardableResult
-    private func applyAttachmentsTransform(
-        to memberID: UUID,
+    private func mutateMemberBytes(
+        of memberID: UUID,
         currentLive: Data,
         actionNameKey: String,
         failureKey: String,
+        options: MemberMutationOptions = MemberMutationOptions(),
         _ transform: (Data) -> Data?
     ) -> Bool {
-        guard let newLive = transform(currentLive) else {
+        func failed() -> Bool {
             showEditMessage(L10n.string(forKey: failureKey), isError: true)
             return false
         }
+
+        guard let newLive = transform(currentLive) else { return failed() }
         var newOriginal: Data? = nil
         if let original = originalMemberPDFData[memberID] {
-            guard let transformed = transform(original) else {
-                showEditMessage(L10n.string(forKey: failureKey), isError: true)
-                return false
-            }
+            guard let transformed = transform(original) else { return failed() }
             newOriginal = transformed
         }
         var newObjectBase: Data? = nil
         if let objectBase = objectBaseData[memberID] {
-            guard let transformed = transform(objectBase) else {
-                showEditMessage(L10n.string(forKey: failureKey), isError: true)
-                return false
-            }
+            guard let transformed = transform(objectBase) else { return failed() }
             newObjectBase = transformed
         }
 
-        let previous = MemberAttachmentsSnapshot(
+        let currentAttributes = loadedPDFs.first { $0.0.id == memberID }?.1.documentAttributes
+        let previous = MemberByteSnapshot(
             live: currentLive,
             original: originalMemberPDFData[memberID],
-            objectBase: objectBaseData[memberID]
+            objectBase: objectBaseData[memberID],
+            attributes: currentAttributes
         )
-        let next = MemberAttachmentsSnapshot(live: newLive, original: newOriginal, objectBase: newObjectBase)
-        applyMemberAttachmentsSnapshot(next, to: memberID, previous: previous, actionNameKey: actionNameKey)
+        let next = MemberByteSnapshot(
+            live: newLive,
+            original: newOriginal,
+            objectBase: newObjectBase,
+            attributes: options.nextDocumentAttributes?(currentAttributes)
+        )
+        applyMemberByteSnapshot(next, to: memberID, previous: previous, actionNameKey: actionNameKey, options: options)
         return true
     }
 
-    private func applyMemberAttachmentsSnapshot(
-        _ snapshot: MemberAttachmentsSnapshot,
+    private func applyMemberByteSnapshot(
+        _ snapshot: MemberByteSnapshot,
         to memberID: UUID,
-        previous: MemberAttachmentsSnapshot,
-        actionNameKey: String
+        previous: MemberByteSnapshot,
+        actionNameKey: String,
+        options: MemberMutationOptions
     ) {
         document.memberPDFData[memberID] = snapshot.live
         if let original = snapshot.original {
@@ -2727,13 +2701,25 @@ final class WorkspaceViewModel {
         if let objectBase = snapshot.objectBase {
             objectBaseData[memberID] = objectBase
         }
+        if options.nextDocumentAttributes != nil,
+           let loadedIndex = loadedPDFs.firstIndex(where: { $0.0.id == memberID }) {
+            loadedPDFs[loadedIndex].1.documentAttributes = snapshot.attributes
+        }
         invalidatePageInspection(for: memberID)
+        if options.invalidatesAnalysisCaches {
+            textAnalysisCache.removeAll()
+            objectAnalysisCache.removeAll()
+        }
         rebuild()
         markWorkspaceModified()
+        // Recursive inverse: each application registers the undo that restores the
+        // other state, so undo AND redo both work and each is its own atomic step.
         registerIsolatedUndo {
             undoManager?.registerUndo(withTarget: self) { vm in
                 guard vm.canPerformUndoMutation() else { return }
-                vm.applyMemberAttachmentsSnapshot(previous, to: memberID, previous: snapshot, actionNameKey: actionNameKey)
+                vm.applyMemberByteSnapshot(
+                    previous, to: memberID, previous: snapshot,
+                    actionNameKey: actionNameKey, options: options)
             }
             undoManager?.setActionName(L10n.string(forKey: actionNameKey))
         }
