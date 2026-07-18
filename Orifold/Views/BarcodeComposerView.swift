@@ -130,16 +130,3 @@ struct BarcodeComposerView: View {
         NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
     }
 }
-
-private extension BarcodeSymbology {
-    /// The standard, brand-neutral name for each symbology. Deliberately not localized —
-    /// "QR", "Aztec", "Code 128", and "PDF417" are the codes' proper names in every language.
-    var displayName: String {
-        switch self {
-        case .qr: return "QR"
-        case .aztec: return "Aztec"
-        case .code128: return "Code 128"
-        case .pdf417: return "PDF417"
-        }
-    }
-}

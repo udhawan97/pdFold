@@ -386,6 +386,11 @@ struct ContentView: View {
                 .environmentObject(languageManager)
                 .environment(\.locale, languageManager.effectiveLocale)
         }
+        .sheet(item: $viewModel.barcodeScanResults) { results in
+            BarcodeScanResultSheet(barcodes: results.barcodes)
+                .environmentObject(languageManager)
+                .environment(\.locale, languageManager.effectiveLocale)
+        }
         .popover(isPresented: $showTOC, arrowEdge: .top) {
             TOCView(viewModel: viewModel) { pageIndex in
                 NotificationCenter.default.post(name: .orifoldJumpToPageIndex, object: pageIndex)
@@ -3010,6 +3015,8 @@ private struct ToolbarOverflowPresentations: ViewModifier {
                     case .guide: isShowingGuide = true
                     case .deletePages: isConfirmingOverflowDelete = true
                     case .discardAndClose: isConfirmingDiscardClose = true
+                    case .insertBarcode: viewModel.isShowingBarcodeComposer = true
+                    case .scanBarcodes: viewModel.scanBarcodesOnCurrentPage()
                     }
                 }
             }
@@ -3046,6 +3053,8 @@ enum MoreRoute: Equatable {
     case guide
     case deletePages
     case discardAndClose
+    case insertBarcode
+    case scanBarcodes
 }
 
 /// Resolves the AppKit window hosting this document scene and hands it back so the view
@@ -3127,6 +3136,12 @@ private struct ToolbarMoreMenu: View {
                 .disabled(selectionEmpty)
             MoreMenuRow(systemImage: "plus.square.on.square", titleKey: "more.pages.duplicate", action: onDuplicate)
                 .disabled(selectionEmpty)
+
+            MoreMenuRow(systemImage: "barcode", titleKey: "barcode.insert.title") { onRoute(.insertBarcode) }
+                .disabled(viewModel.pageCount == 0)
+            MoreMenuRow(systemImage: "qrcode.viewfinder", titleKey: "barcode.scan.title") { onRoute(.scanBarcodes) }
+                .disabled(viewModel.pageCount == 0)
+
             MoreMenuRow(systemImage: "trash", titleKey: "more.pages.delete", isDestructive: true) {
                 onRoute(.deletePages)
             }

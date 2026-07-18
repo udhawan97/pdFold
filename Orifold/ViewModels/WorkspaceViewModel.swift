@@ -298,8 +298,11 @@ final class WorkspaceViewModel {
     var pendingHankoOptions: PendingHankoPlacementOptions? = nil
     var pendingBarcodeOptions: PendingBarcodePlacementOptions? = nil
     /// Drives the barcode/QR composer sheet (Feature G). Set from the More-menu "Insert
-    /// barcode/QR…" row; the sheet arms `pendingBarcodeOptions` on Insert, then dismisses.
+    /// barcode/QR" row; the sheet arms `pendingBarcodeOptions` on Insert, then dismisses.
     var isShowingBarcodeComposer = false
+    /// Non-nil while the barcode scan-result sheet is presented; carries the barcodes found on
+    /// the scanned page (empty array → the sheet shows its "no barcodes" empty state).
+    var barcodeScanResults: BarcodeScanResults? = nil
     var selectedStampDecorationID: UUID? = nil {
         didSet { if selectedStampDecorationID != nil { objectSelection = nil } }
     }
@@ -4757,6 +4760,15 @@ final class WorkspaceViewModel {
         let height = max(1, pixelSize.height)
         let scale = longestEdge / max(width, height)
         return CGSize(width: width * scale, height: height * scale)
+    }
+
+    /// Scans the currently-viewed page for barcodes and presents the result sheet (which shows
+    /// its own empty state when none are found). Runs synchronously: it is a deliberate,
+    /// one-shot user action on a single page, and Vision detection is on-device and offline.
+    func scanBarcodesOnCurrentPage() {
+        let index = combinedPageIndex(forWorkspacePageNumber: max(1, currentPageNumber)) ?? 0
+        let found = combinedPDF.page(at: index).map { BarcodeScanner.scan(page: $0) } ?? []
+        barcodeScanResults = BarcodeScanResults(barcodes: found)
     }
 
     func stampDecoration(id: UUID) -> PageDecoration? {
