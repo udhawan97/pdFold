@@ -6,17 +6,22 @@ struct WorkspaceExportOptions: Equatable {
     var compressionPreset: PDFCompressionPreset?
     var embedsEditableWorkspaceState: Bool
     var sanitization: PDFSanitizationOptions?
+    /// Booklet / N-up imposition applied LAST, on the fully-baked + compressed export bytes
+    /// (imposition flattens pages into XObjects and would otherwise drop baked annotations).
+    var imposition: ImpositionLayout?
 
     init(encryption: PDFEncryptionOptions? = nil,
          lockFormAnswers: Bool = false,
          compressionPreset: PDFCompressionPreset? = nil,
          embedsEditableWorkspaceState: Bool = false,
-         sanitization: PDFSanitizationOptions? = nil) {
+         sanitization: PDFSanitizationOptions? = nil,
+         imposition: ImpositionLayout? = nil) {
         self.encryption = encryption
         self.lockFormAnswers = lockFormAnswers
         self.compressionPreset = compressionPreset
         self.embedsEditableWorkspaceState = embedsEditableWorkspaceState
         self.sanitization = sanitization
+        self.imposition = imposition
     }
 }
 

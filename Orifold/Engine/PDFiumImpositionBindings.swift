@@ -38,3 +38,11 @@ func imp_ImportPages(_ destDoc: OpaquePointer?, _ srcDoc: OpaquePointer?,
 /// (→ FPDF_CloseDocument), or NULL on failure.
 @_silgen_name("FPDF_CreateNewDocument")
 func imp_CreateNewDocument() -> OpaquePointer?
+
+/// fpdf_edit.h: create a blank page in `document` at 0-indexed `pageIndex` with the given
+/// size (points). Used to materialise the `-1` blank leaves a saddle-stitch booklet needs so the
+/// page count stays a multiple of 4. Returns an FPDF_PAGE the caller closes (→ FPDF_ClosePage /
+/// `poe_ClosePage`). NOT bound elsewhere in the repo.
+@_silgen_name("FPDFPage_New")
+func imp_NewPage(_ document: OpaquePointer?, _ pageIndex: Int32,
+                 _ width: Double, _ height: Double) -> OpaquePointer?

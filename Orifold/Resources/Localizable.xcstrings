@@ -12465,6 +12465,129 @@
         }
       }
     },
+    "error.imposition.invalidPDF": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This PDF couldn’t be read for booklet or N-up imposition."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo leer este PDF para la imposición de folleto o N-up."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce PDF n’a pas pu être lu pour l’imposition livret ou N-up."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "बुकलेट या N-up इम्पोज़िशन के लिए यह PDF पढ़ा नहीं जा सका।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "小冊子またはN-up面付けのためにこのPDFを読み取れませんでした。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取此 PDF 以进行小册子或 N-up 拼版。"
+          }
+        }
+      }
+    },
+    "error.imposition.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifold couldn’t impose the pages."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifold no pudo imponer las páginas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifold n’a pas pu imposer les pages."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifold पृष्ठों को इम्पोज़ नहीं कर सका।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifoldはページを面付けできませんでした。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orifold 无法拼版这些页面。"
+          }
+        }
+      }
+    },
+    "error.imposition.saveFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The imposed PDF couldn’t be saved."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo guardar el PDF impuesto."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le PDF imposé n’a pas pu être enregistré."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इम्पोज़ किया गया PDF सहेजा नहीं जा सका।"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "面付けしたPDFを保存できませんでした。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存拼版后的 PDF。"
+          }
+        }
+      }
+    },
     "error.markup.eraseTargetMissing": {
       "extractionState": "manual",
       "localizations": {

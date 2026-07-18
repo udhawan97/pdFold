@@ -5933,7 +5933,17 @@ final class WorkspaceViewModel {
         } else {
             reducedData = pdfData
         }
-        let sanitizedData = try Self.sanitized(reducedData, options: options.sanitization)
+        // Imposition runs AFTER bake + compression so it operates on bytes whose annotations
+        // (stamps/signatures/markup) are already flattened into page content -- N-up flattens pages
+        // into form XObjects and would drop any live annotations. It then flows through sanitize +
+        // encryption below so those options are never silently dropped when combined with a layout.
+        let imposedData: Data
+        if let layout = options.imposition {
+            imposedData = try PDFImpositionEngine.impose(reducedData, layout: layout)
+        } else {
+            imposedData = reducedData
+        }
+        let sanitizedData = try Self.sanitized(imposedData, options: options.sanitization)
         guard let encryption = options.encryption else { return sanitizedData }
         let encryptedData = try PDFEncryptionService.encryptedData(from: sanitizedData, options: encryption)
         if options.compressionPreset != nil {
