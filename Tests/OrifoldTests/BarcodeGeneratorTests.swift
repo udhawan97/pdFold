@@ -40,4 +40,17 @@ final class BarcodeGeneratorTests: XCTestCase {
             XCTAssertEqual(error as? BarcodeError, .payloadTooLong(max: BarcodeSymbology.code128.maxPayloadBytes))
         }
     }
+
+    /// Regression: the QR cap must match the Level-M capacity actually used to generate. A payload
+    /// in the old 2,332–2,953 band must be rejected up-front as too long, not pass the guard and
+    /// then silently fail generation with no preview or error.
+    func testQRPayloadInLevelMBandThrowsTooLongNotGenerationFailed() throws {
+        XCTAssertLessThanOrEqual(BarcodeSymbology.qr.maxPayloadBytes, 2_331)
+        let inOldBand = String(repeating: "A", count: 2_400) // fit Level L, exceed Level M
+        XCTAssertThrowsError(try BarcodeGenerator.image(for: inOldBand, symbology: .qr)) { error in
+            XCTAssertEqual(error as? BarcodeError, .payloadTooLong(max: BarcodeSymbology.qr.maxPayloadBytes))
+        }
+        // A comfortably-sized QR still generates.
+        XCTAssertNoThrow(try BarcodeGenerator.image(for: "https://orifold.app", symbology: .qr))
+    }
 }

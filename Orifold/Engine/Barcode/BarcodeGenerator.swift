@@ -29,7 +29,10 @@ enum BarcodeSymbology: String, CaseIterable, Codable, Identifiable {
     /// throws rather than emitting a barcode no scanner could resolve.
     var maxPayloadBytes: Int {
         switch self {
-        case .qr: return 2_953
+        // Version-40 byte-mode capacity at correction Level M (the level `generate` requests
+        // below). The higher 2,953 figure is Level L only — advertising it here would let
+        // payloads in the 2,332–2,953 band pass this guard and then silently fail generation.
+        case .qr: return 2_331
         case .aztec: return 1_914
         case .pdf417: return 1_108
         case .code128: return 80

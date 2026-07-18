@@ -4763,12 +4763,19 @@ final class WorkspaceViewModel {
     }
 
     /// Scans the currently-viewed page for barcodes and presents the result sheet (which shows
-    /// its own empty state when none are found). Runs synchronously: it is a deliberate,
-    /// one-shot user action on a single page, and Vision detection is on-device and offline.
+    /// its own empty state when none are found). The page is rasterized on the main actor
+    /// (`PDFPage` isn't `Sendable`), then Vision detection runs off-main so the first-scan model
+    /// warmup (~1s) doesn't freeze the UI — mirroring `PDFOCRService`'s detached-task pattern.
     func scanBarcodesOnCurrentPage() {
         let index = combinedPageIndex(forWorkspacePageNumber: max(1, currentPageNumber)) ?? 0
-        let found = combinedPDF.page(at: index).map { BarcodeScanner.scan(page: $0) } ?? []
-        barcodeScanResults = BarcodeScanResults(barcodes: found)
+        guard let image = combinedPDF.page(at: index).flatMap({ PDFOCRService.rasterizedImage(for: $0) }) else {
+            barcodeScanResults = BarcodeScanResults(barcodes: [])
+            return
+        }
+        Task.detached(priority: .userInitiated) {
+            let found = BarcodeScanner.scan(image)
+            await MainActor.run { self.barcodeScanResults = BarcodeScanResults(barcodes: found) }
+        }
     }
 
     func stampDecoration(id: UUID) -> PageDecoration? {
