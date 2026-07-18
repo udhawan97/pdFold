@@ -21,9 +21,14 @@ post-release rebuild self-heals within 24h.
 
 ## Gotcha
 
-`src/lib/release.ts` and `src/data/stats.json` both hard-code the app version and must be
-bumped alongside `project.yml`. They drift independently — `release.ts` is currently stale at
-`0.8.10` while `stats.json` tracks the shipped `0.8.14`.
+`src/lib/release.ts` (`LAST_KNOWN_GOOD`) and `src/data/stats.json` both hard-code the app
+version and must be bumped alongside `project.yml` on every release. They drift
+independently and nothing fails when they do:
+
+- `LAST_KNOWN_GOOD` is only read when the GitHub API is unreachable or rate-limited at build
+  time, so a stale value stays invisible until the day a build actually needs it.
+- `stats.json` numbers (tests, files, loc) are rendered as-is and are currently stale —
+  it claims 752 tests / 186 files, against an actual 877 tests / 129 app source files.
 
 ## Reference
 

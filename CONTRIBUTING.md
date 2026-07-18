@@ -33,7 +33,7 @@ Requirements:
 
 - macOS 14 or later
 - Xcode 16+
-- [XcodeGen](https://github.com/yonsson/XcodeGen) — `brew install xcodegen`
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen) — `brew install xcodegen`
 
 ## Pull request workflow
 
