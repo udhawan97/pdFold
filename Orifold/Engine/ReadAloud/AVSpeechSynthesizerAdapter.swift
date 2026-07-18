@@ -7,9 +7,12 @@ import Foundation
 /// audio behaviour behind this one seam. The controller never touches AVFoundation directly —
 /// it only speaks/pauses/stops through the protocol and receives range/finish callbacks.
 ///
-/// `AVSpeechSynthesizerDelegate` methods are delivered on the main thread (the same context
-/// speaking was started from), which is where `ReadAloudController` — a `@MainActor` type —
-/// lives, so forwarding the callbacks straight through is safe.
+/// `AVSpeechSynthesizerDelegate` callbacks drive `@MainActor` state on `ReadAloudController`
+/// (its `highlight`/`state`). Their delivery thread isn't contractually guaranteed across OS
+/// versions, so the delegate methods hop to the main queue before invoking the closures rather
+/// than trust the delivery thread — matching the explicit main hop the downstream highlight
+/// bridge already performs. `DispatchQueue.main.async` (not a detached `Task`) preserves the
+/// relative order of the will-speak and finish callbacks.
 final class AVSpeechSynthesizerAdapter: NSObject, SpeechSynthesizing, AVSpeechSynthesizerDelegate {
     var onWillSpeakRange: ((NSRange) -> Void)?
     var onFinishUtterance: (() -> Void)?
@@ -52,10 +55,14 @@ final class AVSpeechSynthesizerAdapter: NSObject, SpeechSynthesizing, AVSpeechSy
         willSpeakRangeOfSpeechString characterRange: NSRange,
         utterance: AVSpeechUtterance
     ) {
-        onWillSpeakRange?(characterRange)
+        DispatchQueue.main.async { [weak self] in
+            self?.onWillSpeakRange?(characterRange)
+        }
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        onFinishUtterance?()
+        DispatchQueue.main.async { [weak self] in
+            self?.onFinishUtterance?()
+        }
     }
 }
