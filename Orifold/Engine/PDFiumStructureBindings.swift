@@ -15,6 +15,15 @@ import Foundation
 // tooling exists for it, so "tell the user their document is untagged" is in scope
 // while "make it tagged" is not.
 
+/// `fpdf_catalog.h` — whether the catalog marks this as a tagged PDF (`/MarkInfo
+/// /Marked true`). It lives in this file rather than alongside the archival-readiness
+/// checks that also want it, because the WAVE_4 plan scheduled the same C symbol to be
+/// bound by two features under two prefixes. Two `@_silgen_name` declarations of one
+/// symbol with different signatures are exactly what breaks `swift build -c release`,
+/// so it is bound once, here, and archival readiness reuses it.
+@_silgen_name("FPDFCatalog_IsTagged")
+func pst_Catalog_IsTagged(_ document: OpaquePointer?) -> Int32
+
 @_silgen_name("FPDF_StructTree_GetForPage")
 func pst_StructTree_GetForPage(_ page: OpaquePointer?) -> OpaquePointer?
 
