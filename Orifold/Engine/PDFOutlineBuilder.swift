@@ -2,15 +2,21 @@ import AppKit
 import Foundation
 import PDFKit
 
-/// Builds a PDF's embedded bookmark tree (`/Outlines`) from headings recovered out of a
-/// laid-out `NSAttributedString`. The write-side counterpart to `PDFOutlineReader`.
+/// Builds a PDF's embedded bookmark tree (`/Outlines`). The write-side counterpart to
+/// `PDFOutlineReader`, with two entry points that share one nesting rule:
 ///
-/// Only safe for documents this app *renders from scratch* (markdown/text import). It is
-/// deliberately not a general outline editor: persisting `outlineRoot` costs a
+/// - `headings(in:pageCharacterRanges:)` + `outline(from:in:)` recover headings from a
+///   laid-out `NSAttributedString` (markdown/text import).
+/// - `apply(_:to:)` re-applies an outline already read off member documents, which is how
+///   export preserves the bookmarks of an *imported* PDF.
+///
+/// Still deliberately not a general outline editor. Persisting `outlineRoot` costs a
 /// `dataRepresentation()` round trip, which destroys the qpdf-preserved text layer of an
-/// imported PDF — the hazard recorded against the bookmark-editor roadmap item. A document
-/// born from `renderAttributedString` has no such layer to lose, because these very bytes
-/// are what create it.
+/// imported PDF — the hazard recorded against the bookmark-editor roadmap item. Both entry
+/// points are safe for the narrow reason that neither has such a layer to lose: a document
+/// born from `renderAttributedString` never had one, and by the time export writes an
+/// outline it has already rebuilt and re-serialized those bytes through PDFKit. Writing
+/// onto bytes the app means to *keep* is the case that remains off-limits.
 enum PDFOutlineBuilder {
 
     /// Marks a run as belonging to a markdown heading block, carrying its level (1–6).
@@ -94,5 +100,28 @@ enum PDFOutlineBuilder {
         }
 
         return root.numberOfChildren > 0 ? root : nil
+    }
+
+    /// Re-applies bookmarks read off member documents onto `document`, replacing any
+    /// existing outline. The export path's counterpart to the markdown one above.
+    ///
+    /// `localPageIndex` is an index into `document`; callers spanning several source
+    /// documents offset it themselves. Nodes pointing past the end are skipped rather
+    /// than clamped — a bookmark aimed at a page that is not there is worse than a
+    /// missing one.
+    ///
+    /// Reuses `outline(from:in:)` rather than walking the list itself. The reader's
+    /// `depth` is already the 0-based nesting the outline should show, so it maps onto a
+    /// 1-based `level` directly, and containment then reproduces that nesting exactly —
+    /// including the awkward cases, where a node whose depth jumps more than one level
+    /// past its predecessor lands under the deepest parent that does exist. Malformed
+    /// `/Outlines` trees are common, and the reader's own promotion rule (which lifts an
+    /// unreadable node's children to its level) emits such jumps from well-formed input.
+    static func apply(_ nodes: [PDFOutlineReader.OutlineNode], to document: PDFDocument) {
+        let headings = nodes.map {
+            Heading(title: $0.title, level: $0.depth + 1, pageIndex: $0.localPageIndex)
+        }
+        guard let root = outline(from: headings, in: document) else { return }
+        document.outlineRoot = root
     }
 }
