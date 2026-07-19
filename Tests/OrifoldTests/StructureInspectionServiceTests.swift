@@ -94,6 +94,50 @@ final class StructureInspectionServiceTests: XCTestCase {
         XCTAssertFalse(StructureInspectionService.documentIsTagged(Data("nope".utf8)))
     }
 
+    // MARK: - View-model accessor
+
+    @MainActor
+    func testCurrentPageStructureReadsTheActivePageOfTheActiveMember() throws {
+        let viewModel = makeViewModel(memberData: taggedFixture())
+        viewModel.currentPageNumber = 1
+
+        let structure = try XCTUnwrap(viewModel.currentPageStructure())
+
+        XCTAssertTrue(structure.isTagged)
+        XCTAssertEqual(flatten(structure.roots).map(\.role), ["Document", "H1", "P", "Figure"])
+    }
+
+    @MainActor
+    func testCurrentPageStructureIsNilWhenTheWorkspaceHasNoPages() {
+        let viewModel = WorkspaceViewModel(document: WorkspaceDocument())
+
+        XCTAssertNil(viewModel.currentPageStructure())
+    }
+
+    @MainActor
+    func testCurrentPageStructureFlagsAnUntaggedMember() throws {
+        let viewModel = makeViewModel(memberData: untaggedFixture())
+        viewModel.currentPageNumber = 1
+
+        let structure = try XCTUnwrap(viewModel.currentPageStructure())
+
+        XCTAssertFalse(structure.isTagged)
+        XCTAssertTrue(structure.roots.isEmpty)
+    }
+
+    @MainActor
+    private func makeViewModel(memberData: Data) -> WorkspaceViewModel {
+        let document = WorkspaceDocument()
+        var member = MemberDocument(displayName: "Fixture", sourcePDFRef: "fixture.pdf")
+        let pageCount = PDFDocument(data: memberData)?.pageCount ?? 0
+        let refs = (0..<pageCount).map { PageRef(memberDocId: member.id, sourcePageIndex: $0) }
+        member.pageRefs = refs.map(\.id)
+        document.workspace.documents = [member]
+        document.workspace.pageOrder = refs
+        document.memberPDFData[member.id] = memberData
+        return WorkspaceViewModel(document: document)
+    }
+
     // MARK: - Fixtures
 
     private func fixture(_ name: String) -> Data {
