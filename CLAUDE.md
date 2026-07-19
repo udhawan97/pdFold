@@ -10,7 +10,7 @@ and spans files. This file covers mechanics; CONTEXT.md covers meaning.
 ## Commands
 
 ```bash
-swift build && swift test          # what ships; 877 tests, XCTest only
+swift build && swift test          # what ships; ~900 tests, XCTest only
 swift build -c release             # REQUIRED after touching @_silgen_name bindings
 swift test --filter PDFSmokeTests  # fast smoke
 swiftlint lint --quiet
