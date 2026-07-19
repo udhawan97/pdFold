@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		000CBA3FBB86FDD613303761 /* UpdateDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D57F1DA1D4D8F193C71E36 /* UpdateDownloader.swift */; };
+		00165DD14A7EC1132C268064 /* PDFPageStringGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18D9E19BF30B6B2510C4145C /* PDFPageStringGuardTests.swift */; };
 		00256196C390AB2A5962C9C9 /* EditorNoReflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A71C4E6D6322EA63656E3532 /* EditorNoReflowTests.swift */; };
 		0055EC1C209B2139C0E1AB84 /* LanguageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2230CE280817EFAC54C5F0 /* LanguageManager.swift */; };
 		01E545D2358F23A2EE94CAB1 /* ObjectEditEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111474F391B93B5EBC05CDBA /* ObjectEditEngineTests.swift */; };
@@ -293,6 +294,7 @@
 		144E694787595BA401D105FB /* OrifoldApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrifoldApp.swift; sourceTree = "<group>"; };
 		14A9C9AB5877320CB4BE6E79 /* PDFiumImpositionBindings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFiumImpositionBindings.swift; sourceTree = "<group>"; };
 		182B83058123FA5D2495F8A3 /* UpdateLaunchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateLaunchCoordinator.swift; sourceTree = "<group>"; };
+		18D9E19BF30B6B2510C4145C /* PDFPageStringGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFPageStringGuardTests.swift; sourceTree = "<group>"; };
 		19CDDDF856BFA65B068B9DCE /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		1CD288AB754ED1362F12ED46 /* PendingPlacementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingPlacementTests.swift; sourceTree = "<group>"; };
 		1E5B1F2242D9F71CD242E475 /* SigningErrorMessageClarityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SigningErrorMessageClarityTests.swift; sourceTree = "<group>"; };
@@ -952,6 +954,7 @@
 				6C86A44C1039DEDF1D7951D7 /* PDFOCRTests.swift */,
 				B321DB59AE5EB1D176843F8E /* PDFOutlineExportTests.swift */,
 				535C45CD722D582917F7064D /* PDFOutlineTOCTests.swift */,
+				18D9E19BF30B6B2510C4145C /* PDFPageStringGuardTests.swift */,
 				C8435C48AB8FDF829FF58120 /* PDFSigningTests.swift */,
 				9224708EB7D2E14889CE70DD /* PDFSmokeTests.swift */,
 				F57CC5E9E014F5C45DBE6F8F /* PDFTextEditingModelsTests.swift */,
@@ -1213,6 +1216,7 @@
 				BD040E1459C6B05D563A5F5A /* PDFOCRTests.swift in Sources */,
 				86057F8796BD279696C2CDEC /* PDFOutlineExportTests.swift in Sources */,
 				03DFED9231321C88D5064838 /* PDFOutlineTOCTests.swift in Sources */,
+				00165DD14A7EC1132C268064 /* PDFPageStringGuardTests.swift in Sources */,
 				AA23DE5D38181932692FD24F /* PDFSigningTests.swift in Sources */,
 				7599C2E975D393EA20D2FA69 /* PDFSmokeTests.swift in Sources */,
 				66709A4D15A6CA94C96AA64C /* PDFTextEditingModelsTests.swift in Sources */,
