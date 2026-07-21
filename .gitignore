@@ -73,3 +73,6 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# graphify knowledge graph (build artifact, regenerate with: graphify update .)
+graphify-out/
