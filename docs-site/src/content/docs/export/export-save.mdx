@@ -20,7 +20,11 @@ import Figure from '../../../components/Figure.astro';
 1. Click **Export** in the toolbar, press <Kbd>⌘E</Kbd>, or choose **File → Export**.
 2. Choose a format: PDF, DOCX, Markdown, plain text, HTML, PNG pages, or JPEG pages. Printing remains in **File → Print** or <Kbd>⌘P</Kbd>.
 3. For PDF, optionally turn on password protection, file-size reduction, sanitize-for-sharing, or an imposition layout. The extra settings appear directly below the option you enabled.
-4. Pick a location in the save panel and confirm.
+4. Pick a location in the save panel and confirm — Orifold asks where the file goes before it starts any work.
+
+<Callout variant="note">
+	Password protection, file-size reduction, sanitize, and imposition all run after you've chosen the destination, with a progress indicator and a working **Cancel**. The window stays responsive while they work.
+</Callout>
 
 <Figure src="/Orifold/assets/gifs/export-save-confirmation.png" alt="The Export dialog: Format set to PDF (.pdf), with Protect with password, Reduce file size, and Sanitize for sharing checkboxes, and Cancel / Export buttons." caption="The Export dialog — pick a format, toggle protection, compression, or sanitize, then Export." />
 

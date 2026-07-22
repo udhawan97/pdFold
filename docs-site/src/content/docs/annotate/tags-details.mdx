@@ -25,7 +25,9 @@ Tags belong to the Orifold workspace. They help with organization but are not wr
 3. Edit **Title**, **Author**, **Subject**, or **Keywords**.
 4. Click **Apply metadata**.
 
-The change is undoable and is written into a normal PDF export. In a combined workspace, these fields target the first member because a merged PDF can carry only one document-info dictionary.
+The change is undoable and is written into a normal PDF export. In a workspace holding several files, the Info tab names the file whose properties you're editing — always the first file, because a merged PDF can carry only one document-info dictionary and the first file's is the one a merged export keeps.
+
+Typing you haven't applied yet is kept. Switch to another inspector tab, click a page belonging to a different file, or undo something, and your in-progress edits are still waiting in the fields when you come back.
 
 <Callout variant="note">
 	If the PDF also contains XMP metadata, Orifold warns that some readers may prefer that separate metadata packet. The editor updates the standard PDF document-info fields; it does not rewrite the XMP packet.

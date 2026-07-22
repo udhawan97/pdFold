@@ -18,9 +18,19 @@ import Callout from '../../../components/Callout.astro';
 
 1. Choose Export, then enable password protection.
 2. Set the password and choose which permissions to restrict (printing, editing, and so on).
-3. Export — Orifold applies real AES-256 (PDF 2.0 / R6) encryption and verifies the result before writing the file.
+3. Export, then pick where the file should go — Orifold applies real AES-256 (PDF 2.0 / R6) encryption and verifies the result before writing the file.
 
 **Why it matters:** this is genuine AES-256, not a "protected" flag a reader can ignore — and Orifold re-opens the encrypted file to confirm the lock actually took before handing it to you.
+
+## Password rules
+
+An export password must be **at least 8 characters**. Below that, **Export** stays disabled and an inline message explains why.
+
+If the password is allowed but on the weak side — shortish and drawn from fewer than three of lowercase, uppercase, digits, and symbols — Orifold shows a hint suggesting a stronger one. That hint doesn't block the export; it's advice, not a rule.
+
+<Callout variant="note">
+	Encryption runs after you've chosen the destination, with a progress indicator and a working **Cancel**, and the window stays responsive while it works.
+</Callout>
 
 <Callout variant="danger">
 	There is no password recovery. This is real encryption — if you lose the password, the file is unrecoverable. Store it somewhere safe before you send the file.

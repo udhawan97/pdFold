@@ -23,6 +23,10 @@ import Callout from '../../../components/Callout.astro';
 2. Select **QR**, **Code 128**, **Aztec**, or **PDF417**, then enter the payload.
 3. Check the preview, click **Place**, and click the destination on the page.
 
+<Callout variant="note">
+	Once you've chosen a seal or a code, a banner tells you Orifold is waiting for you to click a page — it never waits silently. Press <kbd>Esc</kbd> to cancel, or switch to another tool and the pending placement is dropped, so a stray click much later can't leave a mark you didn't mean to place.
+</Callout>
+
 ## Scan the current page
 
 Choose **More → Scan barcodes on this page**. Orifold uses macOS Vision on-device, lists detected payloads, and lets you copy a value or open a supported link. Nothing is uploaded.

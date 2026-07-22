@@ -12,9 +12,17 @@ import Callout from '../../../components/Callout.astro';
 
 ## Steps
 
-1. Import the file as usual.
+1. Import the file as usual — drag it in or use **Add Files**.
 2. Orifold shows a password prompt — enter the password to unlock it.
 3. The file's permissions (printing, editing, and so on) are respected once unlocked.
+
+## Opening one from Finder or the File menu
+
+Double-clicking a password-protected PDF in Finder, or opening it through **File → Open**, gets Orifold's own explanation of what the file is and why it can't open straight away — not a generic macOS error. **Open Recent** goes further: pick a locked PDF there and Orifold takes you into the password prompt automatically instead of dead-ending.
+
+<Callout variant="note">
+	The same path classifies other awkward files. A corrupt, oversized, or empty PDF opened by double-click gets a message naming the actual problem rather than a generic failure.
+</Callout>
 
 ## What you should see
 

@@ -13,11 +13,17 @@ import Callout from '../../../components/Callout.astro';
 
 ## Find
 
-Press <Kbd>⌘F</Kbd> to open search. It searches across every document currently imported into the workspace, not just the page you're viewing. Use <Kbd>⌘G</Kbd> and <Kbd>⌘⇧G</Kbd> to step through matches.
+Press <Kbd>⌘F</Kbd> to open search. It searches across every document currently imported into the workspace, not just the page you're viewing. Every match on the page is highlighted at once, and the one you're on stays visually distinct from the rest. Use <Kbd>⌘G</Kbd> and <Kbd>⌘⇧G</Kbd> to step through matches.
+
+While a scan is still running, the panel says **Searching…** — it won't tell you there are no results until it has actually finished looking.
 
 <Callout variant="note">
 	Scanned pages have no searchable text until you run OCR on them.
 </Callout>
+
+## The counter in the bottom bar
+
+Close the search popover and a counter chip stays behind in the bottom bar, showing **N of M** for the current query with next, previous, and clear controls. <Kbd>⌘G</Kbd> keeps working from there, and you can see where it's taking you.
 
 ## Replace
 

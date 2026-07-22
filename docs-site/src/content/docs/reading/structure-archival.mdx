@@ -8,7 +8,7 @@ import Callout from '../../../components/Callout.astro';
 
 ## Inspect tagged structure
 
-Open **Inspector → Structure**. For the current page, Orifold shows the nested tagged reading-order tree, roles, titles where present, and a warning for image-like elements without alt text.
+Open **Inspector → Structure**. For the current page, Orifold shows the nested tagged reading-order tree, roles, titles where present, and a warning for image-like elements without alt text. A total count of images missing alt text is shown up front, so you don't have to expand the tree to find out whether there's a problem.
 
 This view is read-only. It can reveal that a file is untagged or has missing alt text, but this release cannot author or repair PDF structure.
 
@@ -22,6 +22,12 @@ Choose **More → Archival readiness**. Orifold checks the active document for s
 - an output intent;
 - XMP metadata;
 - tagged structure.
+
+Each signal that fails comes with a hint on how to remedy it — and when Orifold can't remedy it, the panel says so plainly instead of leaving you to guess. **Tagged structure**, **output intent**, **embedded fonts**, and **XMP metadata** all fall into that second group: they have to come from the application that produced the PDF, not from Orifold.
+
+<Callout variant="note">
+	Worth knowing if you use both: [Sanitize](/Orifold/export/sanitize/) also strips XMP metadata, so a sanitized copy won't carry that signal.
+</Callout>
 
 <Callout variant="warning">
 	This checklist is guidance, not PDF/A validation, certification, or conversion. A green signal only means that one inexpensive check looked favorable; use a dedicated standards validator for archival acceptance.

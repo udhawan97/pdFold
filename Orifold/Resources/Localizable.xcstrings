@@ -2590,37 +2590,37 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Orifold never writes XMP metadata and “Sanitize for sharing” strips what is there, so add it with a dedicated PDF/A tool after exporting."
+            "value": "Orifold never writes XMP metadata, and Sanitize's “Remove metadata” option strips what is there, so add it with a dedicated PDF/A tool after exporting."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Orifold nunca escribe metadatos XMP y «Depurar para compartir» elimina los que haya, así que añádelos con una herramienta de PDF/A después de exportar."
+            "value": "Orifold nunca escribe metadatos XMP, y la opción «Eliminar metadatos» de Depurar quita los que haya, así que añádelos con una herramienta de PDF/A después de exportar."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Orifold n’écrit jamais de métadonnées XMP et « Nettoyer avant partage » supprime celles présentes ; ajoutez-les avec un outil PDF/A dédié après l’exportation."
+            "value": "Orifold n’écrit jamais de métadonnées XMP, et l’option « Supprimer les métadonnées » du nettoyage retire celles présentes ; ajoutez-les avec un outil PDF/A dédié après l’exportation."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Orifold कभी XMP मेटाडेटा नहीं लिखता और “साझा करने के लिए साफ़ करें” मौजूदा को हटा देता है, इसलिए निर्यात के बाद किसी समर्पित PDF/A टूल से जोड़ें।"
+            "value": "Orifold कभी XMP मेटाडेटा नहीं लिखता, और सेनिटाइज़ का “मेटाडेटा हटाएँ” विकल्प मौजूदा को हटा देता है, इसलिए निर्यात के बाद किसी PDF/A टूल से जोड़ें।"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Orifold は XMP メタデータを書き込まず、「共有用にサニタイズ」は既存のものを削除します。書き出し後に専用の PDF/A ツールで追加してください。"
+            "value": "Orifold は XMP メタデータを書き込まず、サニタイズの「メタデータを削除」オプションは既存のものを削除します。書き出し後に専用の PDF/A ツールで追加してください。"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Orifold 从不写入 XMP 元数据，而“共享前清理”会移除已有的元数据，因此请在导出后用专门的 PDF/A 工具添加。"
+            "value": "Orifold 从不写入 XMP 元数据，而清理中的“移除元数据”选项会移除已有的，因此请在导出后用专门的 PDF/A 工具添加。"
           }
         }
       }

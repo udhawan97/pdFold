@@ -23,7 +23,7 @@
 <p align="center">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-2b4566?style=flat-square&logo=apple&logoColor=white">
   <img alt="Universal — Apple Silicon + Intel" src="https://img.shields.io/badge/universal-Apple_Silicon_%2B_Intel-2b4566?style=flat-square">
-  <img alt="version v0.9.0" src="https://img.shields.io/badge/version-v0.9.0-46536b?style=flat-square">
+  <img alt="version v0.9.1" src="https://img.shields.io/badge/version-v0.9.1-46536b?style=flat-square">
   <img alt="100% local" src="https://img.shields.io/badge/privacy-100%25_local-3f6b52?style=flat-square">
   <img alt="6 languages" src="https://img.shields.io/badge/i18n-6_languages-46536b?style=flat-square">
   <img alt="Apache 2.0 License" src="https://img.shields.io/badge/license-Apache_2.0-46536b?style=flat-square">
@@ -233,8 +233,8 @@ metadata stripped before flat PDF export.
 | | |
 | --- | --- |
 | **Language** | Swift 5.9+, 100% SwiftUI interface |
-| **Codebase** | 135 Swift source files in the app, ~50,800 lines |
-| **Tests** | 959 tests gating every release |
+| **Codebase** | 135 Swift source files in the app, ~51,500 lines |
+| **Tests** | 974 tests gating every release |
 | **PDF engines** | PDFKit (display/composition) · PDFium (versioned shared page inspection, structural object editing, image compression, text geometry) · qpdf (repair, AES-256, sanitize, structural validation) · Vision (OCR) |
 | **Architecture** | Unidirectional flow: views → one observable view model → protocol-seamed local engines → staged export pipeline |
 | **Distribution** | GitHub Actions builds a universal (Apple Silicon + Intel) app and packages a signed-capable DMG (`scripts/make-dmg.sh`) plus the release zip and a checksummed `manifest.json`; installer, Homebrew cask, and uninstaller ship from this repo |
@@ -293,13 +293,13 @@ xcodebuild test  -quiet -project Orifold.xcodeproj -scheme Orifold -destination 
 
 # Build the same release zip GitHub Releases ships, then the universal DMG
 ORIFOLD_UNIVERSAL=1 ./scripts/install-mac.sh --package-only --package /tmp/Orifold.zip
-zsh scripts/make-dmg.sh --from-zip /tmp/Orifold.zip --version 0.9.0
+zsh scripts/make-dmg.sh --from-zip /tmp/Orifold.zip --version 0.9.1
 
 # Install from the current source checkout without opening the app
 ./scripts/install-mac.sh --no-open
 ```
 
-App metadata: `CFBundleShortVersionString` `0.9.0`, `CFBundleVersion` `21`.
+App metadata: `CFBundleShortVersionString` `0.9.1`, `CFBundleVersion` `22`.
 </details>
 
 <details>
