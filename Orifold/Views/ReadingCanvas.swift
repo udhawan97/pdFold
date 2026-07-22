@@ -33,9 +33,12 @@ struct ReadingCanvas: View {
                     .allowsHitTesting(viewModel.hasFormNotice)
                     .accessibilityHidden(!viewModel.hasFormNotice)
                     .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.18), value: viewModel.hasFormNotice)
-                if viewModel.hasPendingSignaturePlacement {
-                    SignaturePlacementBanner {
-                        viewModel.cancelSignaturePlacement()
+                if let promptKey = viewModel.armedPlacementPromptKey {
+                    SignaturePlacementBanner(
+                        promptKey: promptKey,
+                        iconName: viewModel.hasPendingSignaturePlacement ? "signature" : "seal"
+                    ) {
+                        viewModel.cancelArmedPlacement()
                     }
                     .padding(.top, viewModel.canvasBannerInset + .dsMD)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -44,10 +47,12 @@ struct ReadingCanvas: View {
                     EditingStatusBanner(status: status) {
                         viewModel.editingStatus = nil
                     }
-                    .padding(.top, viewModel.canvasBannerInset + (viewModel.hasPendingSignaturePlacement ? 48 : 0) + .dsMD)
+                    .padding(.top, viewModel.canvasBannerInset + (viewModel.hasArmedPlacement ? 48 : 0) + .dsMD)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .task(id: status.id) {
-                        guard !viewModel.hasPendingSignaturePlacement else { return }
+                        // While a placement is armed the status text IS the instruction —
+                        // auto-dismissing it would take the only cue away mid-task.
+                        guard !viewModel.hasArmedPlacement else { return }
                         let autoDismissDelay: Duration?
                         switch status.severity {
                         case .success, .info: autoDismissDelay = .seconds(1.75)
@@ -144,7 +149,12 @@ private struct ReadAloudCapsule: View {
     }
 }
 
+/// Shown whenever a placement is armed — signature, stamp, hanko or barcode. The stamp
+/// family used to arm with no banner at all, which left the tool highlight as the only
+/// clue that the next page click was already spoken for.
 private struct SignaturePlacementBanner: View {
+    var promptKey: String
+    var iconName: String
     var cancel: () -> Void
     // Read so SwiftUI re-invokes `body` when the app language changes; without a
     // read of `\.locale`, this banner's `L10n.string` text would stay in the
@@ -154,9 +164,9 @@ private struct SignaturePlacementBanner: View {
     var body: some View {
         let _ = locale
         HStack(spacing: .dsSM) {
-            Image(systemName: "signature")
+            Image(systemName: iconName)
                 .foregroundStyle(Color.dsSignatureAccent)
-            Text(L10n.string("readingCanvas.signaturePlacement.instruction"))
+            Text(L10n.string(forKey: promptKey, locale: locale))
                 .font(.dsCaption())
                 .foregroundStyle(Color.dsTextPrimary)
             Button(L10n.string("readingCanvas.signaturePlacement.cancel.button"), action: cancel)
@@ -365,12 +375,70 @@ private struct ZoomPageBar: View {
             .foregroundStyle(Color.dsTextSecondary)
             .help(L10n.string("readingCanvas.zoomIn.help"))
 
+            // Doubles as the actual-size control: the number answers "where am I?", and
+            // clicking it answers "take me back to 100%".
+            Button { viewModel.zoomActualSize() } label: {
+                Text(verbatim: "\(viewModel.zoomPercent)%")
+                    .font(.system(size: 11, weight: .medium))
+                    .monospacedDigit()
+                    .frame(minWidth: 38)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(Color.dsTextSecondary)
+            .help(L10n.string("readingCanvas.zoomActualSize.help"))
+            .accessibilityLabel(L10n.format("readingCanvas.zoomLevel.accessibility", viewModel.zoomPercent, locale: locale))
+
             Divider()
                 .frame(height: 16)
 
             BottomBarBrand()
 
             Spacer()
+
+            // The search panel is a popover, so the moment the reader clicks a result it
+            // closes — taking the "3 of 20" with it while ⌘G still walks the matches. This
+            // keeps the count on screen for exactly as long as a search is live.
+            if !viewModel.searchResults.isEmpty, !viewModel.isShowingSearch {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.dsTextTertiary)
+                    Text(L10n.format(
+                        "search.results.position",
+                        max(viewModel.searchResultIndex + 1, 1),
+                        viewModel.searchResults.count,
+                        locale: locale
+                    ))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.dsTextSecondary)
+
+                    Button { viewModel.searchPrevious() } label: {
+                        Image(systemName: "chevron.up").font(.system(size: 10, weight: .semibold))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(Color.dsTextSecondary)
+                    .help(L10n.string("search.previous.help"))
+
+                    Button { viewModel.searchNext() } label: {
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(Color.dsTextSecondary)
+                    .help(L10n.string("search.next.help"))
+
+                    Button { viewModel.clearSearch() } label: {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(Color.dsTextTertiary)
+                    .help(L10n.string("search.clear.help"))
+                }
+                .font(.system(size: 11, weight: .medium))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Color.dsCard, in: Capsule())
+                .overlay { Capsule().strokeBorder(Color.dsSeparator, lineWidth: 1) }
+            }
 
             if viewModel.pageCount > 0 {
                 HStack(spacing: 6) {
@@ -467,7 +535,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
         view.onEscapeKey = { [weak coordinator = context.coordinator] in
             guard let coordinator else { return false }
             let actions = coordinator.interactionSession.plan(
-                for: .escape(hasObjectSelection: coordinator.viewModel.objectSelection != nil)
+                for: .escape(
+                    hasObjectSelection: coordinator.viewModel.objectSelection != nil,
+                    hasArmedPlacement: coordinator.viewModel.hasArmedPlacement
+                )
             )
             guard !actions.isEmpty else { return false }
             coordinator.perform(actions)
@@ -578,6 +649,10 @@ struct PDFViewRepresentable: NSViewRepresentable {
             name: .orifoldZoomFit, object: nil)
         NotificationCenter.default.addObserver(
             context.coordinator,
+            selector: #selector(Coordinator.zoomActualSize(_:)),
+            name: .orifoldZoomActualSize, object: nil)
+        NotificationCenter.default.addObserver(
+            context.coordinator,
             selector: #selector(Coordinator.pageChanged(_:)),
             name: .PDFViewPageChanged, object: view)
         NotificationCenter.default.addObserver(
@@ -606,6 +681,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
         )
         context.coordinator.inkOverlay.isHidden = (viewModel.currentTool != .ink)
         context.coordinator.inkOverlay.inkColor = viewModel.inkColor
+        context.coordinator.applySearchHighlights(viewModel.searchResults)
         nsView.applyDocumentComfortSettings(viewModel.documentComfortSettings)
         context.coordinator.updateCanvasBannerInset(viewModel.canvasBannerInset)
     }
@@ -736,6 +812,8 @@ struct PDFViewRepresentable: NSViewRepresentable {
                     syncDocumentPreservingViewport(pdfView, newDocument: viewModel.combinedPDF)
                 case .clearObjectSelection:
                     viewModel.clearObjectSelection()
+                case .cancelArmedPlacement:
+                    viewModel.cancelArmedPlacement()
                 case .refreshSignatureOverlay:
                     refreshSignatureOverlay()
                 case .refreshObjectOverlay:
@@ -1249,6 +1327,31 @@ struct PDFViewRepresentable: NSViewRepresentable {
             refreshSignatureOverlay()
         }
 
+        /// Paints every match, not just the one being visited.
+        ///
+        /// `setCurrentSelection` marks a single hit, so a page with five occurrences used to
+        /// show one and leave the reader to guess where the others were. The current hit
+        /// stays distinct because it keeps the stronger current-selection treatment on top.
+        func applySearchHighlights(_ results: [PDFSelection]) {
+            guard let pdfView else { return }
+            guard !results.isEmpty else {
+                if !(pdfView.highlightedSelections?.isEmpty ?? true) {
+                    pdfView.highlightedSelections = nil
+                }
+                return
+            }
+            // PDFSelection has no useful equality, so compare the cheap shape of the set
+            // rather than reassigning (and forcing a redraw) on every view update.
+            if pdfView.highlightedSelections?.count == results.count,
+               pdfView.highlightedSelections?.first?.string == results.first?.string {
+                return
+            }
+            for selection in results {
+                selection.color = NSColor.systemYellow.withAlphaComponent(0.38)
+            }
+            pdfView.highlightedSelections = results
+        }
+
         @objc func jumpToPageIndex(_ notification: Notification) {
             guard let idx = notification.object as? Int,
                   let page = pdfView?.document?.page(at: idx) else { return }
@@ -1365,6 +1468,23 @@ struct PDFViewRepresentable: NSViewRepresentable {
         @objc func zoomFit(_ notification: Notification) {
             pdfView?.autoScales = true
             refreshSignatureOverlay()
+            reportZoomLevel()
+        }
+
+        @objc func zoomActualSize(_ notification: Notification) {
+            guard let pdfView else { return }
+            pdfView.autoScales = false
+            pdfView.scaleFactor = 1
+            refreshSignatureOverlay()
+            reportZoomLevel()
+        }
+
+        /// Mirrors the PDFView's scale back into the view model for the zoom readout.
+        func reportZoomLevel() {
+            guard let pdfView else { return }
+            let percent = Int((pdfView.scaleFactor * 100).rounded())
+            guard percent != viewModel.zoomPercent else { return }
+            viewModel.zoomPercent = percent
         }
 
         @objc func pageChanged(_ notification: Notification) {
@@ -1376,6 +1496,7 @@ struct PDFViewRepresentable: NSViewRepresentable {
 
         @objc func pdfViewGeometryChanged(_ notification: Notification) {
             perform(interactionSession.plan(for: .geometryChanged))
+            reportZoomLevel()
         }
 
         func setupInkOverlay() {

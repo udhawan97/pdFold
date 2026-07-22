@@ -121,7 +121,20 @@ struct SearchView: View {
             Rectangle().fill(Color.dsSeparator).frame(height: 0.5)
 
             Group {
-                if viewModel.searchResults.isEmpty && !viewModel.searchQuery.isEmpty {
+                // "Searching" comes first: an empty result list means nothing until a scan
+                // has actually finished, and claiming "No results" mid-query reads as a
+                // failed search the user then has to disprove by waiting.
+                if viewModel.isSearching && !viewModel.searchQuery.isEmpty {
+                    VStack(spacing: .dsSM) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(L10n.string("search.searching", locale: locale))
+                            .font(.dsBody())
+                            .foregroundStyle(Color.dsTextSecondary)
+                    }
+                    .padding(.dsXL)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if viewModel.searchResults.isEmpty && !viewModel.searchQuery.isEmpty {
                     VStack(spacing: .dsSM) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(Color.dsTextTertiary)
@@ -293,6 +306,7 @@ extension Notification.Name {
     static let orifoldZoomIn          = Notification.Name("orifoldZoomIn")
     static let orifoldZoomOut         = Notification.Name("orifoldZoomOut")
     static let orifoldZoomFit         = Notification.Name("orifoldZoomFit")
+    static let orifoldZoomActualSize  = Notification.Name("orifoldZoomActualSize")
     static let orifoldShowShortcuts   = Notification.Name("orifoldShowShortcuts")
     static let orifoldToggleReaderMode = Notification.Name("orifoldToggleReaderMode")
     static let orifoldToggleTableOfContents = Notification.Name("orifoldToggleTableOfContents")

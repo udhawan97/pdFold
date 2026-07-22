@@ -1406,11 +1406,32 @@ private struct ExportSheet: View {
         selectedFormat == .pdf && !viewModel.hasCryptographicSignaturePlacement
     }
 
+    // AES-256 is only as strong as the passphrase behind it, so the sheet refuses
+    // to hand the user a false sense of protection below this length.
+    private static let minimumPasswordLength = 8
+
     private var passwordMismatch: Bool {
         protectWithPassword &&
             !password.isEmpty &&
             !passwordConfirmation.isEmpty &&
             password != passwordConfirmation
+    }
+
+    private var passwordTooShort: Bool {
+        !password.isEmpty && password.count < Self.minimumPasswordLength
+    }
+
+    /// Deliberately crude: length plus character-class variety, no scoring library.
+    /// A long passphrase of one class is fine; a short-ish one needs variety.
+    private var passwordIsWeak: Bool {
+        guard password.count >= Self.minimumPasswordLength else { return false }
+        let classCount = [
+            password.contains(where: \.isLowercase),
+            password.contains(where: \.isUppercase),
+            password.contains(where: \.isNumber),
+            password.contains(where: { !$0.isLetter && !$0.isNumber })
+        ].filter { $0 }.count
+        return password.count < 12 && classCount < 3
     }
 
     private var passwordValidationMessage: String? {
@@ -1421,6 +1442,13 @@ private struct ExportSheet: View {
         if password.isEmpty {
             return L10n.string("contentView.exportSheet.passwordMissing.message", locale: locale)
         }
+        if passwordTooShort {
+            return L10n.format(
+                "contentView.exportSheet.passwordTooShort.message",
+                Self.minimumPasswordLength,
+                locale: locale
+            )
+        }
         if passwordConfirmation.isEmpty {
             return L10n.string("contentView.exportSheet.confirmationMissing.message", locale: locale)
         }
@@ -1430,9 +1458,16 @@ private struct ExportSheet: View {
         return nil
     }
 
+    /// Non-blocking nudge; only surfaces once nothing is actually wrong.
+    private var passwordStrengthHint: String? {
+        guard protectWithPassword, canProtectSelectedFormat else { return nil }
+        guard passwordValidationMessage == nil, passwordIsWeak else { return nil }
+        return L10n.string("contentView.exportSheet.passwordWeak.message", locale: locale)
+    }
+
     private var canExport: Bool {
         guard protectWithPassword && canProtectSelectedFormat else { return true }
-        return !password.isEmpty && password == passwordConfirmation
+        return password.count >= Self.minimumPasswordLength && password == passwordConfirmation
     }
 
     var body: some View {
@@ -1467,6 +1502,10 @@ private struct ExportSheet: View {
                             Text(passwordValidationMessage)
                                 .font(.dsCaption())
                                 .foregroundStyle(Color.dsAnnotationCoral)
+                        } else if let passwordStrengthHint {
+                            Text(passwordStrengthHint)
+                                .font(.dsCaption())
+                                .foregroundStyle(Color.dsTextTertiary)
                         }
                     }
                     .padding(.top, .dsSM)
@@ -2693,8 +2732,16 @@ func applyFolderImportOutcome(
 ) {
     switch outcome {
     case .ready(let urls, let unsupportedCount, let wasLimited, let wasTruncated):
-        viewModel.importFiles(urls: urls)
-        if let message = folderImportReadyStatusMessage(importedCount: urls.count, unsupportedCount: unsupportedCount, wasTruncated: wasTruncated) {
+        // Reported from the completion handler with the count that actually landed. Doing
+        // it here, up front, announced "Imported 12 files" (to VoiceOver as well) before a
+        // single file had been parsed — and any that then failed made the number a lie.
+        viewModel.importFiles(urls: urls) { importedCount, wasCancelled in
+            guard !wasCancelled else { return }
+            guard let message = folderImportReadyStatusMessage(
+                importedCount: importedCount,
+                unsupportedCount: unsupportedCount,
+                wasTruncated: wasTruncated
+            ) else { return }
             viewModel.editingStatus = .success(message)
             AccessibilityNotification.Announcement(message).post()
         }

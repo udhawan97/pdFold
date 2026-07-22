@@ -21,6 +21,7 @@ struct TOCView: View {
 
     private static let fileRowHeight: CGFloat = 54
     private static let bookmarkRowHeight: CGFloat = 30
+    private static let noticeRowHeight: CGFloat = 34
     private static let indentPerLevel: CGFloat = 14
 
     private var entries: [WorkspaceViewModel.TOCEntry] {
@@ -41,9 +42,16 @@ struct TOCView: View {
         entry.depth == 0 ? Self.fileRowHeight : Self.bookmarkRowHeight
     }
 
+    /// True when any file's bookmarks hit the reader's emit caps — the list is real but
+    /// incomplete, which is indistinguishable from lost bookmarks unless we say so.
+    private var isTruncated: Bool {
+        entries.contains { $0.outlineWasTruncated }
+    }
+
     private var popoverHeight: CGFloat {
         let chromeHeight: CGFloat = 53
         let contentHeight = visibleEntries.reduce(0) { $0 + rowHeight(for: $1) }
+            + (isTruncated ? Self.noticeRowHeight : 0)
         return min(max(contentHeight + chromeHeight, 120), 480)
     }
 
@@ -74,6 +82,7 @@ struct TOCView: View {
                                 bookmarkRow(entry)
                             }
                         }
+                        if isTruncated { truncationNotice }
                     }
                 }
                 .background(Color.dsSurface)
@@ -116,6 +125,17 @@ struct TOCView: View {
         }
         .padding(.horizontal, .dsLG)
         .frame(height: Self.fileRowHeight)
+    }
+
+    /// Last row, styled below a bookmark row rather than as an alert: nothing is wrong,
+    /// there is simply more outline than the list shows.
+    private var truncationNotice: some View {
+        Text(L10n.string("toc.truncated", locale: locale))
+            .font(.dsCaption())
+            .foregroundStyle(Color.dsTextTertiary)
+            .lineLimit(2)
+            .padding(.horizontal, .dsLG)
+            .frame(maxWidth: .infinity, minHeight: Self.noticeRowHeight, alignment: .leading)
     }
 
     private func bookmarkRow(_ entry: WorkspaceViewModel.TOCEntry) -> some View {

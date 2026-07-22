@@ -16,6 +16,10 @@ enum ImportFailureKind: Equatable, Error {
     case fileMissing
     case unsupportedType
     case corruptOrEncrypted
+    /// Kept separate from `corruptOrEncrypted`: an encrypted file is intact and fully
+    /// openable once its password is known, so calling it "damaged" both misdescribes it
+    /// and hides the one instruction that unblocks the user.
+    case passwordProtected
     case iCloudNotDownloaded
     case exportTempMissing
     case tooLarge
@@ -23,10 +27,11 @@ enum ImportFailureKind: Equatable, Error {
 
     /// Reselecting the exact file both re-grants access and re-locates it, so this
     /// covers every recoverable kind except a folder-wide permission problem (where
-    /// granting the containing folder is the more useful action).
+    /// granting the containing folder is the more useful action). Password-protected
+    /// files qualify too: reselecting routes them through the import path, which prompts.
     var showsChooseFileAgain: Bool {
         switch self {
-        case .permissionDenied, .staleBookmark, .fileMissing, .exportTempMissing, .corruptOrEncrypted:
+        case .permissionDenied, .staleBookmark, .fileMissing, .exportTempMissing, .corruptOrEncrypted, .passwordProtected:
             return true
         case .unsupportedType, .tooLarge, .unknown, .iCloudNotDownloaded:
             return false
@@ -54,7 +59,9 @@ enum ImportFailureClassifier {
             switch conversionError {
             case .unsupportedType:
                 return .unsupportedType
-            case .passwordProtected, .unreadableDocument, .emptyDocument, .binaryDataMislabelledAsText:
+            case .passwordProtected:
+                return .passwordProtected
+            case .unreadableDocument, .emptyDocument, .binaryDataMislabelledAsText:
                 return .corruptOrEncrypted
             case .renderingFailed, .renderTimedOut:
                 return .corruptOrEncrypted

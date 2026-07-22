@@ -97,6 +97,17 @@ enum PDFOutlineReader {
         }
     }
 
+    /// A walk's nodes plus whether an *emit* cap cut them short.
+    ///
+    /// `wasTruncated` tracks `maximumDepth` and `maximumNodeCount` only — the bounds on
+    /// what the reader shows. The traversal bounds are not reported: they fire on
+    /// branches that emit nothing anyway, so a reader has nothing missing to be told
+    /// about.
+    struct OutlineResult {
+        var nodes: [OutlineNode] = []
+        var wasTruncated = false
+    }
+
     /// A node that survived resolution, before `hasChildren` can be known — that answer
     /// depends on what the rest of the walk emits.
     private struct ResolvedNode {
@@ -112,6 +123,7 @@ enum PDFOutlineReader {
     private struct Walk {
         var collected: [ResolvedNode] = []
         var visited = 0
+        var truncated = false
     }
 
     /// Returns the document's bookmarks in reading order, or an empty array when it has
@@ -119,7 +131,13 @@ enum PDFOutlineReader {
     /// because a broken outline must degrade to "no table of contents" rather than block
     /// navigation.
     static func nodes(in document: PDFDocument) -> [OutlineNode] {
-        guard let root = document.outlineRoot else { return [] }
+        read(document).nodes
+    }
+
+    /// Same walk as `nodes(in:)`, plus whether an emit cap left bookmarks unshown — the
+    /// one thing an empty-or-short list cannot tell the reader apart from data loss.
+    static func read(_ document: PDFDocument) -> OutlineResult {
+        guard let root = document.outlineRoot else { return OutlineResult() }
 
         var walk = Walk()
         collect(children: root, displayDepth: 0, traversalDepth: 0, in: document, into: &walk)
@@ -128,7 +146,7 @@ enum PDFOutlineReader {
         // `hasChildren` is derived from what was emitted rather than from the source
         // tree: a node whose only child was dropped (blank label, deleted page) or cut
         // by the depth cap must not advertise children it cannot show.
-        return collected.enumerated().map { index, entry in
+        let nodes = collected.enumerated().map { index, entry in
             let nextDepth = index + 1 < collected.count ? collected[index + 1].depth : entry.depth
             return OutlineNode(
                 title: entry.title,
@@ -137,6 +155,7 @@ enum PDFOutlineReader {
                 hasChildren: nextDepth > entry.depth
             )
         }
+        return OutlineResult(nodes: nodes, wasTruncated: walk.truncated)
     }
 
     /// `displayDepth` is where emitted rows land; `traversalDepth` is how far the
@@ -149,11 +168,19 @@ enum PDFOutlineReader {
         in document: PDFDocument,
         into walk: inout Walk
     ) {
-        guard displayDepth < maximumDepth, traversalDepth < maximumTraversalDepth else { return }
+        guard displayDepth < maximumDepth, traversalDepth < maximumTraversalDepth else {
+            // Only a parent that still had children lost anything to the display cap; a
+            // leaf sitting exactly at the cap is a complete outline, not a cut one.
+            if displayDepth >= maximumDepth && parent.numberOfChildren > 0 { walk.truncated = true }
+            return
+        }
 
         for index in 0..<parent.numberOfChildren {
             guard walk.collected.count < maximumNodeCount,
-                  walk.visited < maximumTraversalSteps else { return }
+                  walk.visited < maximumTraversalSteps else {
+                if walk.collected.count >= maximumNodeCount { walk.truncated = true }
+                return
+            }
             walk.visited += 1
             guard let child = parent.child(at: index) else { continue }
 

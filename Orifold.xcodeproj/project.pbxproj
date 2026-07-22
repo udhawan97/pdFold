@@ -108,6 +108,7 @@
 		66892296DC2C39A69B88B6FD /* TimestampASN1.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DAE0F284E870DE21F26A717 /* TimestampASN1.swift */; };
 		671DE5ADC01882BAE1DB3C30 /* FindReplaceBodyTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B0A6CC70DD59D0A5B47F976 /* FindReplaceBodyTextTests.swift */; };
 		6A61AF44CC3973FA2D204CD6 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 19CDDDF856BFA65B068B9DCE /* Localizable.xcstrings */; };
+		6BA817506121FB22CF7FB709 /* UserFlowGapRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7B43CCBECDDAAD8309CD972 /* UserFlowGapRegressionTests.swift */; };
 		6C28269FE7106D1C254E4429 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08490E35660F4C1C5936E8F0 /* L10n.swift */; };
 		6C95900D6810F348F4DEC967 /* UpdateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C237FF4FEFBC634B4A505A0F /* UpdateModels.swift */; };
 		6D7560E2A8B70A15FBB31530 /* OutlineFixturePDFBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A2FB6E2E42D2E2AE57DD10B /* OutlineFixturePDFBuilder.swift */; };
@@ -558,6 +559,7 @@
 		F6AE6AD651F76D800D0DA8E0 /* WorkspaceEditReplayEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceEditReplayEngine.swift; sourceTree = "<group>"; };
 		F6B56F5161D7B348022010B8 /* OutlineExportPreservationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineExportPreservationTests.swift; sourceTree = "<group>"; };
 		F7248133EA1A88406491F4E4 /* SampleDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleDocument.swift; sourceTree = "<group>"; };
+		F7B43CCBECDDAAD8309CD972 /* UserFlowGapRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserFlowGapRegressionTests.swift; sourceTree = "<group>"; };
 		F9FC86F73FD6BED822903F81 /* SecurityScopedAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedAccess.swift; sourceTree = "<group>"; };
 		FBADF23DF677682864EEEF52 /* PDFiumStructureBindings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFiumStructureBindings.swift; sourceTree = "<group>"; };
 		FC38DAB86BF548F9F43DAAC4 /* OutlineFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineFixtures.swift; sourceTree = "<group>"; };
@@ -1076,6 +1078,7 @@
 				54B7D00C60FA90A4C405171F /* UpdateLaunchOutcomeTests.swift */,
 				2450BA007108262F88342D95 /* UpdaterScriptGeneratorTests.swift */,
 				64E4CFA42D8ABF21625FA4CB /* UpdateVersionTests.swift */,
+				F7B43CCBECDDAAD8309CD972 /* UserFlowGapRegressionTests.swift */,
 				BF94BF04B4D8C6AB2DFA7C98 /* UserFlowRegressionRound2Tests.swift */,
 				7FB78614E1409CDF047CE618 /* UserFlowRegressionTests.swift */,
 				5304105C4157C281590E8323 /* Fixtures */,
@@ -1364,6 +1367,7 @@
 				DC937DB08ED2B95402A8C8DC /* UpdateLaunchOutcomeTests.swift in Sources */,
 				0C9F5C99EEF1E54C31FEF843 /* UpdateVersionTests.swift in Sources */,
 				2CDF8B54BE4FCD96D303F892 /* UpdaterScriptGeneratorTests.swift in Sources */,
+				6BA817506121FB22CF7FB709 /* UserFlowGapRegressionTests.swift in Sources */,
 				E95076EAC857A6E81CE20EAB /* UserFlowRegressionRound2Tests.swift in Sources */,
 				057262506B6927BAEE092D40 /* UserFlowRegressionTests.swift in Sources */,
 			);

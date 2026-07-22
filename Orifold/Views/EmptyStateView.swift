@@ -484,7 +484,14 @@ struct EmptyStateView: View {
                     errorDomain: (error as NSError).domain,
                     errorCode: (error as NSError).code
                 )
-                presentRecentFailure(kind: kind, entry: entry, url: url)
+                // An encrypted PDF is intact, not broken: the document-open path can't
+                // prompt for a password, but the import path can and already handles
+                // retries. Route it there instead of dead-ending in an alert.
+                if kind == .passwordProtected {
+                    viewModel.importFiles(urls: [url])
+                } else {
+                    presentRecentFailure(kind: kind, entry: entry, url: url)
+                }
             } else {
                 ImportLog.recordAttempt(
                     source: .recent,

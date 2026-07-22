@@ -73,7 +73,12 @@ final class ReadAloudController: ObservableObject {
     /// Begins reading from `fromPage` (an index into the composed document). Pages with no
     /// speakable text — boundary banners, image-only pages — are skipped. If no page from
     /// `fromPage` onward has text, the controller returns to `.idle`.
-    func start(fromPage: Int) {
+    ///
+    /// Returns whether speech actually began. A scanned PDF has pages but no text layer, and
+    /// a silent return to `.idle` looked identical to a broken feature — the caller needs to
+    /// know so it can say why nothing happened.
+    @discardableResult
+    func start(fromPage: Int) -> Bool {
         if state != .idle { synthesizer.stopSpeaking() }
         chunks = []
         chunkIndex = 0
@@ -81,13 +86,14 @@ final class ReadAloudController: ObservableObject {
 
         guard let (pageIndex, pageChunks) = firstSpeakablePage(from: max(0, fromPage)) else {
             state = .idle
-            return
+            return false
         }
         currentPageIndex = pageIndex
         chunks = pageChunks
         chunkIndex = 0
         state = .speaking
         speakCurrentChunk()
+        return true
     }
 
     func pause() {

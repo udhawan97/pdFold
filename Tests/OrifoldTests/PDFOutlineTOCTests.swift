@@ -132,6 +132,28 @@ final class PDFOutlineTOCTests: XCTestCase {
         XCTAssertEqual(PDFOutlineReader.nodes(in: pdf).count, PDFOutlineReader.maximumNodeCount)
     }
 
+    func testReportsTruncationWhenEitherEmitCapCutTheOutlineAndNotOtherwise() throws {
+        let whole = OutlineFixturePDFBuilder.outlinedPDF(
+            pageCount: 1,
+            outline: [.init(title: "Only", page: 0)]
+        )
+        XCTAssertFalse(PDFOutlineReader.read(whole).wasTruncated)
+
+        var deepest = OutlineFixturePDFBuilder.Spec(title: "level-11", page: 0)
+        for level in stride(from: 10, through: 0, by: -1) {
+            deepest = OutlineFixturePDFBuilder.Spec(title: "level-\(level)", page: 0, children: [deepest])
+        }
+        let tooDeep = OutlineFixturePDFBuilder.outlinedPDF(pageCount: 1, outline: [deepest])
+        XCTAssertTrue(PDFOutlineReader.read(tooDeep).wasTruncated)
+
+        let overCap = PDFOutlineReader.maximumNodeCount + 50
+        let tooMany = OutlineFixturePDFBuilder.outlinedPDF(
+            pageCount: 1,
+            outline: (0..<overCap).map { OutlineFixturePDFBuilder.Spec(title: "entry-\($0)", page: 0) }
+        )
+        XCTAssertTrue(PDFOutlineReader.read(tooMany).wasTruncated)
+    }
+
     // MARK: - Table of contents composition
 
     func testTableOfContentsNestsBookmarksUnderTheirFile() throws {

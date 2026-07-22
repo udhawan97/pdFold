@@ -195,6 +195,38 @@ final class WorkspaceOperationProgress {
     }
 }
 
+/// The baked, model-free half of an export, ready to finish on any thread.
+///
+/// Produced by `WorkspaceViewModel.bakedExportPayload` on the main thread and consumed by
+/// `WorkspaceViewModel.finishedExportData`, which is why it carries bytes rather than
+/// documents: `PDFDocument` is not `Sendable`, `Data` is.
+struct BakedExportPayload: Sendable {
+    let baked: BakedPDFData
+    let outline: [PDFOutlineReader.OutlineNode]
+    let attachments: [WorkspaceViewModel.CollectedAttachment]
+}
+
+/// Stages of the byte-only export tail, in the order they run. Drives the progress
+/// readout so a long export says what it is doing rather than only that it is busy.
+enum ExportStage: Sendable {
+    case layout, bookmarks, attachments, sanitize, encrypt, finishing
+
+    var progressDetailKey: String {
+        switch self {
+        case .layout: return "progress.export.layout"
+        case .bookmarks: return "progress.export.bookmarks"
+        case .attachments: return "progress.export.attachments"
+        case .sanitize: return "progress.export.sanitize"
+        case .encrypt: return "progress.export.encrypt"
+        case .finishing: return "progress.export.finishing"
+        }
+    }
+}
+
+/// Thrown when the user cancels an export between stages. Distinct from a failure: the
+/// UI reports it as a status note, not an error alert.
+struct PDFExportCancelled: Error {}
+
 final class OperationCancellationToken: @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
@@ -268,6 +300,9 @@ final class WorkspaceViewModel {
             if oldValue == .signature, currentTool != .signature {
                 clearPendingSignaturePlacement()
             }
+            if oldValue == .stamp, currentTool != .stamp {
+                clearPendingStampToolPlacement()
+            }
         }
     }
     var isReaderMode = false {
@@ -291,6 +326,10 @@ final class WorkspaceViewModel {
     var searchQuery = ""
     var searchResults: [PDFSelection] = []
     var searchResultIndex: Int = -1
+    /// True from the moment a query is typed until a scan finishes. An empty
+    /// `searchResults` alone can't tell "no matches" from "not looked yet", and the panel
+    /// used to render the former for both.
+    var isSearching = false
     var isReplaceRevealed = false
     var replaceText = ""
     /// The single armed click-to-place action; see `PendingPlacement`. The four
@@ -359,6 +398,26 @@ final class WorkspaceViewModel {
         if case .signature = armedPlacement { return true }
         return false
     }
+
+    /// True whenever *anything* is waiting for a page click. The armed-state banner and
+    /// Escape both key off this rather than the signature case: a stamp, hanko or barcode
+    /// waiting in the slot is exactly as invisible and exactly as surprising when it
+    /// eventually fires.
+    var hasArmedPlacement: Bool { armedPlacement != nil }
+
+    /// What the banner says while something is armed.
+    var armedPlacementPromptKey: String? {
+        switch armedPlacement {
+        case .signature(_, let options, _):
+            return options.kind == .cryptographic
+                ? "placement.armed.digitalSignature"
+                : "placement.armed.signature"
+        case .stamp: return "placement.armed.stamp"
+        case .hanko: return "placement.armed.hanko"
+        case .barcode: return "placement.armed.barcode"
+        case .none: return nil
+        }
+    }
     var scannedPageCount = 0
     var ocrCandidatePageCount = 0
     var isMakingSearchable: Bool {
@@ -382,6 +441,10 @@ final class WorkspaceViewModel {
 
     // MARK: - Canvas state (updated by PDFView via Coordinator)
     var currentPageNumber: Int = 0
+    /// Live zoom as a percentage, reported by the canvas. Read-only for the UI: the
+    /// PDFView owns the real scale, and this mirrors it so the zoom bar can say where the
+    /// reader is rather than only offering to move them.
+    var zoomPercent: Int = 100
     var pageCount: Int = 0
     private(set) var lastProcessingValidation: PDFProcessingValidation? = nil
 
@@ -868,7 +931,15 @@ final class WorkspaceViewModel {
 
     // MARK: - Import
 
-    func importFiles(urls: [URL], insertingAfter targetPageRefID: UUID? = nil) {
+    /// `onCompletion` receives the number of files that actually landed, once the import
+    /// has finished. Callers that summarize a batch must use it rather than the count they
+    /// handed in: this runs asynchronously, so a caller reporting up front is announcing a
+    /// result that has not happened yet and may not match.
+    func importFiles(
+        urls: [URL],
+        insertingAfter targetPageRefID: UUID? = nil,
+        onCompletion: ((_ importedCount: Int, _ wasCancelled: Bool) -> Void)? = nil
+    ) {
         guard canPerformMutatingAction() else { return }
         let batch = limitedImportBatch(from: urls)
         if batch.wasLimited {
@@ -879,7 +950,12 @@ final class WorkspaceViewModel {
         let cancellation = OperationCancellationToken()
         activeImportCancellation = cancellation
         activeImportTask = Task { [weak self] in
-            await self?.performImport(urls: batch.urls, insertingAfter: targetPageRefID, cancellation: cancellation)
+            await self?.performImport(
+                urls: batch.urls,
+                insertingAfter: targetPageRefID,
+                cancellation: cancellation,
+                onCompletion: onCompletion
+            )
         }
     }
 
@@ -901,7 +977,12 @@ final class WorkspaceViewModel {
         return true
     }
 
-    private func performImport(urls: [URL], insertingAfter targetPageRefID: UUID? = nil, cancellation: OperationCancellationToken) async {
+    private func performImport(
+        urls: [URL],
+        insertingAfter targetPageRefID: UUID? = nil,
+        cancellation: OperationCancellationToken,
+        onCompletion: ((_ importedCount: Int, _ wasCancelled: Bool) -> Void)? = nil
+    ) async {
         await MainActor.run {
             self.operationProgress.start(
                 title: "Importing files",
@@ -947,7 +1028,8 @@ final class WorkspaceViewModel {
             self.activeImportTask = nil
             self.activeImportCancellation = nil
             self.operationProgress.finish()
-            if cancellation.isCancelled || Task.isCancelled {
+            let wasCancelled = cancellation.isCancelled || Task.isCancelled
+            if wasCancelled {
                 self.editingStatus = .warning(finalImportedCount > 0 ? "Import canceled after adding \(finalImportedCount) file\(finalImportedCount == 1 ? "" : "s")." : "Import canceled.")
             } else if !finalFailures.isEmpty {
                 self.importError = self.importError(for: finalFailures, importedCount: finalImportedCount, totalCount: urls.count)
@@ -955,6 +1037,9 @@ final class WorkspaceViewModel {
             if self.pendingPasswordPDF != nil {
                 self.isShowingPasswordPrompt = true
             }
+            // Last, so a batch summary never overwrites a cancellation warning or lands
+            // alongside a failure alert claiming a count that includes the failures.
+            onCompletion?(finalImportedCount, wasCancelled)
         }
     }
 
@@ -2781,7 +2866,7 @@ final class WorkspaceViewModel {
         }
     }
 
-    private struct CollectedAttachment {
+    struct CollectedAttachment: Sendable {
         let name: String
         let data: Data
         let mimeType: String?
@@ -2807,7 +2892,7 @@ final class WorkspaceViewModel {
     /// Re-grafts collected attachments onto assembled export bytes. `add` itself
     /// disambiguates colliding keys, so attachments with the same name across
     /// merged members land under distinct keys.
-    private func reinjectingAttachments(_ collected: [CollectedAttachment], into exportData: Data) -> Data {
+    static func reinjectingAttachments(_ collected: [CollectedAttachment], into exportData: Data) -> Data {
         guard !collected.isEmpty else { return exportData }
         var result = exportData
         for item in collected {
@@ -4664,7 +4749,7 @@ final class WorkspaceViewModel {
         currentTool = .signature
         isShowingSignaturePalette = false
         isShowingStampPalette = false
-        editingStatus = .warning("Click a page to place the signature.")
+        announceArmedPlacement()
     }
 
     func beginCryptographicSignaturePlacement(imageData: Data,
@@ -4695,7 +4780,7 @@ final class WorkspaceViewModel {
         currentTool = .signature
         isShowingSignaturePalette = false
         isShowingStampPalette = false
-        editingStatus = .warning("Click a page to place the digital signature.")
+        announceArmedPlacement()
     }
 
     func cancelSignaturePlacement() {
@@ -4706,11 +4791,44 @@ final class WorkspaceViewModel {
         editingStatus = nil
     }
 
+    /// Disarms whatever is waiting for a page click. Backs both the banner's Cancel button
+    /// and Escape, so every armed placement has the same way out.
+    @discardableResult
+    func cancelArmedPlacement() -> Bool {
+        guard armedPlacement != nil else { return false }
+        armedPlacement = nil
+        if currentTool == .signature || currentTool == .stamp {
+            currentTool = .none
+        }
+        editingStatus = nil
+        return true
+    }
+
+    /// Tells the user something is armed and how to back out. Signatures always did this;
+    /// stamps, hankos and barcodes armed silently, so the only cue was a tool highlight —
+    /// and a forgotten one later dropped a mark the user had stopped expecting.
+    private func announceArmedPlacement() {
+        guard let key = armedPlacementPromptKey else { return }
+        editingStatus = .warning(L10n.string(forKey: key))
+    }
+
     /// Disarms only a signature. Leaving the `.signature` tool must not disarm a
     /// stamp the user armed separately, so this stays case-scoped rather than
     /// clearing the slot outright.
     private func clearPendingSignaturePlacement() {
         if case .signature = armedPlacement { armedPlacement = nil }
+    }
+
+    /// The mirror of `clearPendingSignaturePlacement` for the stamp tool's three
+    /// occupants. Leaving the tool that would place them is the user saying they are done.
+    private func clearPendingStampToolPlacement() {
+        switch armedPlacement {
+        case .stamp, .hanko, .barcode:
+            armedPlacement = nil
+            editingStatus = nil
+        case .signature, .none:
+            break
+        }
     }
 
     func beginStampPlacement(text: String, swatch: PageDecorationSwatch) {
@@ -4721,6 +4839,7 @@ final class WorkspaceViewModel {
         currentTool = .stamp
         isShowingSignaturePalette = false
         isShowingStampPalette = false
+        announceArmedPlacement()
     }
 
     /// Arms a hanko seal for click-to-place. Reuses the `.stamp` tool + canvas gesture (the
@@ -4734,6 +4853,7 @@ final class WorkspaceViewModel {
         currentTool = .stamp
         isShowingSignaturePalette = false
         isShowingStampPalette = false
+        announceArmedPlacement()
     }
 
     /// Arms a generated barcode/QR image for click-to-place. Reuses the `.stamp` tool + canvas
@@ -4747,6 +4867,7 @@ final class WorkspaceViewModel {
         currentTool = .stamp
         isShowingSignaturePalette = false
         isShowingStampPalette = false
+        announceArmedPlacement()
     }
 
     // MARK: - Certificate profiles (persistent digital IDs)
@@ -5433,6 +5554,8 @@ final class WorkspaceViewModel {
 
     // MARK: - Search
 
+    /// Synchronous search: the answer is in `searchResults` when this returns. Used by
+    /// scripted callers and Replace, which needs matches before it can act on them.
     func search(query: String) {
         cancelPendingSearch()
         performSearch(query: query, autoJump: true)
@@ -5453,6 +5576,10 @@ final class WorkspaceViewModel {
             return
         }
 
+        // Set before the debounce, not after it: an empty result list means "no matches"
+        // to the panel, so without this flag the user is told the search failed while it
+        // has not even started.
+        isSearching = true
         let searchID = UUID()
         activeSearchID = searchID
         searchDebounceTask = Task { @MainActor [weak self] in
@@ -5464,7 +5591,7 @@ final class WorkspaceViewModel {
             guard let self,
                   self.activeSearchID == searchID,
                   self.searchQuery == query else { return }
-            self.performSearch(query: query, autoJump: true)
+            self.beginAsyncSearch(query: query, searchID: searchID, autoJump: true)
         }
     }
 
@@ -5482,7 +5609,9 @@ final class WorkspaceViewModel {
             if searchResultIndex < 0 { searchResultIndex = 0 }
             jumpToSearchResult(searchResultIndex)
         } else {
-            performSearch(query: searchQuery, autoJump: true)
+            let searchID = UUID()
+            activeSearchID = searchID
+            beginAsyncSearch(query: searchQuery, searchID: searchID, autoJump: true)
         }
     }
 
@@ -5491,17 +5620,25 @@ final class WorkspaceViewModel {
         searchResults = []
         searchResultIndex = -1
         searchResultsQuery = query
-        guard !query.isEmpty else { return }
+        guard !query.isEmpty else {
+            isSearching = false
+            return
+        }
         combinedPDF.cancelFindString()
         let results = combinedPDF.findString(query, withOptions: .caseInsensitive)
         finishSearch(with: results, query: query, autoJump: autoJump)
     }
 
+    /// Interactive search. PDFKit's incremental find runs the scan off the main thread and
+    /// posts matches back as it goes, so a long document no longer freezes the window —
+    /// which is the whole reason this exists rather than calling `findString` directly.
     private func beginAsyncSearch(query: String, searchID: UUID, autoJump: Bool) {
         removeSearchObservers()
         pendingSearchResults = []
         searchResults = []
         searchResultIndex = -1
+        searchResultsQuery = query
+        isSearching = true
 
         let center = NotificationCenter.default
         let matchToken = center.addObserver(
@@ -5536,6 +5673,7 @@ final class WorkspaceViewModel {
         searchResultsQuery = query
         searchResults = results
         searchResultIndex = -1
+        isSearching = false
         if !results.isEmpty {
             searchResultIndex = 0
             if autoJump { jumpToSearchResult(0) }
@@ -5558,6 +5696,14 @@ final class WorkspaceViewModel {
         }
         searchNotificationTokens = []
         pendingSearchResults = []
+    }
+
+    /// Ends the active search and drops its highlights. The canvas find chip needs a way
+    /// out that doesn't mean reopening the popover just to empty the field.
+    func clearSearch() {
+        cancelPendingSearch()
+        searchQuery = ""
+        finishSearch(with: [], query: "", autoJump: false)
     }
 
     func searchNext() {
@@ -5657,7 +5803,12 @@ final class WorkspaceViewModel {
         // `currentPageNumber` is a workspace (banner-excluded) page number; map it to the
         // composed-document index the controller reads. Fall back to the top of the document.
         let startIndex = combinedPageIndex(forWorkspacePageNumber: max(1, currentPageNumber)) ?? 0
-        readAloud.start(fromPage: startIndex)
+        // A scanned document has pages but no text layer, so read-aloud has nothing to say.
+        // Saying that is the difference between a feature that doesn't apply and one that
+        // looks broken — and OCR is the thing that fixes it.
+        if !readAloud.start(fromPage: startIndex) {
+            editingStatus = .info(L10n.string("readAloud.noSpeakableText"))
+        }
     }
 
     /// Page text for read-aloud. Uses `attributedString?.string` (NOT `.string`, which
@@ -6047,6 +6198,9 @@ final class WorkspaceViewModel {
     func zoomIn()  { NotificationCenter.default.post(name: .orifoldZoomIn,  object: nil) }
     func zoomOut() { NotificationCenter.default.post(name: .orifoldZoomOut, object: nil) }
     func zoomFit() { NotificationCenter.default.post(name: .orifoldZoomFit, object: nil) }
+    /// Back to 1:1. Relative zoom alone can't answer "am I seeing this at print size?",
+    /// which is the question a reader checking a layout is actually asking.
+    func zoomActualSize() { NotificationCenter.default.post(name: .orifoldZoomActualSize, object: nil) }
 
     // MARK: - Export
 
@@ -6092,7 +6246,115 @@ final class WorkspaceViewModel {
         if options.compressionPreset != nil {
             return exportCompressedPDF(options: options)
         }
-        return saveFlattenedPDF(to: nil, options: options, triggerPet: false)
+        return exportFlattenedPDFInteractively(options: options)
+    }
+
+    /// The export the Export sheet actually runs.
+    ///
+    /// Asks for the destination first, then finishes off the main thread with progress and
+    /// a Cancel button — the same shape compression and signing use. Both details matter:
+    /// imposing, sanitizing and encrypting a large document takes seconds, and computing
+    /// before the save panel meant cancelling the panel threw all of that work away.
+    ///
+    /// `saveFlattenedPDF(to:)` stays synchronous: it is the scripted path, where a caller
+    /// already has a destination and wants the result before the next line runs.
+    @discardableResult
+    private func exportFlattenedPDFInteractively(options: WorkspaceExportOptions) -> Bool {
+        if (options.encryption != nil || options.sanitization != nil), hasCryptographicSignaturePlacement {
+            exportError = ExportError(message: PDFEncryptionError.digitalSignatureConflict.userMessage)
+            return false
+        }
+        if let encryption = options.encryption {
+            do {
+                try PDFEncryptionService.validate(encryption)
+            } catch {
+                exportError = ExportError(message: userMessage(for: error, exporting: .pdf))
+                return false
+            }
+        }
+
+        let defaultName: String
+        if loadedPDFs.count == 1,
+           let sourceURL = memberSourceURLs[loadedPDFs[0].0.id] {
+            defaultName = sourceURL.lastPathComponent
+        } else {
+            defaultName = "\(safeFilename(document.workspace.title)).pdf"
+        }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = defaultName
+        panel.title = L10n.string("savePanel.exportPDF.title")
+        guard panel.runModal() == .OK, let targetURL = panel.url else { return false }
+
+        // The bake reads live model state, so it stays here on the main thread. It is the
+        // cheap half; everything expensive is in the payload's tail.
+        let payload: BakedExportPayload
+        do {
+            payload = try bakedExportPayload(options: options)
+        } catch {
+            exportError = ExportError(message: userMessage(for: error, exporting: .pdf))
+            return false
+        }
+
+        operationProgress.start(
+            title: L10n.string("progress.export.title"),
+            detail: L10n.string(forKey: ExportStage.layout.progressDetailKey)
+        )
+        let cancellation = OperationCancellationToken()
+        let operationID = UUID()
+        activeCompressionCancellation = cancellation
+        activeCompressionID = operationID
+        let encryption = options.encryption
+        activeCompressionTask = Task { [weak self, payload, options, targetURL, encryption, cancellation, operationID] in
+            guard let self else { return }
+            let progressThrottle = ProgressUpdateThrottle()
+            let emitProgress: @Sendable (Double, ExportStage) -> Void = { [weak self] fraction, stage in
+                guard progressThrottle.shouldEmit(fraction) else { return }
+                Task { @MainActor in
+                    guard let self, self.activeCompressionID == operationID, self.operationProgress.isActive else { return }
+                    self.operationProgress.update(
+                        fraction: fraction,
+                        detail: L10n.string(forKey: stage.progressDetailKey)
+                    )
+                }
+            }
+            do {
+                let data = try await Task.detached(priority: .userInitiated) {
+                    try WorkspaceViewModel.finishedExportData(
+                        payload,
+                        options: options,
+                        progress: emitProgress,
+                        isCancelled: { cancellation.isCancelled || Task.isCancelled }
+                    )
+                }.value
+                if cancellation.isCancelled || Task.isCancelled { throw PDFExportCancelled() }
+                try self.writePDFExportData(data, to: targetURL, validationOptions: encryption)
+                await MainActor.run {
+                    guard self.activeCompressionID == operationID else { return }
+                    self.clearActiveExportOperation()
+                    self.finalizeSuccessfulExport(url: targetURL, format: .pdf)
+                    PetBuddyHook.trigger(.save)
+                }
+            } catch {
+                await MainActor.run {
+                    guard self.activeCompressionID == operationID else { return }
+                    self.clearActiveExportOperation()
+                    if error is PDFExportCancelled || error is CancellationError {
+                        self.editingStatus = .warning(L10n.string("status.export.cancelled"))
+                    } else {
+                        self.exportError = ExportError(message: self.userMessage(for: error, exporting: .pdf))
+                    }
+                }
+            }
+        }
+        return true
+    }
+
+    private func clearActiveExportOperation() {
+        operationProgress.finish()
+        activeCompressionTask = nil
+        activeCompressionCancellation = nil
+        activeCompressionID = nil
     }
 
     @discardableResult
@@ -6156,7 +6418,20 @@ final class WorkspaceViewModel {
         }
     }
 
+    /// One export, in two halves.
+    ///
+    /// Everything up to and including the bake reads live model state (`document`,
+    /// `loadedPDFs`, the member `PDFDocument`s) and must stay on the caller's thread.
+    /// Everything after it is pure bytes. Splitting there is what lets the interactive
+    /// export run its expensive tail off the main thread with progress and cancellation,
+    /// the way compression and signing already do -- see `exportFlattenedPDFInteractively`.
     func dataForPDFExport(options: WorkspaceExportOptions = WorkspaceExportOptions()) throws -> Data {
+        let payload = try bakedExportPayload(options: options)
+        return try Self.finishedExportData(payload, options: options)
+    }
+
+    /// Model-touching half: reconcile, snapshot, bake. Never call this off the main thread.
+    func bakedExportPayload(options: WorkspaceExportOptions) throws -> BakedExportPayload {
         if (options.encryption != nil || options.sanitization != nil), hasCryptographicSignaturePlacement {
             throw PDFEncryptionError.digitalSignatureConflict
         }
@@ -6195,14 +6470,36 @@ final class WorkspaceViewModel {
                 ).data
             }
         }
+        return BakedExportPayload(baked: baked, outline: outlineNodes, attachments: preservedAttachments)
+    }
+
+    /// Byte-only half: impose, write bookmarks, re-graft attachments, sanitize, encrypt.
+    ///
+    /// Static and free of model state so it can run on a background thread. `isCancelled`
+    /// is consulted between stages -- each one is atomic, so cancellation lands on a stage
+    /// boundary and nothing part-written ever reaches disk.
+    static func finishedExportData(
+        _ payload: BakedExportPayload,
+        options: WorkspaceExportOptions,
+        progress: (@Sendable (Double, ExportStage) -> Void)? = nil,
+        isCancelled: @Sendable () -> Bool = { false }
+    ) throws -> Data {
+        func checkCancellation() throws {
+            if isCancelled() { throw PDFExportCancelled() }
+        }
+        let baked = payload.baked
         // Imposition flows through sanitize + encryption below, so those options are never
         // silently dropped when combined with a layout.
+        try checkCancellation()
+        progress?(0.15, .layout)
         let imposedData: Data
         if let layout = options.imposition {
             imposedData = try PDFImpositionEngine.impose(baked, layout: layout)
         } else {
             imposedData = baked.bytes
         }
+        let outlineNodes = payload.outline
+        let preservedAttachments = payload.attachments
         // Bookmarks are written HERE, once, rather than carried down from the assembly.
         // Re-serializing a document that carries a PARSED outline can move every
         // destination forward a page: it happens reliably to member documents on the way
@@ -6213,17 +6510,29 @@ final class WorkspaceViewModel {
         // only qpdf after it, which rewrites the object graph faithfully. It must also
         // come BEFORE attachment re-injection: this is a PDFKit round-trip, and those
         // drop embedded files.
+        try checkCancellation()
+        progress?(0.4, .bookmarks)
         let outlinedData = Self.applyingOutline(outlineNodes, to: imposedData, options: options)
         // Re-graft attachments after every page-content pass (assembly, compression,
         // imposition — all of which drop them) but before sanitize, which
         // deliberately strips embedded files, and encryption, which preserves them.
-        let attachedData = reinjectingAttachments(preservedAttachments, into: outlinedData)
+        try checkCancellation()
+        progress?(0.6, .attachments)
+        let attachedData = Self.reinjectingAttachments(preservedAttachments, into: outlinedData)
+        try checkCancellation()
+        progress?(0.75, .sanitize)
         let sanitizedData = try Self.sanitized(attachedData, options: options.sanitization)
-        guard let encryption = options.encryption else { return sanitizedData }
+        guard let encryption = options.encryption else {
+            progress?(1, .finishing)
+            return sanitizedData
+        }
+        try checkCancellation()
+        progress?(0.9, .encrypt)
         let encryptedData = try PDFEncryptionService.encryptedData(from: sanitizedData, options: encryption)
         if options.compressionPreset != nil {
             _ = try PDFiumProcessingEngine().validatePDF(data: encryptedData, password: encryption.userPassword)
         }
+        progress?(1, .finishing)
         return encryptedData
     }
 
@@ -8357,6 +8666,9 @@ final class WorkspaceViewModel {
         /// 0 for a source-file row; a file's own bookmarks start at 1.
         var depth: Int = 0
         var hasChildren: Bool = false
+        /// Set on a file row whose bookmarks hit `PDFOutlineReader`'s emit caps, so the
+        /// view can say the list is incomplete rather than let it read as data loss.
+        var outlineWasTruncated: Bool = false
 
         /// Flattens the pre-order tree to the rows that should actually be drawn.
         /// A collapsed row hides every following row deeper than it, up to the next row
@@ -8405,9 +8717,10 @@ final class WorkspaceViewModel {
         for (memberIndex, member) in document.workspace.documents.enumerated() {
             // `loadedPDFs` is held parallel to `workspace.documents`; guard anyway so a
             // transient mismatch degrades to "no bookmarks" instead of trapping.
-            let bookmarks = loadedPDFs.indices.contains(memberIndex)
-                ? PDFOutlineReader.nodes(in: loadedPDFs[memberIndex].1)
-                : []
+            let outline = loadedPDFs.indices.contains(memberIndex)
+                ? PDFOutlineReader.read(loadedPDFs[memberIndex].1)
+                : PDFOutlineReader.OutlineResult()
+            let bookmarks = outline.nodes
 
             entries.append(TOCEntry(
                 id: member.id.uuidString,
@@ -8415,7 +8728,8 @@ final class WorkspaceViewModel {
                 jumpPageIndex: combinedIdx + 1,
                 displayPageNumber: realPageNumber,
                 depth: 0,
-                hasChildren: !bookmarks.isEmpty
+                hasChildren: !bookmarks.isEmpty,
+                outlineWasTruncated: outline.wasTruncated
             ))
 
             for (bookmarkIndex, bookmark) in bookmarks.enumerated() {

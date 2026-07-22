@@ -6,6 +6,10 @@ import UniformTypeIdentifiers
 struct InspectorView: View {
     @Bindable var viewModel: WorkspaceViewModel
     @Binding var selectedTab: Tab
+    /// The Info tab's un-applied edits live HERE, above the tab switch, because SwiftUI
+    /// tears the tab's own view down the moment the user looks at another tab — which
+    /// silently threw away whatever they had typed and not yet applied.
+    @State private var metadataDraft = MetadataDraft()
     // Read so SwiftUI re-invokes `body` when the app language changes; the
     // inspector's inputs are otherwise stable (a class-reference view model), so
     // without a `\.locale` read its localized text would stay in the old language.
@@ -79,7 +83,7 @@ struct InspectorView: View {
 
             ScrollView {
                 switch selectedTab {
-                case .info: InspectorInfoView(viewModel: viewModel)
+                case .info: InspectorInfoView(viewModel: viewModel, draft: $metadataDraft)
                 case .tags: InspectorTagsView(viewModel: viewModel)
                 case .comments: InspectorWorkspaceCommentsView(viewModel: viewModel)
                 case .markup: InspectorMarkupView(viewModel: viewModel)
@@ -143,22 +147,63 @@ private struct InspectorTabPicker: View {
 
 // MARK: - Info tab
 
+/// The four editable Info-dict fields plus the values they were last seeded from.
+///
+/// Keeping both halves is what makes "has the user typed something we would be throwing
+/// away?" answerable. Re-seeding used to be unconditional, so an undo, a page click, or a
+/// glance at another tab overwrote in-progress typing with the stored values.
+struct MetadataDraft: Equatable {
+    var title = ""
+    var author = ""
+    var subject = ""
+    var keywords = ""
+    /// False for an encrypted member with no stored password (or an empty workspace) —
+    /// the editor disables itself rather than silently writing nothing.
+    var metadataReadable = false
+    var hasXMP = false
+
+    private var seeded = Values()
+
+    private struct Values: Equatable {
+        var title = ""
+        var author = ""
+        var subject = ""
+        var keywords = ""
+    }
+
+    var isDirty: Bool {
+        title != seeded.title || author != seeded.author
+            || subject != seeded.subject || keywords != seeded.keywords
+    }
+
+    mutating func seed(from metadata: PDFDocumentMetadata?, hasXMP: Bool) {
+        seeded = Values(
+            title: metadata?.title ?? "",
+            author: metadata?.author ?? "",
+            subject: metadata?.subject ?? "",
+            keywords: metadata?.keywords ?? ""
+        )
+        title = seeded.title
+        author = seeded.author
+        subject = seeded.subject
+        keywords = seeded.keywords
+        metadataReadable = metadata != nil
+        self.hasXMP = metadata != nil ? hasXMP : false
+    }
+
+    /// Called after a successful Apply: the document now holds what the draft holds, so
+    /// the draft is clean again and the next re-seed may proceed.
+    mutating func markApplied() {
+        seeded = Values(title: title, author: author, subject: subject, keywords: keywords)
+    }
+}
+
 private struct InspectorInfoView: View {
     var viewModel: WorkspaceViewModel
     // Read so SwiftUI re-invokes `body` when the app language changes.
     @Environment(\.locale) private var locale
 
-    // Draft copies of the four editable Info-dict fields, seeded from the active
-    // member on appear and re-seeded when the targeted document changes.
-    @State private var title = ""
-    @State private var author = ""
-    @State private var subject = ""
-    @State private var keywords = ""
-    // Whether qpdf could read the active member's metadata. False for an
-    // encrypted member with no stored password (or an empty workspace) — the
-    // editor is disabled in that case rather than silently writing nothing.
-    @State private var metadataReadable = false
-    @State private var hasXMP = false
+    @Binding var draft: MetadataDraft
 
     private var visualSignatureCount: Int {
         viewModel.document.workspace.signatures.filter { !$0.isCryptographic }.count
@@ -194,6 +239,12 @@ private struct InspectorInfoView: View {
         .inspectorDraft(from: viewModel, seed: seedMetadataFields)
     }
 
+    /// The member whose Info dictionary these fields read and write. Always the first —
+    /// combining members produces one `/Info`, and the assembly keeps that one.
+    private var metadataTargetName: String? {
+        viewModel.document.workspace.documents.first?.displayName
+    }
+
     private var metadataSection: some View {
         VStack(alignment: .leading, spacing: .dsMD) {
             Text(L10n.string("inspector.metadata.section", locale: locale).uppercased())
@@ -201,12 +252,23 @@ private struct InspectorInfoView: View {
                 .foregroundStyle(Color.dsTextTertiary)
                 .tracking(0.5)
 
-            metadataField(L10n.string("inspector.metadata.title", locale: locale), text: $title)
-            metadataField(L10n.string("inspector.metadata.author", locale: locale), text: $author)
-            metadataField(L10n.string("inspector.metadata.subject", locale: locale), text: $subject)
-            metadataField(L10n.string("inspector.metadata.keywords", locale: locale), text: $keywords)
+            // Which document these fields belong to is not guessable from the fields
+            // themselves: they always target the first member, whatever page the reader is
+            // looking at, and the other members' properties are dropped when files are
+            // combined. Saying so beats letting someone edit a document they can't see.
+            if let metadataTargetName, viewModel.document.workspace.documents.count > 1 {
+                Text(L10n.format("inspector.metadata.target", metadataTargetName, locale: locale))
+                    .font(.dsCaption())
+                    .foregroundStyle(Color.dsTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            if hasXMP {
+            metadataField(L10n.string("inspector.metadata.title", locale: locale), text: $draft.title)
+            metadataField(L10n.string("inspector.metadata.author", locale: locale), text: $draft.author)
+            metadataField(L10n.string("inspector.metadata.subject", locale: locale), text: $draft.subject)
+            metadataField(L10n.string("inspector.metadata.keywords", locale: locale), text: $draft.keywords)
+
+            if draft.hasXMP {
                 Text(L10n.string("inspector.metadata.xmpWarning", locale: locale))
                     .font(.dsCaption())
                     .foregroundStyle(Color.dsTextSecondary)
@@ -222,7 +284,7 @@ private struct InspectorInfoView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(Color.dsAccent)
-            .disabled(!metadataReadable)
+            .disabled(!draft.metadataReadable)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -236,34 +298,34 @@ private struct InspectorInfoView: View {
             TextField("", text: text)
                 .textFieldStyle(.roundedBorder)
                 .font(.dsBody())
-                .disabled(!metadataReadable)
+                .disabled(!draft.metadataReadable)
                 .accessibilityLabel(label)
         }
     }
 
     private func seedMetadataFields() {
-        if let metadata = viewModel.activeDocumentMetadata() {
-            title = metadata.title ?? ""
-            author = metadata.author ?? ""
-            subject = metadata.subject ?? ""
-            keywords = metadata.keywords ?? ""
-            metadataReadable = true
-            hasXMP = viewModel.activeDocumentHasXMPMetadata
-        } else {
-            title = ""; author = ""; subject = ""; keywords = ""
-            metadataReadable = false
-            hasXMP = false
-        }
+        // Never overwrite typing the user has not applied yet. Re-seeding fires on undo,
+        // redo and every member switch, none of which the user reads as "discard my edit"
+        // — and the fields always target the same member anyway, so a selection change is
+        // no reason to reload them.
+        guard !draft.isDirty else { return }
+        draft.seed(
+            from: viewModel.activeDocumentMetadata(),
+            hasXMP: viewModel.activeDocumentHasXMPMetadata
+        )
     }
 
     private func applyMetadata() {
         let metadata = PDFDocumentMetadata(
-            title: trimmedOrNil(title),
-            author: trimmedOrNil(author),
-            subject: trimmedOrNil(subject),
-            keywords: trimmedOrNil(keywords)
+            title: trimmedOrNil(draft.title),
+            author: trimmedOrNil(draft.author),
+            subject: trimmedOrNil(draft.subject),
+            keywords: trimmedOrNil(draft.keywords)
         )
         if viewModel.applyMetadataEdit(metadata) {
+            // The document now holds what the draft holds, so the draft is no longer
+            // dirty — without this the dirty guard would block every later re-seed.
+            draft.markApplied()
             // Re-seed so the fields reflect the canonical stored state instead of
             // the just-typed draft.
             seedMetadataFields()
@@ -1922,6 +1984,7 @@ private struct InspectorStructureView: View {
                         .font(.dsBody())
                         .foregroundStyle(Color.dsTextSecondary)
                 } else {
+                    altTextSummary(for: structure)
                     tree(for: structure)
                 }
             } else {
@@ -1952,6 +2015,29 @@ private struct InspectorStructureView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.dsCard)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// The headline the tree can't give you: per-node badges only count if the reader
+    /// expands every branch, and the tree arrives collapsed. This is the number someone
+    /// auditing a document for accessibility actually came for.
+    @ViewBuilder
+    private func altTextSummary(for structure: PageStructure) -> some View {
+        let missing = structure.imagesMissingAltText
+        HStack(spacing: .dsSM) {
+            Image(systemName: missing == 0 ? "checkmark.seal" : "exclamationmark.triangle.fill")
+                .foregroundStyle(missing == 0 ? Color.dsSuccessAccent : Color.dsWarningAccent)
+            Text(missing == 0
+                 ? L10n.string("structure.altText.allPresent", locale: locale)
+                 : L10n.format(
+                    missing == 1 ? "structure.altText.missing.one" : "structure.altText.missing.other",
+                    missing,
+                    locale: locale
+                 ))
+                .font(.dsCaption())
+                .foregroundStyle(Color.dsTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func tree(for structure: PageStructure) -> some View {

@@ -83,8 +83,9 @@ static methods, called synchronously under the lock.
 - Use `L10n.format(key, args…)`, not `Text("key \(arg)")` — interpolation produces a
   compiler-derived key that won't match the catalog.
 - In `body`, pass the view's own `@Environment(\.locale)` into `L10n.string(_:locale:)`, or the
-  view won't re-render on language change. AppKit surfaces observe
-  `orifoldLanguageDidChange` instead.
+  view won't re-render on language change. `Window` scene titles resolve once at launch, so
+  drive them from `.navigationTitle(_:)` on the scene's root view instead of the `Window(_:id:)`
+  argument.
 - `Workspace.title` defaults to the literal English `"Untitled Workspace"` on purpose —
   auto-rename string-compares it.
 

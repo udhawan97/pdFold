@@ -10,7 +10,7 @@ struct CanvasInteractionSession {
 
     enum Event: Equatable {
         case delete(selection: Selection)
-        case escape(hasObjectSelection: Bool)
+        case escape(hasObjectSelection: Bool, hasArmedPlacement: Bool)
         case viewUpdate(tool: AnnotationTool, hasObjectSelection: Bool)
         case objectMutation
         case pageChanged
@@ -25,6 +25,7 @@ struct CanvasInteractionSession {
         case executeObjectMutation
         case syncDocument
         case clearObjectSelection
+        case cancelArmedPlacement
         case refreshSignatureOverlay
         case refreshObjectOverlay
         case refreshDecorationOverlays
@@ -51,9 +52,13 @@ struct CanvasInteractionSession {
             ]
         case .delete(selection: .annotation):
             return [.deleteSelectedAnnotation, .refreshSignatureOverlay, .refreshDecorationOverlays]
-        case .escape(hasObjectSelection: true):
+        // An armed placement outranks a selection: it is the more modal state (the next
+        // page click is already spoken for), so Escape backs out of that first.
+        case .escape(_, hasArmedPlacement: true):
+            return [.cancelArmedPlacement, .refreshSignatureOverlay]
+        case .escape(hasObjectSelection: true, hasArmedPlacement: false):
             return [.clearObjectSelection, .refreshObjectOverlay]
-        case .escape(hasObjectSelection: false):
+        case .escape(hasObjectSelection: false, hasArmedPlacement: false):
             return []
         case .viewUpdate(let tool, let hasObjectSelection):
             var actions: [Action] = []

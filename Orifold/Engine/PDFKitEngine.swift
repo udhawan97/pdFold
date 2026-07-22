@@ -152,7 +152,14 @@ enum DocumentImportConverter {
         var originalPDFData: Data?
     }
 
-    enum ConversionError: Error {
+    /// `LocalizedError` on purpose: the in-app import path routes these through
+    /// `userMessage(for:)` and shows recovery buttons, but the macOS document-open path
+    /// (double-click, File ▸ Open, cold-launch restore) throws straight out of
+    /// `WorkspaceDocument.init` with no Orifold UI in between. Without a
+    /// `localizedDescription`, AppKit falls back to "the operation couldn't be completed"
+    /// and the user learns nothing. Delegating to the same table keeps both surfaces
+    /// telling the same story.
+    enum ConversionError: Error, LocalizedError {
         case unsupportedType
         case passwordProtected
         case unreadableDocument
@@ -164,6 +171,10 @@ enum DocumentImportConverter {
         case fileTypeTooLarge(typeDescription: String, actualBytes: Int64, limitBytes: Int64)
         case htmlRenderedTooLarge(pageEstimate: Int, maxPages: Int)
         case documentRenderedTooLarge(maxPages: Int)
+
+        var errorDescription: String? {
+            DocumentImportConverter.userMessage(for: self)
+        }
     }
 
     static let maxImportBytes: Int64 = 512 * 1024 * 1024
@@ -192,6 +203,8 @@ enum DocumentImportConverter {
             return L10n.string("error.import.fileMissing")
         case ImportFailureKind.corruptOrEncrypted:
             return L10n.string("error.import.corruptOrEncrypted")
+        case ImportFailureKind.passwordProtected:
+            return L10n.string("error.import.passwordProtected")
         case ImportFailureKind.iCloudNotDownloaded:
             return L10n.string("error.import.iCloudNotDownloaded")
         case ImportFailureKind.exportTempMissing:

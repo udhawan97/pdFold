@@ -27,7 +27,10 @@ final class ImportPermissionTests: XCTestCase {
 
     func testClassifyMapsConversionErrorsToMatchingKinds() {
         XCTAssertEqual(ImportFailureClassifier.classify(error: DocumentImportConverter.ConversionError.unsupportedType, url: nil), .unsupportedType)
-        XCTAssertEqual(ImportFailureClassifier.classify(error: DocumentImportConverter.ConversionError.passwordProtected, url: nil), .corruptOrEncrypted)
+        // Deliberately NOT `.corruptOrEncrypted`: an encrypted PDF is intact and opens
+        // fine once the password is known, so collapsing the two told the user their
+        // good file was damaged and hid the instruction that would unblock them.
+        XCTAssertEqual(ImportFailureClassifier.classify(error: DocumentImportConverter.ConversionError.passwordProtected, url: nil), .passwordProtected)
         XCTAssertEqual(ImportFailureClassifier.classify(error: DocumentImportConverter.ConversionError.unreadableDocument, url: nil), .corruptOrEncrypted)
         XCTAssertEqual(ImportFailureClassifier.classify(error: DocumentImportConverter.ConversionError.fileTooLarge(1), url: nil), .tooLarge)
     }

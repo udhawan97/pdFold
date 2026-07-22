@@ -18,21 +18,38 @@ struct ArchivalReadinessView: View {
     private struct Row: Identifiable {
         let id: String
         let titleKey: String
+        /// Shown only when the row fails. Half of these signals are unfixable in Orifold, so the
+        /// copy behind the key must name the outside tool rather than imply an in-app remedy.
+        let hintKey: String
         let passes: Bool
     }
 
     private func rows(for readiness: ArchivalReadiness) -> [Row] {
         [
-            Row(id: "encryption", titleKey: "archival.row.encryption", passes: !readiness.isEncrypted),
+            Row(id: "encryption",
+                titleKey: "archival.row.encryption",
+                hintKey: "archival.hint.encryption",
+                passes: !readiness.isEncrypted),
             Row(id: "activeContent",
                 titleKey: "archival.row.activeContent",
+                hintKey: "archival.hint.activeContent",
                 passes: !readiness.hasActiveContent),
-            Row(id: "fonts", titleKey: "archival.row.fontsEmbedded", passes: readiness.allFontsEmbedded),
+            Row(id: "fonts",
+                titleKey: "archival.row.fontsEmbedded",
+                hintKey: "archival.hint.fontsEmbedded",
+                passes: readiness.allFontsEmbedded),
             Row(id: "outputIntent",
                 titleKey: "archival.row.outputIntent",
+                hintKey: "archival.hint.outputIntent",
                 passes: readiness.hasOutputIntent),
-            Row(id: "xmp", titleKey: "archival.row.xmp", passes: readiness.hasXMPMetadata),
-            Row(id: "tagged", titleKey: "archival.row.tagged", passes: readiness.isTagged)
+            Row(id: "xmp",
+                titleKey: "archival.row.xmp",
+                hintKey: "archival.hint.xmp",
+                passes: readiness.hasXMPMetadata),
+            Row(id: "tagged",
+                titleKey: "archival.row.tagged",
+                hintKey: "archival.hint.tagged",
+                passes: readiness.isTagged)
         ]
     }
 
@@ -61,13 +78,21 @@ struct ArchivalReadinessView: View {
             } else if let readiness {
                 VStack(alignment: .leading, spacing: .dsSM) {
                     ForEach(rows(for: readiness)) { row in
-                        HStack(spacing: .dsSM) {
+                        HStack(alignment: .firstTextBaseline, spacing: .dsSM) {
                             Image(systemName: row.passes ? "checkmark.seal" : "exclamationmark.triangle")
                                 .foregroundStyle(row.passes ? Color.dsSuccessAccent : Color.dsWarningAccent)
                                 .frame(width: 16)
-                            Text(L10n.string(forKey: row.titleKey, locale: locale))
-                                .font(.dsBody())
-                                .foregroundStyle(Color.dsTextPrimary)
+                            VStack(alignment: .leading, spacing: .dsXS) {
+                                Text(L10n.string(forKey: row.titleKey, locale: locale))
+                                    .font(.dsBody())
+                                    .foregroundStyle(Color.dsTextPrimary)
+                                if !row.passes {
+                                    Text(L10n.string(forKey: row.hintKey, locale: locale))
+                                        .font(.dsCaption())
+                                        .foregroundStyle(Color.dsTextSecondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
                             Spacer(minLength: 0)
                         }
                     }

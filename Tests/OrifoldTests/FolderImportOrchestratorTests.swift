@@ -158,6 +158,10 @@ final class FolderImportOrchestratorTests: XCTestCase {
         // unsupported-file summary toast silently swallow the provider-limit error
         // whenever both were true for the same outcome. They're independent UI
         // surfaces (editingStatus toast vs. importError alert) and must both fire.
+        //
+        // The summary now arrives from the import's completion handler with the count
+        // that actually landed, so this asserts the message the handler will build
+        // rather than a toast set before any file has been parsed.
         let viewModel = makeViewModel()
         let outcome = FolderImportOutcome.ready(
             urls: [URL(fileURLWithPath: "/tmp/a.txt")],
@@ -170,8 +174,34 @@ final class FolderImportOrchestratorTests: XCTestCase {
             XCTFail("should not need confirmation for a .ready outcome")
         }
 
-        XCTAssertNotNil(viewModel.editingStatus, "skipped-file summary must still be shown")
+        XCTAssertNotNil(
+            folderImportReadyStatusMessage(importedCount: 1, unsupportedCount: 2, wasTruncated: false),
+            "skipped-file summary must still be shown once the import completes"
+        )
         XCTAssertNotNil(viewModel.importError, "provider-limit warning must not be swallowed by the summary toast")
+    }
+
+    @MainActor
+    func testReadyOutcomeDoesNotAnnounceSuccessBeforeTheImportHasRun() {
+        // The toast used to be posted (and announced to VoiceOver) the instant the batch
+        // was handed off, with the ATTEMPTED count — so a file that then failed made the
+        // number wrong, and the green summary could land beside a failure alert.
+        let viewModel = makeViewModel()
+        let outcome = FolderImportOutcome.ready(
+            urls: [URL(fileURLWithPath: "/tmp/definitely-missing.pdf")],
+            unsupportedCount: 1,
+            wasLimited: false,
+            wasTruncated: false
+        )
+
+        applyFolderImportOutcome(outcome, into: viewModel) { _ in
+            XCTFail("should not need confirmation for a .ready outcome")
+        }
+
+        XCTAssertNil(
+            viewModel.editingStatus,
+            "no success summary may appear before the import has actually imported anything"
+        )
     }
 
     func testReadyStatusMessageSurfacesTruncationEvenWithNoUnsupportedFiles() {
